@@ -1,0 +1,70 @@
+# Default configuration: laptop-friendly (sample mode ON, small model).
+# Every setting lives here. Other config files only list what they change and are
+# merged on top of this one (see src/chess_engine/config.py).
+# Relative paths are relative to the project root.
+
+paths:
+  data_dir: data
+  raw_dir: data/raw              # downloaded / streamed Lichess files
+  processed_dir: data/processed  # filtered games and training shards
+  checkpoints_dir: checkpoints
+  reports_dir: reports           # plots and result tables (committed to git)
+
+stockfish:
+  # null = auto-detect (STOCKFISH_PATH env var, then PATH, then common install locations).
+  # Prefer the STOCKFISH_PATH env var for machine-specific paths so this file stays portable.
+  path: null
+  threads: 1
+  hash_mb: 128
+  analysis_depth: 14             # fixed depth used for game review (step 14)
+  startup_timeout_seconds: 10
+
+data:
+  lichess:
+    # Monthly files: {base_url}/lichess_db_standard_rated_{month}.pgn.zst
+    base_url: https://database.lichess.org/standard
+    months: ["2024-01"]
+
+  time_control:
+    # Lichess speed = base_seconds + 40 * increment_seconds:
+    #   bullet < 180s <= blitz < 480s <= rapid < 1500s <= classical
+    speeds: [blitz]
+
+  filters:
+    rated_only: true
+    min_rating: 800              # both players must be at least this rating
+    max_rating: null             # null = no upper limit
+    min_plies: 20                # drop very short games (10 moves each)
+    exclude_terminations: [Abandoned, Rules infraction, Unterminated]
+
+  sample:
+    enabled: true                # stop early so everything runs on a laptop
+    max_games: 50000
+
+  split:                         # split BY GAME so no game leaks across splits
+    train: 0.90
+    val: 0.05
+    test: 0.05
+    seed: 42
+
+ratings:
+  # Lower edges of each bucket; the last one is open-ended:
+  # 800-999, 1000-1199, ..., 2000-2199, 2200+
+  bucket_edges: [800, 1000, 1200, 1400, 1600, 1800, 2000, 2200]
+
+model:                           # placeholders until step 5
+  architecture: resnet
+  channels: 64
+  residual_blocks: 6
+  rating_embedding_dim: 32
+
+training:                        # placeholders until step 6
+  seed: 42
+  device: auto                   # auto | cpu | cuda | mps
+  batch_size: 256
+  epochs: 3
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  num_workers: 0
+  log_every_steps: 100
+  checkpoint_every_steps: 1000

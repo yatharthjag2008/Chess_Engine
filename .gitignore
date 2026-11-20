@@ -1,0 +1,49 @@
+# ---- Data (Lichess dumps, processed shards) -- never commit
+data/*
+!data/.gitkeep
+*.pgn
+*.pgn.zst
+*.zst
+*.parquet
+*.npy
+*.npz
+
+# ---- Model checkpoints / weights
+checkpoints/*
+!checkpoints/.gitkeep
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# ---- Experiment logs
+runs/
+logs/
+wandb/
+*.log
+
+# ---- Virtual environments
+.venv/
+venv/
+env/
+
+# ---- Python caches / build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# ---- Local secrets / editor / OS
+.env
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

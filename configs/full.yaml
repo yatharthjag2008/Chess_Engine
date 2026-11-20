@@ -1,0 +1,18 @@
+# Full-scale run on a GPU (Google Colab / university cluster).
+# Only settings that differ from default.yaml are listed here.
+# Usage: python scripts/<script>.py --config configs/full.yaml
+
+data:
+  sample:
+    enabled: false
+
+model:
+  channels: 128
+  residual_blocks: 10
+
+training:
+  device: cuda
+  batch_size: 1024
+  epochs: 10
+  num_workers: 4
+  checkpoint_every_steps: 5000
