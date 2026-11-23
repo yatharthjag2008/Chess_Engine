@@ -5,10 +5,13 @@ from __future__ import annotations
 import pytest
 
 from chess_engine.data.pgn_stream import (
+    Movetext,
     RawGame,
     TimeControl,
     iter_raw_games,
+    parse_clock,
     parse_header_line,
+    parse_movetext,
     parse_time_control,
     speed_from_seconds,
     speed_of,
@@ -147,3 +150,68 @@ def test_iter_raw_games_is_lazy() -> None:
 
     first = next(iter_raw_games(lines()))
     assert first.header("Result") == "1-0"
+
+
+# ----------------------------------------------------------------------------- movetext
+
+
+def test_parse_movetext_lichess_format() -> None:
+    text = "1. d4 { [%clk 0:05:00] } 1... Nf6 { [%clk 0:04:58] } 2. Nf3 { [%clk 0:04:57.5] } 1/2-1/2"
+    parsed = parse_movetext(text)
+    assert parsed == Movetext(["d4", "Nf6", "Nf3"], [300.0, 298.0, 297.5], "1/2-1/2")
+    assert parsed.num_plies == 3
+
+
+def test_parse_movetext_with_evals_and_glyphs() -> None:
+    # Analysed Lichess games carry [%eval] next to [%clk] and glyphs like ?! on moves.
+    text = (
+        "1. e4 { [%eval 0.18] [%clk 0:03:00] } 1... f6?! { [%eval 0.9] [%clk 0:03:00] } "
+        "2. d4 { [%eval 0.8] [%clk 0:02:58] } 2... g5?? { [%eval #1] [%clk 0:02:57] } 3. Qh5# 1-0"
+    )
+    parsed = parse_movetext(text)
+    assert parsed.moves == ["e4", "f6", "d4", "g5", "Qh5#"]
+    assert parsed.clocks == []  # the last move has no clock, so clocks are dropped entirely
+    assert parsed.result == "1-0"
+
+
+def test_parse_movetext_without_clocks() -> None:
+    parsed = parse_movetext("1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 *")
+    assert parsed.moves == ["e4", "e5", "Nf3", "Nc6", "Bb5", "a6"]
+    assert parsed.clocks == []
+    assert parsed.result == "*"
+
+
+def test_parse_movetext_skips_variations_nags_and_comments() -> None:
+    text = "1. e4 $1 { best by test } (1. d4 d5 (1... Nf6) 2. c4) 1... c5 ; line comment" + chr(10) + "2. Nf3 0-1"
+    parsed = parse_movetext(text)
+    assert parsed.moves == ["e4", "c5", "Nf3"]
+    assert parsed.result == "0-1"
+
+
+def test_parse_movetext_castling_promotion_and_no_spaces() -> None:
+    parsed = parse_movetext("1.e4 e5 2.O-O O-O-O 3.exd8=Q+ Kxd8 4.a8=N")
+    assert parsed.moves == ["e4", "e5", "O-O", "O-O-O", "exd8=Q+", "Kxd8", "a8=N"]
+    assert parsed.result is None
+
+
+def test_parse_movetext_empty() -> None:
+    assert parse_movetext("") == Movetext([], [], None)
+    assert parse_movetext("0-1") == Movetext([], [], "0-1")
+
+
+@pytest.mark.parametrize(
+    "comment, seconds",
+    [
+        ("{ [%clk 0:03:00] }", 180.0),
+        ("{ [%clk 1:00:05] }", 3605.0),
+        ("{ [%clk 0:00:01.4] }", 1.4),
+        ("{ [%eval 0.3] [%clk 0:0:9] }", 9.0),
+        ("{ no clock }", None),
+    ],
+)
+def test_parse_clock(comment: str, seconds: float | None) -> None:
+    result = parse_clock(comment)
+    if seconds is None:
+        assert result is None
+    else:
+        assert result == pytest.approx(seconds)
