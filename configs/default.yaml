@@ -23,7 +23,8 @@ data:
   lichess:
     # Monthly files: {base_url}/lichess_db_standard_rated_{month}.pgn.zst
     base_url: https://database.lichess.org/standard
-    months: ["2024-01"]
+    months: ["2026-10"]          # ~30 GB compressed each; sample mode only streams the start
+    verify_checksum: true        # check full downloads against Lichess's sha256sums.txt
 
   time_control:
     # Lichess speed = base_seconds + 40 * increment_seconds:
@@ -36,6 +37,8 @@ data:
     max_rating: null             # null = no upper limit
     min_plies: 20                # drop very short games (10 moves each)
     exclude_terminations: [Abandoned, Rules infraction, Unterminated]
+    exclude_titles: [BOT]        # we model humans, so drop games involving bot accounts
+    require_clocks: true         # every move must carry a [%clk] time (used as a feature in step 4)
 
   sample:
     enabled: true                # stop early so everything runs on a laptop

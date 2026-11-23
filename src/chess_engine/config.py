@@ -78,6 +78,7 @@ class LichessSourceConfig(_StrictModel):
 
     base_url: str
     months: list[str] = Field(min_length=1)
+    verify_checksum: bool = True
 
     @field_validator("months")
     @classmethod
@@ -105,6 +106,8 @@ class GameFilterConfig(_StrictModel):
     max_rating: PositiveInt | None = None
     min_plies: int = Field(ge=0)
     exclude_terminations: list[str]
+    exclude_titles: list[str] = Field(default_factory=list)
+    require_clocks: bool = True
 
     @model_validator(mode="after")
     def _check_rating_range(self) -> GameFilterConfig:

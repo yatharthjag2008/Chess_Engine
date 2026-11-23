@@ -33,6 +33,14 @@ def test_default_config_loads(default_config: Config) -> None:
     assert default_config.stockfish.path is None
 
 
+def test_default_data_filters(default_config: Config) -> None:
+    filters = default_config.data.filters
+    assert filters.exclude_titles == ["BOT"]
+    assert filters.require_clocks is True
+    assert "Abandoned" in filters.exclude_terminations
+    assert default_config.data.lichess.verify_checksum is True
+
+
 def test_paths_are_absolute_and_under_project_root(default_config: Config) -> None:
     for _, path in default_config.paths:
         assert path.is_absolute()
