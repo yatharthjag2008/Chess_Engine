@@ -5,6 +5,7 @@ and moves are mirrored), so the network only ever learns "my move".
 
     board  encode_board(board) -> (20, 8, 8) planes; decode_board() inverts it
     moves  move_to_index / index_to_move over a 1858-move vocabulary; legal_move_mask(board)
+    compact  compact_board(board) -> 99-byte stored form; planes_from_compact() batch-decodes it
 """
 
 from chess_engine.encoding.board import (
@@ -15,6 +16,7 @@ from chess_engine.encoding.board import (
     encode_board,
     encode_boards,
 )
+from chess_engine.encoding.compact import CompactBoard, board_from_compact, compact_board, planes_from_compact
 from chess_engine.encoding.moves import (
     MOVE_VOCABULARY,
     NUM_MOVES,
@@ -25,11 +27,14 @@ from chess_engine.encoding.moves import (
 )
 
 __all__ = [
+    "CompactBoard",
     "MOVE_VOCABULARY",
     "NUM_MOVES",
     "NUM_PLANES",
     "PLANE_INDEX",
     "PLANE_NAMES",
+    "board_from_compact",
+    "compact_board",
     "decode_board",
     "encode_board",
     "encode_boards",
@@ -37,4 +42,5 @@ __all__ = [
     "legal_move_indices",
     "legal_move_mask",
     "move_to_index",
+    "planes_from_compact",
 ]
