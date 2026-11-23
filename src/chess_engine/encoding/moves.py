@@ -129,3 +129,30 @@ def index_to_move(index: int, board: chess.Board) -> chess.Move:
     ):
         promotion = chess.QUEEN
     return chess.Move(from_sq, to_sq, promotion=promotion)
+
+
+# --------------------------------------------------------------------------- legal-move mask
+
+
+def legal_move_indices(board: chess.Board) -> np.ndarray:
+    """Sorted policy indices of every legal move in ``board`` (int64; empty if the game is over)."""
+    if board.chess960:
+        raise ValueError("Chess960 castling is not supported by the move encoding")
+    turn = board.turn
+    indices = [move_to_index(move, turn) for move in board.legal_moves]
+    return np.array(sorted(indices), dtype=np.int64)
+
+
+def legal_move_mask(board: chess.Board) -> np.ndarray:
+    """Boolean mask of length :data:`NUM_MOVES`; ``True`` where the move is legal in ``board``.
+
+    Used to set illegal moves' logits to -inf so the model can only pick legal moves.
+    """
+    mask = np.zeros(NUM_MOVES, dtype=bool)
+    mask[legal_move_indices(board)] = True
+    return mask
+
+
+def masked_moves(board: chess.Board, mask: np.ndarray) -> list[chess.Move]:
+    """Moves for the ``True`` entries of a mask in ``board``, in index order (inverse of the mask)."""
+    return [index_to_move(int(i), board) for i in np.flatnonzero(mask)]

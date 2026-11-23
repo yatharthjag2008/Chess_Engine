@@ -10,6 +10,9 @@ from chess_engine.encoding.moves import (
     NUM_MOVES,
     UNDERPROMOTIONS,
     index_to_move,
+    legal_move_indices,
+    legal_move_mask,
+    masked_moves,
     move_to_index,
     orient_square,
 )
@@ -168,3 +171,54 @@ def test_orient_square() -> None:
     assert orient_square(chess.E2, chess.WHITE) == chess.E2
     assert orient_square(chess.E2, chess.BLACK) == chess.E7
     assert orient_square(chess.A8, chess.BLACK) == chess.A1
+
+
+# ----------------------------------------------------------------------------- legal-move mask
+
+
+def test_mask_matches_legal_moves_everywhere() -> None:
+    for board in BOARDS:
+        mask = legal_move_mask(board)
+        assert mask.shape == (NUM_MOVES,)
+        assert mask.dtype == bool
+        assert mask.sum() == board.legal_moves.count(), board.fen()
+        assert set(masked_moves(board, mask)) == set(board.legal_moves), board.fen()
+
+
+def test_mask_start_position() -> None:
+    board = chess.Board()
+    mask = legal_move_mask(board)
+    assert mask.sum() == 20
+    assert mask[move_to_index(chess.Move.from_uci("e2e4"))]
+    assert not mask[move_to_index(chess.Move.from_uci("e2e5"))]
+
+
+def test_mask_special_moves() -> None:
+    boards = special_boards()
+    kiwi = boards["kiwipete"]
+    assert legal_move_mask(kiwi)[move_to_index(chess.Move.from_uci("e1g1"), chess.WHITE)]
+    assert legal_move_mask(kiwi)[move_to_index(chess.Move.from_uci("e1c1"), chess.WHITE)]
+    kiwi_black = boards["kiwipete_black"]
+    assert legal_move_mask(kiwi_black)[move_to_index(chess.Move.from_uci("e8c8"), chess.BLACK)]
+    ep = boards["black_en_passant"]
+    assert legal_move_mask(ep)[move_to_index(chess.Move.from_uci("b4a3"), chess.BLACK)]
+    promo = legal_move_mask(boards["white_promotes"])
+    assert sum(promo[move_to_index(chess.Move.from_uci(f"c7c8{p}"))] for p in "qrbn") == 4
+
+
+@pytest.mark.parametrize("name", ["checkmate", "stalemate"])
+def test_mask_no_legal_moves(name: str) -> None:
+    board = special_boards()[name]
+    assert legal_move_mask(board).sum() == 0
+    assert legal_move_indices(board).size == 0
+
+
+def test_legal_move_indices_sorted() -> None:
+    indices = legal_move_indices(special_boards()["queens"])
+    assert indices.size == 218
+    assert list(indices) == sorted(indices)
+
+
+def test_chess960_rejected() -> None:
+    with pytest.raises(ValueError, match="Chess960"):
+        legal_move_mask(chess.Board(chess960=True))
