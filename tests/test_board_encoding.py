@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import chess
 import numpy as np
+import pytest
 
 from chess_engine.encoding.board import (
     NUM_PLANES,
@@ -11,7 +12,9 @@ from chess_engine.encoding.board import (
     PLANE_INDEX,
     PLANE_NAMES,
     bitboards_to_planes,
+    decode_board,
     encode_board,
+    encode_boards,
     encode_pieces,
     piece_bitboards,
 )
@@ -167,3 +170,57 @@ def test_values_are_binary_except_fifty_move_plane() -> None:
         others = np.delete(planes, fifty, axis=0)
         assert set(np.unique(others)) <= {0.0, 1.0}
         assert 0 <= planes[fifty].min() <= planes[fifty].max() <= 1
+
+
+# ----------------------------------------------------------------------------- symmetry, decoding, batches
+
+
+def _comparable_fen(board: chess.Board) -> list[str]:
+    """FEN fields the encoding keeps: pieces, turn, castling, legal ep square, halfmove (capped)."""
+    fields = board.fen(en_passant="legal").split()
+    fields[4] = str(min(int(fields[4]), 100))
+    return fields[:5]
+
+
+def test_mirror_symmetry_full_encoding() -> None:
+    """board and board.mirror() differ only in the white_to_move plane."""
+    color = PLANE_INDEX["white_to_move"]
+    for board in BOARDS:
+        ours, theirs = encode_board(board), encode_board(board.mirror())
+        assert np.array_equal(np.delete(ours, color, 0), np.delete(theirs, color, 0)), board.fen()
+        assert ours[color].max() != theirs[color].max()
+
+
+def test_decode_inverts_encode() -> None:
+    for board in BOARDS:
+        decoded = decode_board(encode_board(board))
+        assert _comparable_fen(decoded) == _comparable_fen(board), board.fen()
+        assert decoded.is_valid()
+
+
+def test_decode_keeps_legal_moves() -> None:
+    for board in BOARDS:
+        assert set(decode_board(encode_board(board)).legal_moves) == set(board.legal_moves)
+
+
+def test_decode_rejects_wrong_shape() -> None:
+    with pytest.raises(ValueError, match="shape"):
+        decode_board(np.zeros((12, 8, 8)))
+
+
+def test_encode_boards_batch() -> None:
+    boards = BOARDS[:16]
+    batch = encode_boards(boards)
+    assert batch.shape == (16, NUM_PLANES, 8, 8)
+    for i, board in enumerate(boards):
+        assert np.array_equal(batch[i], encode_board(board))
+    assert encode_boards([]).shape == (0, NUM_PLANES, 8, 8)
+
+
+def test_transpositions_encode_identically() -> None:
+    a, b = chess.Board(), chess.Board()
+    for san in ["Nf3", "Nf6", "g3", "g6"]:
+        a.push_san(san)
+    for san in ["g3", "Nf6", "Nf3", "g6"]:  # same position, both end with a pawn move (clock 0)
+        b.push_san(san)
+    assert np.array_equal(encode_board(a), encode_board(b))

@@ -98,3 +98,52 @@ def encode_board(board: chess.Board, dtype: np.dtype | type = np.float32) -> np.
     planes[_FIFTY] = min(board.halfmove_clock, 100) / 100
     planes[_ONES] = 1
     return planes
+
+
+def encode_boards(boards: list[chess.Board], dtype: np.dtype | type = np.float32) -> np.ndarray:
+    """Encode several boards into one ``(N, NUM_PLANES, 8, 8)`` array (a model input batch)."""
+    out = np.empty((len(boards), NUM_PLANES, 8, 8), dtype=dtype)
+    for i, board in enumerate(boards):
+        out[i] = encode_board(board, dtype=dtype)
+    return out
+
+
+# --------------------------------------------------------------------------- decoding (debugging / tests)
+
+
+def decode_board(planes: np.ndarray) -> chess.Board:
+    """Rebuild a board from :func:`encode_board` output (inverse of the encoding).
+
+    Everything that the encoding stores is recovered: pieces, side to move,
+    castling rights, a legal en passant square, and the halfmove clock (capped at
+    100). The fullmove number is not encoded and is set to 1.
+    """
+    if planes.shape != (NUM_PLANES, 8, 8):
+        raise ValueError(f"expected planes of shape {(NUM_PLANES, 8, 8)}, got {planes.shape}")
+    turn = chess.WHITE if planes[_COLOR, 0, 0] >= 0.5 else chess.BLACK
+
+    def to_square(row: int, col: int) -> chess.Square:
+        square = chess.square(col, row)
+        return square if turn == chess.WHITE else chess.square_mirror(square)
+
+    board = chess.Board(None)
+    board.turn = turn
+    for plane in range(NUM_PIECE_PLANES):
+        color = turn if plane < len(PIECE_TYPES) else not turn
+        piece = chess.Piece(PIECE_TYPES[plane % len(PIECE_TYPES)], color)
+        for row, col in zip(*np.nonzero(planes[plane] >= 0.5)):
+            board.set_piece_at(to_square(int(row), int(col)), piece)
+
+    rights = ""
+    for plane, side_is_us, symbol in ((_MY_K, True, "k"), (_MY_Q, True, "q"), (_THEIR_K, False, "k"),
+                                      (_THEIR_Q, False, "q")):
+        if planes[plane, 0, 0] >= 0.5:
+            white = (turn == chess.WHITE) == side_is_us
+            rights += symbol.upper() if white else symbol
+    board.set_castling_fen("".join(sorted(rights, key="KQkq".index)) or "-")
+
+    ep = np.argwhere(planes[_EP] >= 0.5)
+    if len(ep):
+        board.ep_square = to_square(int(ep[0][0]), int(ep[0][1]))
+    board.halfmove_clock = int(round(float(planes[_FIFTY, 0, 0]) * 100))
+    return board
