@@ -14,6 +14,7 @@ from chess_engine.data.pgn_stream import (
     Reject,
     filter_games,
     game_id_from_site,
+    is_rated,
 )
 
 GOOD_HEADERS = {
@@ -101,6 +102,23 @@ def test_good_game_passes(game_filter: GameFilter) -> None:
 )
 def test_header_rejections(game_filter: GameFilter, changes: dict, reason: Reject) -> None:
     assert game_filter.check_headers(_raw(**changes).headers) == reason
+
+
+@pytest.mark.parametrize(
+    "headers, rated",
+    [
+        ({"Event": "Rated Blitz game"}, True),
+        ({"Event": "Rated Blitz tournament https://lichess.org/tournament/x"}, True),
+        # Swiss events don't say "Rated"; rating changes show they were.
+        ({"Event": "Blitz swiss https://lichess.org/swiss/x", "WhiteRatingDiff": "+5"}, True),
+        ({"Event": "Blitz swiss https://lichess.org/swiss/x", "BlackRatingDiff": "-5"}, True),
+        ({"Event": "Blitz swiss https://lichess.org/swiss/x"}, False),
+        ({"Event": "Casual Blitz game", "WhiteRatingDiff": "+0"}, False),
+        ({}, False),
+    ],
+)
+def test_is_rated(headers: dict, rated: bool) -> None:
+    assert is_rated(headers) is rated
 
 
 @pytest.mark.parametrize(

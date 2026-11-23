@@ -281,7 +281,7 @@ class GameFilter:
 
     def check_headers(self, headers: Mapping[str, str]) -> Reject | None:
         """Return why the game should be rejected based on its headers, or ``None`` to keep it."""
-        if self.rated_only and not headers.get("Event", "").startswith("Rated"):
+        if self.rated_only and not is_rated(headers):
             return Reject.NOT_RATED
         if headers.get("Variant", "Standard") != "Standard":
             return Reject.VARIANT
@@ -310,6 +310,22 @@ class GameFilter:
         if self.require_clocks and not movetext.clocks:
             return Reject.NO_CLOCKS
         return None
+
+
+def is_rated(headers: Mapping[str, str]) -> bool:
+    """True if the game was rated.
+
+    Arena and casual games say so in the event name ("Rated Blitz game", "Casual
+    Rapid game"), but Swiss events do not ("Blitz swiss https://..."). Rated games
+    carry rating changes, so a ``WhiteRatingDiff``/``BlackRatingDiff`` header
+    also counts as rated.
+    """
+    event = headers.get("Event", "")
+    if event.startswith("Rated"):
+        return True
+    if event.startswith("Casual"):
+        return False
+    return "WhiteRatingDiff" in headers or "BlackRatingDiff" in headers
 
 
 def _to_int(value: str | None) -> int | None:
