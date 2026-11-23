@@ -126,6 +126,9 @@ def test_invalid_yaml_is_rejected(tmp_path: Path) -> None:
         ({"data": {"lichess": {"months": ["Jan 2024"]}}}, "YYYY-MM"),
         ({"ratings": {"bucket_edges": [800, 1200, 1000]}}, "strictly increasing"),
         ({"training": {"device": "tpu"}}, "device"),
+        ({"data": {"dataset": {"shard_size": 0}}}, "shard_size"),
+        ({"data": {"dataset": {"skip_first_plies": -1}}}, "skip_first_plies"),
+        ({"data": {"dataset": {"workers": 0}}}, "workers"),
     ],
 )
 def test_invalid_values_are_rejected(tmp_path: Path, override: dict, message: str) -> None:
@@ -163,6 +166,20 @@ def test_default_rating_buckets(default_config: Config) -> None:
 )
 def test_bucket_index(default_config: Config, rating: int, expected: int) -> None:
     assert default_config.ratings.bucket_index(rating) == expected
+
+
+def test_default_dataset_settings(default_config: Config) -> None:
+    dataset = default_config.data.dataset
+    assert dataset.skip_first_plies == 0
+    assert dataset.min_clock_seconds == 0
+    assert dataset.shard_size == 200_000
+    assert dataset.workers is None
+    assert 1 <= dataset.resolved_workers() <= 8
+
+
+def test_dataset_workers_override(tmp_path: Path) -> None:
+    path = _write_yaml(tmp_path / "w.yaml", {"data": {"dataset": {"workers": 3}}})
+    assert load_config(path).data.dataset.resolved_workers() == 3
 
 
 def test_bucket_index_below_lowest_edge_raises() -> None:

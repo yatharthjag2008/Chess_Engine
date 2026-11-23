@@ -22,6 +22,7 @@ Usage::
 from __future__ import annotations
 
 import bisect
+import os
 from pathlib import Path
 from typing import Any, Literal
 
@@ -139,6 +140,22 @@ class SplitConfig(_StrictModel):
         return self
 
 
+class DatasetConfig(_StrictModel):
+    """How games become training positions (step 4)."""
+
+    skip_first_plies: int = Field(default=0, ge=0)
+    min_clock_seconds: float = Field(default=0, ge=0)
+    shard_size: PositiveInt = 200_000
+    games_per_task: PositiveInt = 500
+    workers: PositiveInt | None = None
+
+    def resolved_workers(self) -> int:
+        """Number of encoding processes: ``workers``, or CPU count - 1 (1 to 8) when unset."""
+        if self.workers is not None:
+            return self.workers
+        return max(1, min(8, (os.cpu_count() or 2) - 1))
+
+
 class DataConfig(_StrictModel):
     """Everything about which games we use and how we split them."""
 
@@ -147,6 +164,7 @@ class DataConfig(_StrictModel):
     filters: GameFilterConfig
     sample: SampleConfig
     split: SplitConfig
+    dataset: DatasetConfig = Field(default_factory=DatasetConfig)
 
 
 class RatingsConfig(_StrictModel):

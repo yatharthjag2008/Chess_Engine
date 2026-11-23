@@ -50,6 +50,13 @@ data:
     test: 0.05
     seed: 42
 
+  dataset:                       # step 4: games -> training positions (NumPy shards)
+    skip_first_plies: 0          # drop each game's first N plies (0 = keep openings; the bot plays them too)
+    min_clock_seconds: 0         # drop positions where the mover has less time left (0 = keep all)
+    shard_size: 200000           # positions per shard file (~30 MB)
+    games_per_task: 500          # games sent to a worker process at a time
+    workers: null                # encoding processes; null = CPU count - 1 (at most 8), 1 = no subprocesses
+
 ratings:
   # Lower edges of each bucket; the last one is open-ended:
   # 800-999, 1000-1199, ..., 2000-2199, 2200+
