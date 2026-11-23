@@ -7,6 +7,9 @@ data/*
 *.parquet
 *.npy
 *.npz
+# ...except small test fixtures
+!tests/fixtures/*.pgn
+!tests/fixtures/*.pgn.zst
 
 # ---- Model checkpoints / weights
 checkpoints/*
