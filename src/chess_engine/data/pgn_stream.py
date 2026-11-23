@@ -7,7 +7,9 @@ first (cheap), and only then is the movetext parsed.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import re
+from collections.abc import Iterable, Iterator
+from dataclasses import dataclass, field
 
 # --------------------------------------------------------------------------- time control
 
@@ -69,3 +71,70 @@ def speed_of(time_control: str) -> str | None:
         return CORRESPONDENCE
     parsed = parse_time_control(time_control)
     return parsed.speed if parsed else None
+
+
+# --------------------------------------------------------------------------- splitting a stream into games
+
+# A tag pair like  [WhiteElo "1825"]  -- values may contain escaped quotes (\") and backslashes (\\).
+_HEADER_RE = re.compile(r'^\[([A-Za-z0-9_]+)\s+"((?:[^"\\]|\\.)*)"\]\s*$')
+_UNESCAPE_RE = re.compile(r"\\(.)")
+_BOM = chr(0xFEFF)
+
+
+@dataclass(slots=True)
+class RawGame:
+    """One game exactly as read from the PGN: its tag pairs and its unparsed movetext."""
+
+    headers: dict[str, str] = field(default_factory=dict)
+    movetext: str = ""
+
+    def header(self, name: str, default: str = "") -> str:
+        """Return a header value, or ``default`` if the tag is missing."""
+        return self.headers.get(name, default)
+
+
+def parse_header_line(line: str) -> tuple[str, str] | None:
+    """Parse a tag-pair line into ``(name, value)``, or return ``None`` if it isn't one."""
+    match = _HEADER_RE.match(line)
+    if match is None:
+        return None
+    name, value = match.groups()
+    if "\\" in value:
+        value = _UNESCAPE_RE.sub(r"\1", value)
+    return name, value
+
+
+def iter_raw_games(lines: Iterable[str]) -> Iterator[RawGame]:
+    """Split a stream of PGN lines into :class:`RawGame` objects, one game at a time.
+
+    Works on any iterable of lines (an open text file, a decompressing stream, a
+    list), so memory use stays constant no matter how big the input is. A new game
+    starts at the first tag-pair line after movetext (or after a blank line that
+    ends a header block). Text before the first header is ignored.
+    """
+    headers: dict[str, str] = {}
+    movetext: list[str] = []
+    after_headers = False  # saw the blank line (or movetext) that ends the header block
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if line.startswith(_BOM):  # UTF-8 byte-order mark at the start of a file
+            line = line[1:]
+        if not line:
+            if headers:
+                after_headers = True
+            continue
+
+        tag = parse_header_line(line) if line[0] == "[" else None
+        if tag is not None:
+            if headers and after_headers:
+                yield RawGame(headers, " ".join(movetext))
+                headers, movetext = {}, []
+            after_headers = False
+            headers[tag[0]] = tag[1]
+        elif headers:
+            movetext.append(line)
+            after_headers = True
+
+    if headers:
+        yield RawGame(headers, " ".join(movetext))
