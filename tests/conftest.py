@@ -3,14 +3,26 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
 from chess_engine.config import Config, load_config
 from chess_engine.stockfish import EngineInfo, StockfishError, get_stockfish
+from range_server import RangeServer
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+
+@pytest.fixture()
+def range_server() -> Iterator[RangeServer]:
+    """A local HTTP server with Range support; add files via ``range_server.files[name] = ServedFile(...)``."""
+    server = RangeServer().start()
+    try:
+        yield server
+    finally:
+        server.stop()
 
 
 @pytest.fixture(scope="session")
