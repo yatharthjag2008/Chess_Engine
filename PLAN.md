@@ -56,7 +56,8 @@ tracked in [PROGRESS.md](PROGRESS.md).
 | Step(s) | Location |
 |---|---|
 | 1 | `pyproject.toml`, `configs/`, `src/chess_engine/config.py`, `src/chess_engine/stockfish.py`, `scripts/check_setup.py` |
-| 2, 4, 13 | `src/chess_engine/data/` |
+| 2 | `src/chess_engine/data/pgn_stream.py`, `sources.py`, `game_store.py`, `scripts/prepare_games.py`, `scripts/download_lichess.py` |
+| 4, 13 | `src/chess_engine/data/` |
 | 3 | `src/chess_engine/encoding/` |
 | 5 | `src/chess_engine/model/` |
 | 6 | `src/chess_engine/training/` |

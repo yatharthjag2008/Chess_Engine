@@ -5,7 +5,7 @@ See [PLAN.md](PLAN.md) for details on each step.
 ## Checklist
 
 - [x] 1. Project setup
-- [ ] 2. Data download + streaming parser
+- [x] 2. Data download + streaming parser
 - [ ] 3. Board + move encoding
 - [ ] 4. Dataset builder
 - [ ] 5. Model
@@ -60,4 +60,62 @@ See [PLAN.md](PLAN.md) for details on each step.
   The env var is the recommended way to set a machine-specific path, so committed configs stay portable.
 - **Stockfish checks are tested with a fake UCI engine** (`tests/fixtures/fake_uci_engine.py`), so
   the verify logic is covered even on machines without Stockfish.
-- Default Lichess month `2024-01` is a placeholder; the actual month(s) get chosen in step 2.
+- Default Lichess month `2024-01` was a placeholder; step 2 chose `2026-10`.
+
+## Step 2: Data download + streaming parser (done 2026-11-23)
+
+**Built**
+- `chess_engine.data.pgn_stream`: lazy PGN splitter (`iter_raw_games`), movetext tokenizer
+  (`parse_movetext` → SAN moves, per-move `[%clk]` seconds, result), `TimeControl`/speed
+  classification, `GameFilter` (built from config), `GameRecord`, `filter_games` and `FilterStats`.
+- `chess_engine.data.sources`: open local `.pgn`/`.pgn.zst` or an HTTP(S) URL as a text stream
+  decompressed on the fly; `HTTPRangeReader` resumes dropped connections with `Range` requests;
+  `download_file` / `download_lichess_month` for full, resumable, SHA-256-verified downloads.
+- `chess_engine.data.game_store`: `GameWriter` (Parquet, batched row groups, written to `.tmp`
+  and renamed only when complete) and `prepare_games` (source → filter → Parquet + `.stats.json`).
+- Scripts: `scripts/prepare_games.py`, `scripts/download_lichess.py`.
+- Tests: an anonymized fixture of 16 real games from the 2026-10 dump (every speed + BOT games),
+  plus a local HTTP test server with Range support and fault injection (dropped connections,
+  503s, servers that ignore Range).
+
+**Real sample run** (`python scripts/prepare_games.py`, default config, streamed from Lichess)
+
+| | |
+|---|---|
+| Games read | 116,102 (first 36 MB of the ~31 GB 2026-10 file) |
+| Games kept | 50,000 (43.1%), 3.54M positions, 10.1 MB Parquet |
+| Time | 30 s on a laptop (parser alone: ~4,800 games/s) |
+| Rejected: speed (not blitz) | 62,928 |
+| Rejected: too short (< 20 plies) | 1,635 |
+| Rejected: a player under 800 | 992 |
+| Rejected: BOT account | 286 |
+| Rejected: abandoned / rules infraction | 208 |
+| Rejected: not rated | 53 |
+| Time controls kept | 3+0 43%, 5+0 26%, 3+2 19%, 5+3 9% |
+| Player-games per bucket | 800: 4.1k · 1000: 8.8k · 1200: 13.4k · 1400: 19.2k · 1600: 21.1k · 1800: 18.7k · 2000: 10.6k · 2200+: 4.2k |
+
+Replaying the first 5,000 kept games with python-chess found 0 illegal moves.
+
+**Decisions**
+- **Month 2026-10** (latest complete month). Each file is ~30 GB, but sample mode only streams the
+  start, so the month choice costs nothing on a laptop. More months can be listed in config.
+- **Sample mode streams straight from the Lichess server** instead of downloading: 50k games need
+  ~36 MB of a 31 GB file. Full runs use `download_lichess.py` first (resumable, checksum-verified),
+  and `prepare_games.py` automatically uses a downloaded file in `data/raw/` when there is one.
+- **Fast header-first filtering, no python-chess in step 2.** Headers are checked before the movetext
+  is even tokenized, and moves are kept as SAN without replaying them (python-chess replay runs at
+  ~550 games/s, ~9× slower than the parser). Step 4 has to replay every game anyway to get positions,
+  so legality is checked there, once.
+- **Moves stored as SAN lists, clocks as float seconds**, one row per game. SAN is what the file
+  contains (no conversion cost) and is human-readable; step 4 converts while replaying.
+- **BOT games excluded** (`exclude_titles: [BOT]`): the model should learn human moves only.
+- **Clocks required** (`require_clocks: true`) and all-or-nothing per game: either every move has a
+  `[%clk]` or the game is dropped, so step 4 can rely on a clock for every position.
+- **"Rated" check**: Swiss events are named `Blitz swiss https://...` with no "Rated" prefix, so a game
+  counts as rated if the event starts with "Rated" or it has a `RatingDiff` header. (The first real run
+  wrongly rejected 589 rated Swiss games; now 53 remain, Swiss games without rating changes.)
+- **Ratings**: both players must be ≥ `min_rating` (and ≤ `max_rating` if set); a `?` rating rejects.
+- **Robust streaming**: dropped connections and 5xx errors are retried with exponential backoff and
+  resumed at the exact byte, invalid UTF-8 is replaced instead of crashing, outputs are written to
+  temporary files and renamed only when complete. Only a generic `User-Agent` is sent.
+- **Test fixture is real data, anonymized**: player names and game ids replaced; the data is CC0.

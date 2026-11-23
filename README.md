@@ -89,6 +89,35 @@ cfg.ratings.bucket_labels()   # ['800-999', '1000-1199', ..., '2200+']
 cfg.data.sample.enabled       # False
 ```
 
+## Data pipeline
+
+Games come from the [Lichess open database](https://database.lichess.org/). Each monthly file is
+~30 GB compressed, so nothing is loaded whole: games are streamed, decompressed on the fly, and
+filtered one at a time (blitz only, both players 800+, at least 20 plies, clocks on every move,
+no BOT accounts, no abandoned games).
+
+```bash
+# Sample mode (default config): streams the first 50k matching games straight from Lichess, ~30 s
+python scripts/prepare_games.py
+
+# Quick smoke run / a different month / a local file
+python scripts/prepare_games.py --max-games 2000
+python scripts/prepare_games.py --month 2026-09 --source path/to/file.pgn.zst
+
+# Full scale: download whole months first (resumable, SHA-256 verified), then process them
+python scripts/download_lichess.py --config configs/full.yaml
+python scripts/prepare_games.py --config configs/full.yaml
+```
+
+Output: `data/processed/games/lichess_<month>[_sample].parquet` (one row per game: players, ratings,
+time control, result, SAN moves, clock after each move) plus a `.stats.json` with how many games
+were kept and why the rest were rejected.
+
+```python
+from chess_engine.data.game_store import read_games
+games = read_games("data/processed/games/lichess_2026-10_sample.parquet")
+```
+
 ## Project structure
 
 ```
@@ -96,7 +125,7 @@ configs/              YAML configs
 src/chess_engine/
   config.py           typed config loading
   stockfish.py        find + verify Stockfish
-  data/               streaming Lichess parser, dataset builder, game import
+  data/               Lichess streaming + filtering, Parquet game store, dataset builder
   encoding/           board -> tensor, move <-> index
   model/              rating-conditioned policy network
   training/           training loop
