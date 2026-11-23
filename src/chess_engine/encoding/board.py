@@ -49,3 +49,52 @@ def bitboards_to_planes(bitboards: np.ndarray) -> np.ndarray:
 def encode_pieces(board: chess.Board) -> np.ndarray:
     """The 12 piece planes of ``board`` as a ``(12, 8, 8)`` uint8 array (1 = piece present)."""
     return bitboards_to_planes(piece_bitboards(board))
+
+
+# --------------------------------------------------------------------------- full encoding
+
+#: Name of each input plane, in order. ``NUM_PLANES == len(PLANE_NAMES)``.
+PLANE_NAMES: tuple[str, ...] = (
+    *(f"my_{chess.piece_name(pt)}" for pt in PIECE_TYPES),
+    *(f"their_{chess.piece_name(pt)}" for pt in PIECE_TYPES),
+    "white_to_move",       # all 1 if White is to move (colours still play differently in practice)
+    "my_kingside_castle",
+    "my_queenside_castle",
+    "their_kingside_castle",
+    "their_queenside_castle",
+    "en_passant",          # 1 on the en passant target square, only if the capture is actually legal
+    "fifty_move_clock",    # halfmove clock / 100, capped at 1
+    "ones",                # constant 1: lets convolutions see the board edge through zero padding
+)
+NUM_PLANES: int = len(PLANE_NAMES)
+PLANE_INDEX: dict[str, int] = {name: i for i, name in enumerate(PLANE_NAMES)}
+
+_COLOR, _MY_K, _MY_Q, _THEIR_K, _THEIR_Q, _EP, _FIFTY, _ONES = range(NUM_PIECE_PLANES, NUM_PLANES)
+
+
+def encode_board(board: chess.Board, dtype: np.dtype | type = np.float32) -> np.ndarray:
+    """Encode ``board`` as a ``(NUM_PLANES, 8, 8)`` array, from the side to move's point of view.
+
+    See :data:`PLANE_NAMES` for what each plane holds. Every plane is 0/1 except
+    ``fifty_move_clock`` (a fraction), which an integer ``dtype`` truncates to 0/1.
+    """
+    planes = np.zeros((NUM_PLANES, 8, 8), dtype=dtype)
+    planes[:NUM_PIECE_PLANES] = encode_pieces(board)
+
+    us, them = board.turn, not board.turn
+    if us == chess.WHITE:
+        planes[_COLOR] = 1
+    planes[_MY_K] = board.has_kingside_castling_rights(us)
+    planes[_MY_Q] = board.has_queenside_castling_rights(us)
+    planes[_THEIR_K] = board.has_kingside_castling_rights(them)
+    planes[_THEIR_Q] = board.has_queenside_castling_rights(them)
+
+    # python-chess sets ep_square after every double push; only encode it when the capture
+    # is legal, so identical positions (same legal moves) always encode identically.
+    if board.ep_square is not None and board.has_legal_en_passant():
+        ep = board.ep_square if us == chess.WHITE else chess.square_mirror(board.ep_square)
+        planes[_EP, chess.square_rank(ep), chess.square_file(ep)] = 1
+
+    planes[_FIFTY] = min(board.halfmove_clock, 100) / 100
+    planes[_ONES] = 1
+    return planes

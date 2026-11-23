@@ -5,8 +5,17 @@ from __future__ import annotations
 import chess
 import numpy as np
 
-from chess_engine.encoding.board import PIECE_TYPES, bitboards_to_planes, encode_pieces, piece_bitboards
-from positions import all_boards
+from chess_engine.encoding.board import (
+    NUM_PLANES,
+    PIECE_TYPES,
+    PLANE_INDEX,
+    PLANE_NAMES,
+    bitboards_to_planes,
+    encode_board,
+    encode_pieces,
+    piece_bitboards,
+)
+from positions import all_boards, special_boards
 
 BOARDS = all_boards()
 
@@ -72,3 +81,89 @@ def test_piece_bitboards_mirror_symmetry() -> None:
 
 def test_empty_board() -> None:
     assert encode_pieces(chess.Board(None)).sum() == 0
+
+
+# ----------------------------------------------------------------------------- full encoding
+
+
+def _plane(planes: np.ndarray, name: str) -> np.ndarray:
+    return planes[PLANE_INDEX[name]]
+
+
+def test_plane_names() -> None:
+    assert NUM_PLANES == 20
+    assert PLANE_NAMES[:2] == ("my_pawn", "my_knight")
+    assert PLANE_NAMES[6] == "their_pawn"
+    assert len(set(PLANE_NAMES)) == NUM_PLANES
+
+
+def test_encode_board_shape_and_dtype() -> None:
+    planes = encode_board(chess.Board())
+    assert planes.shape == (NUM_PLANES, 8, 8)
+    assert planes.dtype == np.float32
+    assert encode_board(chess.Board(), dtype=np.uint8).dtype == np.uint8
+
+
+def test_start_position_aux_planes() -> None:
+    planes = encode_board(chess.Board())
+    for name in ["white_to_move", "my_kingside_castle", "my_queenside_castle",
+                 "their_kingside_castle", "their_queenside_castle", "ones"]:
+        assert _plane(planes, name).min() == 1, name
+    assert _plane(planes, "en_passant").sum() == 0
+    assert _plane(planes, "fifty_move_clock").max() == 0
+
+
+def test_colour_plane_for_black() -> None:
+    board = chess.Board()
+    board.push_san("Nf3")
+    planes = encode_board(board)
+    assert _plane(planes, "white_to_move").max() == 0
+
+
+def test_castling_planes_are_from_movers_view() -> None:
+    # White has only K, Black only q.
+    white = encode_board(chess.Board("r3k2r/8/8/8/8/8/8/R3K2R w Kq - 0 1"))
+    assert _plane(white, "my_kingside_castle").min() == 1
+    assert _plane(white, "my_queenside_castle").max() == 0
+    assert _plane(white, "their_kingside_castle").max() == 0
+    assert _plane(white, "their_queenside_castle").min() == 1
+    black = encode_board(chess.Board("r3k2r/8/8/8/8/8/8/R3K2R b Kq - 0 1"))
+    assert _plane(black, "my_kingside_castle").max() == 0
+    assert _plane(black, "my_queenside_castle").min() == 1
+    assert _plane(black, "their_kingside_castle").min() == 1
+
+
+def test_en_passant_plane_white() -> None:
+    planes = encode_board(special_boards()["white_en_passant"])  # e5xf6 possible
+    ep = _plane(planes, "en_passant")
+    assert ep.sum() == 1
+    assert ep[5, 5] == 1  # f6 -> rank 6 (row 5), file f (col 5)
+
+
+def test_en_passant_plane_black_is_mirrored() -> None:
+    planes = encode_board(special_boards()["black_en_passant"])  # b4xa3 possible
+    ep = _plane(planes, "en_passant")
+    assert ep.sum() == 1
+    assert ep[5, 0] == 1  # a3 mirrored -> a6 -> row 5, col 0
+
+
+def test_en_passant_plane_empty_when_capture_impossible() -> None:
+    board = chess.Board()
+    board.push_san("e4")  # ep_square is e3, but no black pawn can capture
+    assert board.ep_square == chess.E3
+    assert _plane(encode_board(board), "en_passant").sum() == 0
+
+
+def test_fifty_move_plane() -> None:
+    assert _plane(encode_board(chess.Board("8/8/8/4k3/8/8/8/R3K3 w - - 37 80")), "fifty_move_clock").max() == \
+        np.float32(0.37)
+    assert _plane(encode_board(chess.Board("8/8/8/4k3/8/8/8/R3K3 w - - 150 80")), "fifty_move_clock").max() == 1
+
+
+def test_values_are_binary_except_fifty_move_plane() -> None:
+    fifty = PLANE_INDEX["fifty_move_clock"]
+    for board in BOARDS:
+        planes = encode_board(board)
+        others = np.delete(planes, fifty, axis=0)
+        assert set(np.unique(others)) <= {0.0, 1.0}
+        assert 0 <= planes[fifty].min() <= planes[fifty].max() <= 1
