@@ -118,6 +118,25 @@ from chess_engine.data.game_store import read_games
 games = read_games("data/processed/games/lichess_2026-10_sample.parquet")
 ```
 
+## Board and move encoding
+
+Positions and moves are encoded **from the side to move's point of view** (Black's positions are
+mirrored), so the network always answers "what would I play here?".
+
+```python
+import chess
+from chess_engine.encoding import encode_board, legal_move_mask, move_to_index, index_to_move
+
+board = chess.Board()
+planes = encode_board(board)          # (20, 8, 8) float32: 12 piece planes + turn, castling, en passant, ...
+mask = legal_move_mask(board)         # (1858,) bool: True for the 20 legal moves
+i = move_to_index(chess.Move.from_uci("e2e4"), board.turn)
+index_to_move(i, board)               # Move.from_uci('e2e4')
+```
+
+The 1858 policy indices cover every from-to square pair a queen or knight move can reach,
+plus underpromotions. See [PROGRESS.md](PROGRESS.md) for the plane layout and the design choices.
+
 ## Project structure
 
 ```

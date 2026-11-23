@@ -58,7 +58,7 @@ tracked in [PROGRESS.md](PROGRESS.md).
 | 1 | `pyproject.toml`, `configs/`, `src/chess_engine/config.py`, `src/chess_engine/stockfish.py`, `scripts/check_setup.py` |
 | 2 | `src/chess_engine/data/pgn_stream.py`, `sources.py`, `game_store.py`, `scripts/prepare_games.py`, `scripts/download_lichess.py` |
 | 4, 13 | `src/chess_engine/data/` |
-| 3 | `src/chess_engine/encoding/` |
+| 3 | `src/chess_engine/encoding/board.py`, `moves.py`, `scripts/benchmark_encoding.py` |
 | 5 | `src/chess_engine/model/` |
 | 6 | `src/chess_engine/training/` |
 | 7, 11, 12 | `src/chess_engine/eval/` |

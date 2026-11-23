@@ -94,3 +94,20 @@ def test_download_script_reports_checksum_failure(tmp_path: Path, range_server: 
 
     assert _load("download_lichess").main(["--config", str(config), "--no-progress"]) == 1
     assert "mismatch" in capsys.readouterr().err
+
+
+def test_benchmark_encoding_script_with_random_games(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    script = _load("benchmark_encoding")
+    assert script.main(["--games-file", str(tmp_path / "missing.parquet"), "--games", "3"]) == 0
+    out = capsys.readouterr().out
+    assert "random games" in out
+    assert "legal_move_mask" in out
+
+
+def test_benchmark_encoding_script_with_games_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    out_path = tmp_path / "g.parquet"
+    assert _load("prepare_games").main(["--config", str(_config(tmp_path)), "--month", "2026-10", "--source",
+                                        str(FIXTURE), "--output", str(out_path), "--no-progress"]) == 0
+    capsys.readouterr()
+    assert _load("benchmark_encoding").main(["--games-file", str(out_path), "--games", "8"]) == 0
+    assert "positions from 8 games" in capsys.readouterr().out

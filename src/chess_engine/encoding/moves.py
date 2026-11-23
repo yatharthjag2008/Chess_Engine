@@ -69,6 +69,7 @@ for _index, _move in enumerate(MOVE_VOCABULARY):
     else:
         _UNDERPROMO[_key, UNDERPROMOTIONS.index(_move.promotion)] = _index
 del _index, _move, _key
+_UNDERPROMO_COLUMN: dict[chess.PieceType, int] = {piece: i for i, piece in enumerate(UNDERPROMOTIONS)}
 
 
 # --------------------------------------------------------------------------- move <-> index
@@ -138,9 +139,27 @@ def legal_move_indices(board: chess.Board) -> np.ndarray:
     """Sorted policy indices of every legal move in ``board`` (int64; empty if the game is over)."""
     if board.chess960:
         raise ValueError("Chess960 castling is not supported by the move encoding")
-    turn = board.turn
-    indices = [move_to_index(move, turn) for move in board.legal_moves]
-    return np.array(sorted(indices), dtype=np.int64)
+    # Hot path (called for every training position), so instead of move_to_index() per move:
+    # build lookup keys in one pass and index the tables with numpy. Mirroring a square
+    # vertically is square ^ 56 (flip the rank bits).
+    flip = 0 if board.turn == chess.WHITE else 56
+    keys: list[int] = []
+    under_keys: list[int] = []
+    under_pieces: list[int] = []
+    for move in board.legal_moves:
+        key = ((move.from_square ^ flip) << 6) | (move.to_square ^ flip)
+        promotion = move.promotion
+        if promotion is None or promotion == chess.QUEEN:
+            keys.append(key)
+        else:
+            under_keys.append(key)
+            under_pieces.append(_UNDERPROMO_COLUMN[promotion])
+    indices = _FROM_TO[np.array(keys, dtype=np.intp)].astype(np.int64)
+    if under_keys:
+        under = _UNDERPROMO[np.array(under_keys, dtype=np.intp), np.array(under_pieces, dtype=np.intp)]
+        indices = np.concatenate([indices, under.astype(np.int64)])
+    indices.sort()
+    return indices
 
 
 def legal_move_mask(board: chess.Board) -> np.ndarray:

@@ -6,7 +6,7 @@ See [PLAN.md](PLAN.md) for details on each step.
 
 - [x] 1. Project setup
 - [x] 2. Data download + streaming parser
-- [ ] 3. Board + move encoding
+- [x] 3. Board + move encoding
 - [ ] 4. Dataset builder
 - [ ] 5. Model
 - [ ] 6. Training pipeline
@@ -119,3 +119,56 @@ Replaying the first 5,000 kept games with python-chess found 0 illegal moves.
   resumed at the exact byte, invalid UTF-8 is replaced instead of crashing, outputs are written to
   temporary files and renamed only when complete. Only a generic `User-Agent` is sent.
 - **Test fixture is real data, anonymized**: player names and game ids replaced; the data is CC0.
+
+## Step 3: Board + move encoding (done 2026-11-23)
+
+**Built**
+- `chess_engine.encoding.moves`: a fixed 1858-move vocabulary (`MOVE_VOCABULARY`), `move_to_index`,
+  `index_to_move`, `legal_move_indices`, `legal_move_mask`, `masked_moves`.
+- `chess_engine.encoding.board`: `encode_board` → `(20, 8, 8)` planes, `encode_boards` (batch),
+  `decode_board` (inverse, for debugging and tests), `PLANE_NAMES` / `PLANE_INDEX`.
+- `scripts/benchmark_encoding.py`: times each encoder on positions replayed from the step-2 output.
+- Tests run on 312 positions: hand-picked edge cases (Kiwipete for both colours, promotions
+  and underpromotions for both colours, en passant for both colours, partial castling rights,
+  check, checkmate, stalemate, a 218-move position) plus seeded random games.
+
+**Input planes** (all from the side to move's view)
+
+| Planes | Content |
+|---|---|
+| 0–5 | my pawns, knights, bishops, rooks, queens, king |
+| 6–11 | their pawns … king |
+| 12 | white to move (all 1s or all 0s) |
+| 13–16 | castling rights: my kingside, my queenside, their kingside, their queenside |
+| 17 | en passant target square (only if the capture is legal) |
+| 18 | fifty-move counter / 100 (capped at 1) |
+| 19 | constant 1s |
+
+**Speed** (`python scripts/benchmark_encoding.py --games 500`, 36,530 real positions, one laptop core):
+`encode_board` 18 µs, `legal_move_mask` 96 µs (53 µs of it is python-chess generating legal moves),
+`move_to_index` 1 µs, replaying a SAN move 26 µs. About 8,700 positions/s, so the 3.54M positions in
+the 50k-game sample take ~7 minutes to encode on one core (step 4 can use several processes).
+
+**Decisions**
+- **Side-to-move perspective for both board and moves.** When Black is to move, the board is mirrored
+  vertically and the colours swap roles, and Black's moves are mirrored the same way, so the network
+  only ever learns "my move" and its policy head is shared between colours. Tested by checking that
+  `board` and `board.mirror()` give identical piece planes and identical legal-move indices.
+- **A white-to-move plane is still included.** Mirroring makes the colours look the same, but humans
+  don't play them the same (opening repertoires, White's extra tempo), so the model can use it.
+- **1858-move flat policy** (from→to pairs reachable by a queen or knight move, plus 66 underpromotions),
+  the same size as Leela Chess Zero's, rather than AlphaZero's 8×8×73 = 4672 (most of which can never be
+  legal). Queen promotion shares the plain from→to index: in any position only one piece can stand on
+  the from-square, so there is no ambiguity, and `index_to_move` re-adds the queen promotion when a pawn
+  reaches the last rank.
+- **Castling = king moves two squares** (`e1g1`), python-chess's standard-chess convention. Chess960
+  boards raise an error instead of being silently mis-encoded.
+- **En passant only when the capture is legal.** python-chess sets `ep_square` after every double pawn
+  push; encoding it only when a capture is possible makes identical positions encode identically.
+- **No move history planes for now.** The position itself is enough to start with; history can be added
+  as extra planes later without changing the move encoding.
+- **Bitboards → planes with `numpy.unpackbits`** instead of looping over squares in Python.
+- **`legal_move_mask` vectorized** with numpy lookup tables (121 → 96 µs per position); the rest is
+  python-chess's move generator.
+- **`encode_board` returns float32 by default**; `fifty_move_clock` is the only fractional plane, so the
+  other 19 planes can be stored as bits/uint8 in step 4.
