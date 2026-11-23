@@ -88,9 +88,15 @@ class RangeServer:
             def do_HEAD(self) -> None:  # noqa: N802
                 self._serve(send_body=False)
 
-        self._httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self._httpd.daemon_threads = True
-        self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
+        class QuietServer(ThreadingHTTPServer):
+            daemon_threads = True
+
+            def handle_error(self, request: object, client_address: object) -> None:
+                pass  # clients that stop reading early (sample mode) break the pipe; that's expected
+
+        self._httpd = QuietServer(("127.0.0.1", 0), Handler)
+        self._thread = threading.Thread(target=self._httpd.serve_forever, kwargs={"poll_interval": 0.02},
+                                        daemon=True)
 
     def url(self, name: str) -> str:
         """URL of a served file."""
