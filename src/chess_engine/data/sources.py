@@ -15,6 +15,7 @@ Usage::
 
 from __future__ import annotations
 
+import hashlib
 import io
 import logging
 import time
@@ -27,6 +28,7 @@ from typing import BinaryIO, TextIO
 import requests
 import urllib3
 import zstandard
+from tqdm import tqdm
 
 log = logging.getLogger(__name__)
 
@@ -176,8 +178,11 @@ class HTTPRangeReader(io.RawIOBase):
             headers["Range"] = f"bytes={self.position}-"
         response = self._session.get(self.url, headers=headers, stream=True, timeout=self._timeout)
 
-        if response.status_code == 416 and self.total_bytes is not None and self.position >= self.total_bytes:
+        if response.status_code == 416 and self.position > 0:
+            # Asked to start at (or past) the end: nothing left to read. A resumed download
+            # whose .part file is already complete lands here; its checksum is verified later.
             response.close()
+            self.total_bytes = self.total_bytes or self.position
             self._eof = True
             return
         if response.status_code >= 500:
@@ -273,3 +278,123 @@ def open_pgn(source: str | Path, **reader_options: object) -> Iterator[PgnStream
     else:
         with open_local_pgn(source) as stream:
             yield stream
+
+
+# --------------------------------------------------------------------------- downloading
+
+CHECKSUMS_FILENAME = "sha256sums.txt"
+PART_SUFFIX = ".part"
+
+
+class ChecksumError(Exception):
+    """Raised when a downloaded file does not match its published SHA-256."""
+
+
+def parse_checksums(text: str) -> dict[str, str]:
+    """Parse ``sha256sum``-style lines (``<hex>  <filename>``) into ``{filename: hex}``."""
+    checksums: dict[str, str] = {}
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and len(parts[0]) == 64:
+            checksums[parts[1].lstrip("*")] = parts[0].lower()
+    return checksums
+
+
+def fetch_checksums(base_url: str, timeout_seconds: float = 60.0) -> dict[str, str]:
+    """Download and parse Lichess's ``sha256sums.txt`` for a database directory."""
+    url = f"{base_url.rstrip('/')}/{CHECKSUMS_FILENAME}"
+    response = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=timeout_seconds)
+    response.raise_for_status()
+    return parse_checksums(response.text)
+
+
+def sha256_of_file(path: Path, chunk_size: int = 1 << 20) -> str:
+    """Hex SHA-256 of a file, read in chunks."""
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        while chunk := f.read(chunk_size):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def download_file(
+    url: str,
+    dest: str | Path,
+    *,
+    expected_sha256: str | None = None,
+    chunk_size: int = 1 << 20,
+    show_progress: bool = True,
+    **reader_options: object,
+) -> Path:
+    """Download ``url`` to ``dest``, resuming a previous partial download if there is one.
+
+    Data goes to ``<dest>.part`` and is renamed to ``dest`` only once complete (and,
+    if ``expected_sha256`` is given, verified), so a half-finished file is never
+    mistaken for a finished one. If ``dest`` already exists it is returned as is.
+
+    Raises:
+        ChecksumError: if the finished file's SHA-256 does not match (the .part file is deleted).
+        HTTPStreamError: if the server cannot be reached after retries.
+    """
+    dest = Path(dest)
+    if dest.exists():
+        log.info("%s already exists, skipping download", dest)
+        return dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    part = dest.with_name(dest.name + PART_SUFFIX)
+
+    digest = hashlib.sha256()
+    start = 0
+    if part.exists():
+        start = part.stat().st_size
+        log.info("Resuming %s from byte %d", dest.name, start)
+        if expected_sha256:  # the hash must cover the bytes we already have
+            with part.open("rb") as f:
+                while chunk := f.read(chunk_size):
+                    digest.update(chunk)
+
+    reader = HTTPRangeReader(url, start=start, **reader_options)  # type: ignore[arg-type]
+    progress = tqdm(
+        total=reader.total_bytes, initial=start, unit="B", unit_scale=True, unit_divisor=1024,
+        desc=dest.name, disable=not show_progress,
+    )
+    try:
+        with part.open("ab") as out:
+            while chunk := reader.read(chunk_size):
+                out.write(chunk)
+                digest.update(chunk)
+                progress.update(len(chunk))
+    finally:
+        progress.close()
+        reader.close()
+
+    if expected_sha256 and digest.hexdigest() != expected_sha256.lower():
+        part.unlink()
+        raise ChecksumError(
+            f"SHA-256 mismatch for {dest.name}: expected {expected_sha256}, got {digest.hexdigest()}. "
+            "The partial file was deleted; run the download again."
+        )
+    part.replace(dest)
+    return dest
+
+
+def download_lichess_month(
+    base_url: str,
+    month: str,
+    dest_dir: str | Path,
+    *,
+    verify_checksum: bool = True,
+    show_progress: bool = True,
+    **reader_options: object,
+) -> Path:
+    """Download one Lichess monthly dump into ``dest_dir`` (resumable, optionally checksum-verified)."""
+    name = lichess_filename(month)
+    expected = None
+    if verify_checksum:
+        expected = fetch_checksums(base_url).get(name)
+        if expected is None:
+            raise ChecksumError(f"{name} is not listed in {base_url}/{CHECKSUMS_FILENAME}; is the month published yet?")
+    return download_file(
+        lichess_url(base_url, month), Path(dest_dir) / name,
+        expected_sha256=expected, show_progress=show_progress, **reader_options,
+    )
