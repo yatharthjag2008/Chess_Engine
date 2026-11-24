@@ -115,3 +115,52 @@ def test_validation_best_model_and_checkpoints(tmp_path: Path, tiny_dataset: Pat
     assert len(saved) == 2 and saved[-1] == steps  # newest two, including the final one
     assert any("* best" in line for line in lines) and any("top5" in line for line in lines)
     assert trainer.run.read_info()["best_step"] == best["step"]
+
+
+def test_time_limit_stops_with_a_checkpoint(tmp_path: Path, tiny_dataset: Path) -> None:
+    cfg = train_config(tmp_path, epochs=100, max_minutes=0.002)  # 0.12 s
+    trainer = Trainer(cfg, tmp_path / "run", tiny_dataset, log=_quiet)
+    result = trainer.train()
+    assert result.stop_reason == "time_limit"
+    assert 0 < result.state.step < 100 * trainer.steps_per_epoch
+    assert trainer.checkpoints.latest() == trainer.checkpoints.path_for(result.state.step)
+    assert result.state.elapsed_seconds > 0 and trainer.run.read_info()["status"] == "time_limit"
+
+
+def test_request_stop_ends_cleanly_at_a_step_boundary(tmp_path: Path, tiny_dataset: Path) -> None:
+    cfg = train_config(tmp_path, epochs=5, log_every_steps=6)
+    trainer: Trainer
+
+    def log(line: str) -> None:
+        if line.startswith("step"):
+            trainer.request_stop()  # as if Ctrl+C was pressed during step 6
+
+    trainer = Trainer(cfg, tmp_path / "run", tiny_dataset, log=log)
+    result = trainer.train()
+    assert result.stop_reason == "interrupted" and result.state.step == 6
+    assert trainer.checkpoints.latest() is not None and result.final_model.is_file()
+    assert trainer.run.metrics.records("val") == []  # no slow final validation when interrupted
+
+
+def test_ctrl_c_handler_is_installed_and_removed(tmp_path: Path, tiny_dataset: Path) -> None:
+    import signal
+
+    before = signal.getsignal(signal.SIGINT)
+    seen = []
+    cfg = train_config(tmp_path, max_steps=2)
+    trainer = Trainer(cfg, tmp_path / "run", tiny_dataset, log=_quiet)
+    original_step = trainer.train_step
+
+    def step(batch):
+        seen.append(signal.getsignal(signal.SIGINT))
+        original_step(batch)
+
+    trainer.train_step = step  # type: ignore[method-assign]
+    trainer.train()
+    assert seen and seen[0] is not before
+    assert signal.getsignal(signal.SIGINT) is before
+    handler = seen[0]
+    handler(signal.SIGINT, None)  # first Ctrl+C: only asks to stop
+    assert trainer._stop_requested
+    with pytest.raises(KeyboardInterrupt):
+        handler(signal.SIGINT, None)  # second: abort

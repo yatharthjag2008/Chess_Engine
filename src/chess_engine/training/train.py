@@ -19,13 +19,20 @@ checkpoint is written for resuming:
     trainer = Trainer.from_run("checkpoints/my_run")   # the run's own config and dataset
     trainer.resume()                                  # latest checkpoint: weights, optimizer, schedule, data position
     trainer.train()                                   # continues exactly where it stopped
+
+A run stops cleanly (checkpoint + ``final_model.pt``) when every epoch is done, at
+``max_steps``, when this session has run for ``max_minutes``, or on the first
+Ctrl+C (a second Ctrl+C aborts immediately).
 """
 
 from __future__ import annotations
 
+import contextlib
 import math
+import signal
+import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -91,7 +98,7 @@ class TrainResult:
     """What a :meth:`Trainer.train` call did."""
 
     state: TrainingState
-    stop_reason: str              # "finished" (all epochs), "max_steps" or "paused" (stop_after_steps)
+    stop_reason: str              # finished | max_steps | time_limit | interrupted | paused (stop_after_steps)
     final_model: Path
     best_model: Path | None       # lowest validation loss (None without a validation split)
     last_train: dict[str, float]  # the last logged training means
@@ -163,6 +170,9 @@ class Trainer:
         self._last_val: dict[str, Any] | None = None
         self._last_val_step: int | None = None
         self._last_checkpoint_step: int | None = None
+        self._stop_requested = False
+        self._session_start = time.perf_counter()
+        self._elapsed_before = 0.0
 
     @classmethod
     def from_run(
@@ -198,6 +208,7 @@ class Trainer:
         if saved_model != self.cfg.model.model_dump(mode="json"):
             raise TrainingError(f"checkpoint {path} was trained with a different model config: {saved_model}")
         self.state = restore_checkpoint(payload, self.model, self.optimizer, self.scheduler, self.scaler)
+        self._elapsed_before = self.state.elapsed_seconds
         dropped = self.run.metrics.truncate_after(self.state.step)
         self._last_checkpoint_step = self.state.step
         self.run.metrics.write("event", self.state.step, event="resumed", checkpoint=path.name)
@@ -278,6 +289,7 @@ class Trainer:
 
     def save_checkpoint(self) -> Path:
         """Write a full training checkpoint for the current step."""
+        self._update_elapsed()
         path = self.checkpoints.save(
             self.state.step, model=self.model, optimizer=self.optimizer, scheduler=self.scheduler,
             state=self.state, config=self.cfg.model_dump(mode="json"), scaler=self.scaler,
@@ -304,6 +316,38 @@ class Trainer:
             lines.append(format_balance(self.cfg.ratings.bucket_labels(), self.bucket_counts, self.bucket_weights))
         return "\n".join(lines)
 
+    # ------------------------------------------------------------------ stopping
+
+    def request_stop(self) -> None:
+        """Stop after the current step (with a checkpoint), as the first Ctrl+C does."""
+        self._stop_requested = True
+
+    def _update_elapsed(self) -> None:
+        self.state.elapsed_seconds = self._elapsed_before + (time.perf_counter() - self._session_start)
+
+    def _time_is_up(self) -> bool:
+        limit = self.cfg.training.max_minutes
+        return limit is not None and time.perf_counter() - self._session_start >= limit * 60
+
+    @contextlib.contextmanager
+    def _graceful_interrupt(self) -> Iterator[None]:
+        """First Ctrl+C: finish the step, checkpoint and stop. Second: abort (KeyboardInterrupt)."""
+        if threading.current_thread() is not threading.main_thread():
+            yield  # signal handlers can only be installed from the main thread
+            return
+
+        def handler(signum: int, frame: object) -> None:
+            if self._stop_requested:
+                raise KeyboardInterrupt
+            self.log("stopping after this step (checkpoint + final model); press Ctrl+C again to abort")
+            self.request_stop()
+
+        previous = signal.signal(signal.SIGINT, handler)
+        try:
+            yield
+        finally:
+            signal.signal(signal.SIGINT, previous)
+
     # ------------------------------------------------------------------ the loop
 
     def _start_run(self) -> None:
@@ -324,6 +368,13 @@ class Trainer:
         """
         t = self.cfg.training
         session_end = self.state.step + stop_after_steps if stop_after_steps is not None else None
+        self._session_start, self._elapsed_before = time.perf_counter(), self.state.elapsed_seconds
+        self._stop_requested = False
+        with self._graceful_interrupt():
+            return self._train(session_end)
+
+    def _train(self, session_end: int | None) -> TrainResult:
+        t = self.cfg.training
         self._start_run()
         self.log(self.describe())
         stop: str | None = None
@@ -349,6 +400,12 @@ class Trainer:
                 if session_end is not None and self.state.step >= session_end:
                     stop = "paused"
                     break
+                if self._stop_requested:
+                    stop = "interrupted"
+                    break
+                if self._time_is_up():
+                    stop = "time_limit"
+                    break
             else:
                 self.state.epoch += 1
                 self.state.batch_in_epoch = 0
@@ -358,18 +415,20 @@ class Trainer:
         stop_reason = stop or "finished"
         if self._running:
             self._log_train(window_positions / max(time.perf_counter() - window_start, 1e-9))
-        if self._last_val_step != self.state.step:
+        if self._last_val_step != self.state.step and stop_reason != "interrupted":
             self.validate_now()
         if self._last_checkpoint_step != self.state.step:
             self.save_checkpoint()
         return self._finish(stop_reason)
 
     def _finish(self, stop_reason: str) -> TrainResult:
+        self._update_elapsed()
         final = save_model(self.model, self.run.final_model_path, self.cfg.ratings,
                            extra={"step": self.state.step, "run": self.run.name})
         best = self.run.best_model_path if self.run.best_model_path.is_file() else None
         self.run.write_info(status=stop_reason, steps_done=self.state.step, best_step=self.state.best_step,
-                            best_val_loss=self.state.best_metric)
+                            best_val_loss=self.state.best_metric,
+                            training_minutes=round(self.state.elapsed_seconds / 60, 1))
         if self._last_val is not None:
             self.log(format_metrics(self._last_val))
         best_note = f", best (step {self.state.best_step}) to {best}" if best else ""
