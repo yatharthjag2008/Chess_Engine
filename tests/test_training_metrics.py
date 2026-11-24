@@ -71,3 +71,12 @@ def test_format_metrics_table() -> None:
     metrics.update(torch.tensor([0]), _log_probs([[1.0, 0.0]]), torch.tensor([0]))
     table = format_metrics(metrics.summary())
     assert "800-999" in table and "100.0%" in table and "all" in table
+
+
+def test_summary_holds_plain_python_numbers() -> None:
+    metrics = MoveMetrics(2)
+    metrics.update(torch.tensor([0, 1]), _log_probs([[0.9, 0.1], [0.2, 0.8]]), torch.tensor([0, 0]),
+                   torch.zeros(2, 3), torch.tensor([0, 1]))
+    s = metrics.summary()
+    values = [*s["overall"].values(), *s["buckets"]["0"].values(), s["bucket_mean_top1"]]
+    assert all(type(v) in (int, float) for v in values)

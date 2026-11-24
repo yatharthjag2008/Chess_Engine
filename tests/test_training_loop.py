@@ -93,3 +93,25 @@ def test_diverging_loss_is_reported(tmp_path: Path, tiny_dataset: Path) -> None:
             p.fill_(float("nan"))
     with pytest.raises(TrainingError, match="diverged"):
         trainer.train()
+
+
+def test_validation_best_model_and_checkpoints(tmp_path: Path, tiny_dataset: Path) -> None:
+    cfg = train_config(tmp_path, epochs=2, eval_every_steps=20, checkpoint_every_steps=25, keep_checkpoints=2)
+    lines: list[str] = []
+    trainer = Trainer(cfg, tmp_path / "run", tiny_dataset, log=lines.append)
+    result = trainer.train()
+    steps = result.state.step
+    val_steps = [r["step"] for r in trainer.run.metrics.records("val")]
+    assert val_steps == sorted(set(val_steps))  # never twice at the same step
+    assert set(range(20, steps + 1, 20)) <= set(val_steps)
+    assert trainer.steps_per_epoch in val_steps and steps in val_steps  # end of epoch 1 and end of run
+
+    best = min(trainer.run.metrics.records("val"), key=lambda r: r["loss"])
+    assert result.state.best_step == best["step"]
+    assert result.best_model is not None and load_model(result.best_model).extra["step"] == best["step"]
+    assert result.last_val["positions"] == len(trainer.val_data)
+
+    saved = [s for s, _ in trainer.checkpoints.checkpoints()]
+    assert len(saved) == 2 and saved[-1] == steps  # newest two, including the final one
+    assert any("* best" in line for line in lines) and any("top5" in line for line in lines)
+    assert trainer.run.read_info()["best_step"] == best["step"]

@@ -104,7 +104,8 @@ class MoveMetrics:
         return int(self._sums["positions"].sum())
 
     def _rates(self, mask: np.ndarray) -> dict[str, float]:
-        s = {name: values[mask].sum() for name, values in self._sums.items()}
+        # Plain Python numbers: summaries end up in JSON logs and in weights_only model files.
+        s = {name: float(values[mask].sum()) for name, values in self._sums.items()}
         n = s["positions"]
         out: dict[str, float] = {"positions": int(n)}
         if n:

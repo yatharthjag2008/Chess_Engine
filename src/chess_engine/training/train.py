@@ -10,6 +10,11 @@ What one optimizer step does:
 2. forward pass under the configured precision (fp32 on CPU, bf16/fp16 on GPU),
 3. loss = weighted legal-move cross-entropy + value loss (:mod:`.losses`),
 4. backward (scaled for fp16), gradient-norm clipping, AdamW step, learning-rate schedule step.
+
+Every ``eval_every_steps`` (and at the end of every epoch) the model is validated on
+fixed validation positions; the model with the lowest validation loss so far is
+exported as ``best_model.pt``. Every ``checkpoint_every_steps`` a full training
+checkpoint is written for resuming.
 """
 
 from __future__ import annotations
@@ -31,13 +36,14 @@ from chess_engine.data.dataset_builder import dataset_output_dir
 from chess_engine.model.inference import save_model
 from chess_engine.model.network import build_model, count_parameters
 from chess_engine.training.balancing import bucket_weights, format_balance
-from chess_engine.training.checkpoint import TrainingState
+from chess_engine.training.checkpoint import CheckpointManager, TrainingState
 from chess_engine.training.device import configure_threads, resolve_device, resolve_precision, seed_everything
 from chess_engine.training.loader import BatchLoader, TrainBatch
 from chess_engine.training.losses import compute_loss
-from chess_engine.training.metrics import RunningMeans
+from chess_engine.training.metrics import RunningMeans, format_metrics
 from chess_engine.training.run_log import RunDirectory
 from chess_engine.training.schedule import build_scheduler
+from chess_engine.training.validation import validate
 
 Logger = Callable[[str], None]
 
@@ -83,7 +89,9 @@ class TrainResult:
     state: TrainingState
     stop_reason: str              # "finished" (all epochs) or "max_steps"
     final_model: Path
+    best_model: Path | None       # lowest validation loss (None without a validation split)
     last_train: dict[str, float]  # the last logged training means
+    last_val: dict[str, Any] | None
 
 
 class Trainer:
@@ -120,6 +128,8 @@ class Trainer:
         edges = self.train_data.manifest["ratings"]["bucket_edges"]
         if edges != cfg.ratings.bucket_edges:
             raise TrainingError(f"dataset was built with bucket edges {edges}, config has {cfg.ratings.bucket_edges}")
+        has_val = self.train_data.manifest["splits"]["val"]["positions"] > 0
+        self.val_data = PositionDataset(self.dataset_dir, "val") if has_val else None
         if len(self.train_data) < t.batch_size:
             raise TrainingError(f"training split has {len(self.train_data)} positions, fewer than one batch "
                                 f"({t.batch_size})")
@@ -142,9 +152,13 @@ class Trainer:
         self.scheduler = build_scheduler(self.optimizer, self.total_steps, t.lr_schedule, t.warmup_steps,
                                          t.min_lr_fraction)
         self.scaler = torch.amp.GradScaler(self.device.type, enabled=self.precision.needs_grad_scaler)
+        self.checkpoints = CheckpointManager(self.run.checkpoints_dir, t.keep_checkpoints)
         self.state = TrainingState()
         self._running = RunningMeans()
         self._last_train: dict[str, float] = {}
+        self._last_val: dict[str, Any] | None = None
+        self._last_val_step: int | None = None
+        self._last_checkpoint_step: int | None = None
 
     # ------------------------------------------------------------------ one step
 
@@ -192,6 +206,39 @@ class Trainer:
                  f"{positions_per_second:,.0f} pos/s  ETA {eta_minutes:.0f} min")
         self._last_train = record
         return record
+
+    # ------------------------------------------------------------------ validation + checkpoints
+
+    def validate_now(self) -> dict[str, Any] | None:
+        """Validate, log the result, and export ``best_model.pt`` if the loss is the best so far."""
+        if self.val_data is None:
+            return None
+        t = self.cfg.training
+        result = validate(self.model, self.val_data, self.cfg.ratings, batch_size=max(t.batch_size, 512),
+                          device=self.device, precision=self.precision, max_positions=t.val_max_positions,
+                          value_weight=t.value_loss_weight, prefetch_batches=min(t.prefetch_batches, 2))
+        self._last_val, self._last_val_step = result, self.state.step
+        improved = self.state.best_metric is None or result["loss"] < self.state.best_metric
+        if improved:
+            self.state.best_metric, self.state.best_step = result["loss"], self.state.step
+            save_model(self.model, self.run.best_model_path, self.cfg.ratings,
+                       extra={"step": self.state.step, "run": self.run.name, "val_loss": result["loss"],
+                              "val_top1": result["overall"]["top1"]})
+        self.run.metrics.write("val", self.state.step, best=improved, **result)
+        marker = "  * best" if improved else ""
+        self.log(f"validation at step {self.state.step}: loss {result['loss']:.4f}  "
+                 f"top1 {result['overall']['top1']:.1%}  top5 {result['overall']['top5']:.1%}  "
+                 f"({result['positions']:,} positions, {result['seconds']:.0f} s){marker}")
+        return result
+
+    def save_checkpoint(self) -> Path:
+        """Write a full training checkpoint for the current step."""
+        path = self.checkpoints.save(
+            self.state.step, model=self.model, optimizer=self.optimizer, scheduler=self.scheduler,
+            state=self.state, config=self.cfg.model_dump(mode="json"), scaler=self.scaler,
+        )
+        self._last_checkpoint_step = self.state.step
+        return path
 
     def describe(self) -> str:
         """Multi-line summary of the setup (device, data, model, schedule, balancing)."""
@@ -241,20 +288,39 @@ class Trainer:
                     now = time.perf_counter()
                     self._log_train(window_positions / max(now - window_start, 1e-9))
                     window_start, window_positions = now, 0
+                if self.state.step % t.eval_every_steps == 0:
+                    self.validate_now()
+                if self.state.step % t.checkpoint_every_steps == 0:
+                    self.save_checkpoint()
                 if t.max_steps is not None and self.state.step >= t.max_steps:
                     stop = "max_steps"
                     break
             else:
                 self.state.epoch += 1
                 self.state.batch_in_epoch = 0
+                self.run.metrics.write("event", self.state.step, event="epoch_end", epoch=self.state.epoch)
+                if self._last_val_step != self.state.step:
+                    self.validate_now()
         stop_reason = stop or "finished"
         if self._running:
             self._log_train(window_positions / max(time.perf_counter() - window_start, 1e-9))
+        if self._last_val_step != self.state.step:
+            self.validate_now()
+        if self._last_checkpoint_step != self.state.step:
+            self.save_checkpoint()
+        return self._finish(stop_reason)
+
+    def _finish(self, stop_reason: str) -> TrainResult:
         final = save_model(self.model, self.run.final_model_path, self.cfg.ratings,
                            extra={"step": self.state.step, "run": self.run.name})
-        self.run.write_info(status=stop_reason, steps_done=self.state.step)
-        self.log(f"done ({stop_reason}) after {self.state.step} steps; model saved to {final}")
-        return TrainResult(self.state, stop_reason, final, self._last_train)
+        best = self.run.best_model_path if self.run.best_model_path.is_file() else None
+        self.run.write_info(status=stop_reason, steps_done=self.state.step, best_step=self.state.best_step,
+                            best_val_loss=self.state.best_metric)
+        if self._last_val is not None:
+            self.log(format_metrics(self._last_val))
+        best_note = f", best (step {self.state.best_step}) to {best}" if best else ""
+        self.log(f"done ({stop_reason}) after {self.state.step} steps; model saved to {final}{best_note}")
+        return TrainResult(self.state, stop_reason, final, best, self._last_train, self._last_val)
 
 
 def run_training(cfg: Config, run_dir: str | Path, **kwargs: Any) -> TrainResult:
