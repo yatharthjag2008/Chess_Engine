@@ -228,3 +228,24 @@ def test_plot_training_script(tmp_path: Path, tiny_dataset: Path, capsys: pytest
     assert plot.main(["--config", str(config), "--out", str(out)]) == 0
     printed = capsys.readouterr().out
     assert out.is_file() and "p: 4 steps" in printed and "best validation" in printed
+
+
+def test_evaluate_script(tmp_path: Path, tiny_dataset: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    config = _train_override(tmp_path)
+    evaluate = _load("evaluate")
+    assert evaluate.main(["--config", str(config)]) == 1
+    assert "no trained model" in capsys.readouterr().err
+    assert _load("train").main(["--config", str(config), "--dataset", str(tiny_dataset), "--run-name", "ev",
+                                "--max-steps", "3"]) == 0
+    capsys.readouterr()
+    out = tmp_path / "eval_out"
+    assert evaluate.main(["--config", str(config), "--dataset", str(tiny_dataset), "--out", str(out),
+                          "--no-stockfish", "--max-positions", "60"]) == 0
+    printed = capsys.readouterr().out
+    assert "best_model.pt" in printed and "Report:" in printed
+    assert (out / "report.md").is_file() and (out / "results.json").is_file()
+    run = tmp_path / "ckpt" / "ev"
+    assert evaluate.find_model("ev", tmp_path / "ckpt") == run / "best_model.pt"
+    assert evaluate.find_model(str(run / "final_model.pt"), tmp_path / "ckpt") == run / "final_model.pt"
+    with pytest.raises(FileNotFoundError):
+        evaluate.find_model("nope", tmp_path / "ckpt")
