@@ -117,3 +117,28 @@ def test_writer_with_nothing_writes_nothing(tmp_path: Path) -> None:
 def test_writer_rejects_bad_shard_size(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         ShardWriter(tmp_path, shard_size=0, seed=0)
+
+
+def test_background_writes_match_foreground(samples: Samples, tmp_path: Path) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ShardWriter(tmp_path / "fg", shard_size=8, seed=3) as fg:
+        fg.add(samples)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        with ShardWriter(tmp_path / "bg", shard_size=8, seed=3, executor=pool) as bg:
+            bg.add(samples)
+    assert fg.shards == bg.shards
+    for shard in fg.shards:
+        _assert_same(read_shard(tmp_path / "fg" / shard.file), read_shard(tmp_path / "bg" / shard.file))
+
+
+def test_background_write_errors_surface_on_close(samples: Samples, tmp_path: Path) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    blocker = tmp_path / "not_a_dir"
+    blocker.write_text("a file where the shard directory should be", encoding="utf-8")
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        writer = ShardWriter(blocker, shard_size=8, seed=0, executor=pool)
+        writer.add(samples)  # submits two shard writes that will fail
+        with pytest.raises(OSError):
+            writer.close()

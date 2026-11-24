@@ -11,6 +11,7 @@ Files are written to ``<name>.tmp`` first and renamed once complete.
 
 from __future__ import annotations
 
+from concurrent.futures import Executor, Future
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -76,9 +77,21 @@ class ShardWriter:
     Samples are buffered until a shard is full, shuffled (seeded) and written as
     ``shard_00000.npz``, ``shard_00001.npz``, ... in ``directory``. Call
     :meth:`close` (or use ``with``) to write the last, partial shard.
+
+    With an ``executor`` (e.g. a ``ThreadPoolExecutor``), files are compressed and
+    written in the background; zlib releases the GIL, so the caller keeps working
+    meanwhile. :meth:`close` waits for every write and re-raises any error. The
+    shuffle happens before handing off, so the output does not depend on timing.
     """
 
-    def __init__(self, directory: str | Path, shard_size: int, seed: int, compress: bool = True) -> None:
+    def __init__(
+        self,
+        directory: str | Path,
+        shard_size: int,
+        seed: int,
+        compress: bool = True,
+        executor: Executor | None = None,
+    ) -> None:
         if shard_size <= 0:
             raise ValueError("shard_size must be positive")
         self.directory = Path(directory)
@@ -88,6 +101,8 @@ class ShardWriter:
         self._rng = np.random.default_rng(seed)
         self._buffer: list[Samples] = []
         self._buffered = 0
+        self._executor = executor
+        self._pending: list[Future[Path]] = []
 
     @property
     def positions_written(self) -> int:
@@ -111,11 +126,22 @@ class ShardWriter:
         if self._buffered:
             self._write(Samples.concat(self._buffer))
             self._buffer, self._buffered = [], 0
+        self.wait()
         return self.shards
+
+    def wait(self) -> None:
+        """Wait for background writes to finish; re-raises the first error."""
+        pending, self._pending = self._pending, []
+        for future in pending:
+            future.result()
 
     def _write(self, samples: Samples) -> None:
         name = f"shard_{len(self.shards):05d}{SHARD_SUFFIX}"
-        write_shard(self.directory / name, samples.take(self._rng.permutation(len(samples))), self.compress)
+        shuffled = samples.take(self._rng.permutation(len(samples)))
+        if self._executor is None:
+            write_shard(self.directory / name, shuffled, self.compress)
+        else:
+            self._pending.append(self._executor.submit(write_shard, self.directory / name, shuffled, self.compress))
         self.shards.append(ShardInfo(name, len(samples)))
 
     def __enter__(self) -> ShardWriter:

@@ -144,7 +144,7 @@ bucket, both clocks, time spent, result), split into train/val/test **by game**,
 in two splits.
 
 ```bash
-python scripts/build_dataset.py              # after prepare_games.py; the 50k sample takes ~3-12 min
+python scripts/build_dataset.py              # after prepare_games.py; the 50k sample takes ~4 min
 python scripts/inspect_dataset.py            # summary + a few samples decoded back into boards
 ```
 

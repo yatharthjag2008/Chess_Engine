@@ -27,7 +27,7 @@ import shutil
 import time
 from collections import deque
 from collections.abc import Iterable, Iterator, Sequence
-from concurrent.futures import Future, ProcessPoolExecutor
+from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -201,11 +201,15 @@ def build_dataset(
     tmp = output.with_name(output.name + ".tmp")
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
+    # Shards are compressed and written on background threads so the main process keeps
+    # collecting worker results (zlib releases the GIL); otherwise the workers sit idle.
+    write_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="shard-writer")
     try:
         total = count_games(paths)
         total = min(total, max_games) if max_games is not None else total
         writers = {
-            name: ShardWriter(tmp / name, dataset_cfg.shard_size, seed=split_cfg.seed + i, compress=compress)
+            name: ShardWriter(tmp / name, dataset_cfg.shard_size, seed=split_cfg.seed + i, compress=compress,
+                              executor=write_pool)
             for i, name in enumerate(SPLITS)
         }
         stats = SampleStats()
@@ -268,8 +272,10 @@ def build_dataset(
         }
         (tmp / MANIFEST_NAME).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     except BaseException:
+        write_pool.shutdown(wait=True, cancel_futures=True)  # no thread may still be writing into tmp
         shutil.rmtree(tmp, ignore_errors=True)
         raise
+    write_pool.shutdown(wait=True)
 
     if output.exists():
         shutil.rmtree(output)

@@ -214,10 +214,17 @@ the 50k-game sample take ~7 minutes to encode on one core (step 4 can use severa
 - All 50,000 games replayed with **0 illegal moves**, giving 3,540,277 positions, which matches step 2's count.
 - **164 MB on disk** (46 bytes/position with zlib) and 189 bytes/position in memory, so the whole training
   split fits in ~0.6 GB of RAM.
-- Took 703 s with 7 workers. The laptop's CPU was ~95% busy with other programs during this session
-  (single-core encoding measured 5–9× slower than in step 3), so this is not a clean timing.
-- Loading: the val split loads in 0.8 s, and batches of 256 decode at ~24,000 positions/s, fast enough to
-  feed CPU training.
+- **Took 220 s** with 7 workers on an otherwise idle laptop (~16,000 positions/s). The first build, run while
+  other programs kept the CPU ~95% busy, took 703 s with identical output.
+- **Worker scaling is limited by the laptop's CPU**: on 5,000 games, 1 worker took 32 s, 4 took 21 s
+  and 7 took 22 s. Encoding alone shows why: 37 s of CPU work on 1 worker becomes 70 s in total on 4, so each
+  core runs about half as fast once several are busy. The Core Ultra 9 288V is power-limited and has only
+  4 performance cores. A desktop or cloud machine with more cores should scale further.
+- Loading: the whole training split (3.19M positions) loads in 2.2 s. Batches of 256 decode at
+  ~130,000 positions/s (2 ms per batch), far faster than a network will train on a laptop.
+- Encoding benchmark on the idle laptop (`benchmark_encoding.py --games 500`): `encode_board` 13.5 µs,
+  `legal_move_mask` 42 µs, replay 27 µs per position (~18,000 positions/s per core, 2× the step-3 figures,
+  which were also measured on a busy machine).
 - 2,000 random test samples were checked against a fresh replay of their games: the planes, legal mask,
   target move and rating all match. The decoded boards look right in `inspect_dataset.py`.
 - Positions per bucket (train): 800: 113k · 1000: 253k · 1200: 406k · 1400: 599k · 1600: 678k · 1800: 625k
@@ -244,6 +251,9 @@ the 50k-game sample take ~7 minutes to encode on one core (step 4 can use severa
 - **Parallel encoding with ordered results**: worker processes encode batches of 500 games, results are
   collected in order with a bounded queue, so output is byte-identical for any worker count (tested)
   and memory does not grow with the number of games.
+- **Shards are compressed and written on background threads** (zlib releases the GIL), so the main process
+  keeps collecting worker results. Compression is ~9 s per 5,000 games on one core. On this laptop it was
+  already hidden behind encoding, but it would become the bottleneck on a machine with many cores.
 - **NumPy `.npz` shards** (compressed by default; `--no-compress` for faster loading) rather than
   Parquet. Samples are fixed-size numeric arrays that the training loop wants as numpy, and there is
   no per-row overhead.
