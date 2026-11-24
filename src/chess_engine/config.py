@@ -221,17 +221,39 @@ class ModelConfig(_StrictModel):
 
 
 class TrainingConfig(_StrictModel):
-    """Training-loop settings (placeholders until step 6)."""
+    """Training-loop settings (see ``chess_engine.training``)."""
 
     seed: int
     device: Literal["auto", "cpu", "cuda", "mps"]
+    threads: PositiveInt | None = None
     batch_size: PositiveInt
     epochs: PositiveInt
+    max_steps: PositiveInt | None = None
+    max_minutes: float | None = Field(default=None, gt=0)
+
+    optimizer: Literal["adamw", "sgd"] = "adamw"
     learning_rate: float = Field(gt=0)
     weight_decay: float = Field(ge=0)
-    num_workers: int = Field(ge=0)
+    lr_schedule: Literal["constant", "cosine", "linear"] = "cosine"
+    warmup_steps: int = Field(default=0, ge=0)
+    min_lr_fraction: float = Field(default=0.0, ge=0, le=1)
+    grad_clip_norm: float | None = Field(default=1.0, gt=0)
+    mixed_precision: Literal["auto", "off", "bf16", "fp16"] = "auto"
+
+    value_loss_weight: float = Field(default=0.25, ge=0)
+    label_smoothing: float = Field(default=0.0, ge=0, lt=1)
+    bucket_balancing: Literal["none", "weight", "sample"] = "weight"
+    balance_power: float = Field(default=0.5, ge=0, le=1)
+
+    in_memory: bool = True
+    max_train_shards: PositiveInt | None = None
+    prefetch_batches: int = Field(default=4, ge=0)
+
     log_every_steps: PositiveInt
+    eval_every_steps: PositiveInt = 2000
+    val_max_positions: PositiveInt | None = 50_000
     checkpoint_every_steps: PositiveInt
+    keep_checkpoints: PositiveInt = 3
 
 
 class Config(_StrictModel):

@@ -73,13 +73,39 @@ model:                           # step 5: rating-conditioned policy network
   policy_head: conv              # conv (73 move types per square, few weights) | fc (dense layer)
   value_head: true               # also predict win/draw/loss for the mover (auxiliary target in step 6)
 
-training:                        # placeholders until step 6
+training:                        # step 6: config-driven training loop
   seed: 42
-  device: auto                   # auto | cpu | cuda | mps
+  device: auto                   # auto (cuda > mps > cpu) | cpu | cuda | mps
+  threads: null                  # torch CPU threads; null = torch's default (4 is fastest on this laptop)
   batch_size: 256
   epochs: 3
-  learning_rate: 0.001
-  weight_decay: 0.0001
-  num_workers: 0
+  max_steps: null                # stop after this many optimizer steps (null = run every epoch)
+  max_minutes: null              # stop after this much wall time, with a checkpoint (handy on Colab)
+
+  # optimizer + learning-rate schedule
+  optimizer: adamw               # adamw | sgd (momentum 0.9, Nesterov)
+  learning_rate: 0.001           # peak learning rate, reached after warmup
+  weight_decay: 0.0001           # on conv/linear weights only (not biases, norms or embeddings)
+  lr_schedule: cosine            # constant | cosine | linear (decay to min_lr_fraction at the last step)
+  warmup_steps: 500              # linear warmup from 0
+  min_lr_fraction: 0.05          # final learning rate = learning_rate * this
+  grad_clip_norm: 1.0            # clip the global gradient norm (null = no clipping)
+  mixed_precision: auto          # auto (bf16/fp16 on GPU, off on CPU) | off | bf16 | fp16
+
+  # loss
+  value_loss_weight: 0.25        # weight of the win/draw/loss loss next to the move loss
+  label_smoothing: 0.0           # smoothing over the legal moves only (0 = plain cross-entropy)
+  bucket_balancing: weight       # none | weight (per-position loss weights) | sample (resample positions)
+  balance_power: 0.5             # 0 = as in the data, 1 = every rating bucket counts equally
+
+  # data
+  in_memory: true                # load the whole training split (0.6 GB for the 50k sample) or stream shards
+  max_train_shards: null         # use only the first N training shards (quick experiments)
+  prefetch_batches: 4            # batches decoded ahead on a background thread (0 = no thread)
+
+  # logging, validation, checkpoints
   log_every_steps: 100
+  eval_every_steps: 2000         # validation pass every N steps (and at the end of every epoch)
+  val_max_positions: 50000       # validate on the first N validation positions (null = all)
   checkpoint_every_steps: 1000
+  keep_checkpoints: 3            # older step checkpoints are deleted (latest + best are always kept)

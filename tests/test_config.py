@@ -65,6 +65,22 @@ def test_full_config_overrides_only_what_it_lists() -> None:
     assert full.data.filters == default.data.filters
 
 
+def test_default_training_settings(default_config: Config) -> None:
+    t = default_config.training
+    assert t.device == "auto" and t.optimizer == "adamw" and t.lr_schedule == "cosine"
+    assert t.bucket_balancing == "weight" and 0 < t.balance_power <= 1
+    assert t.max_steps is None and t.max_minutes is None
+    assert t.value_loss_weight > 0 and t.mixed_precision == "auto"
+
+
+def test_training_limits_can_be_unset(tmp_path: Path) -> None:
+    override = _write_yaml(tmp_path / "t.yaml", {"training": {"grad_clip_norm": None, "val_max_positions": None,
+                                                            "max_steps": 10, "max_minutes": 1.5}})
+    t = load_config(override).training
+    assert t.grad_clip_norm is None and t.val_max_positions is None
+    assert t.max_steps == 10 and t.max_minutes == 1.5
+
+
 def test_config_path_relative_to_project_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)  # run from somewhere else entirely
     cfg = load_config("configs/full.yaml")
@@ -132,6 +148,14 @@ def test_invalid_yaml_is_rejected(tmp_path: Path) -> None:
         ({"model": {"conditioning": "concat"}}, "conditioning"),
         ({"model": {"policy_head": "attention"}}, "policy_head"),
         ({"model": {"channels": 0}}, "channels"),
+        ({"training": {"lr_schedule": "step"}}, "lr_schedule"),
+        ({"training": {"bucket_balancing": "oversample"}}, "bucket_balancing"),
+        ({"training": {"balance_power": 1.5}}, "balance_power"),
+        ({"training": {"mixed_precision": "fp8"}}, "mixed_precision"),
+        ({"training": {"label_smoothing": 1.0}}, "label_smoothing"),
+        ({"training": {"max_minutes": 0}}, "max_minutes"),
+        ({"training": {"grad_clip_norm": 0}}, "grad_clip_norm"),
+        ({"training": {"prefetch_batches": -1}}, "prefetch_batches"),
     ],
 )
 def test_invalid_values_are_rejected(tmp_path: Path, override: dict, message: str) -> None:
