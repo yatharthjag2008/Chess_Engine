@@ -111,3 +111,48 @@ def test_benchmark_encoding_script_with_games_file(tmp_path: Path, capsys: pytes
     capsys.readouterr()
     assert _load("benchmark_encoding").main(["--games-file", str(out_path), "--games", "8"]) == 0
     assert "positions from 8 games" in capsys.readouterr().out
+
+
+def _games_for_dataset(tmp_path: Path) -> Path:
+    from dataset_helpers import random_game_rows, write_game_rows
+
+    return write_game_rows(random_game_rows(25, seed=4), tmp_path / "processed" / "games" / "lichess_2026-10_sample.parquet")
+
+
+def test_build_dataset_script(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _games_for_dataset(tmp_path)
+    config = _config(tmp_path, dataset={"workers": 1, "shard_size": 500})
+    script = _load("build_dataset")
+    assert script.main(["--config", str(config), "--no-progress"]) == 0
+    out = capsys.readouterr().out
+    assert "Used 25 of 25 games" in out and "train" in out and "2200+" in out
+    dataset_dir = tmp_path / "processed" / "datasets" / "lichess_2026-10_sample"
+    assert (dataset_dir / "manifest.json").is_file()
+
+    # A second build without --overwrite fails cleanly; with it, succeeds.
+    assert script.main(["--config", str(config), "--no-progress"]) == 1
+    assert "overwrite" in capsys.readouterr().err
+    assert script.main(["--config", str(config), "--no-progress", "--overwrite", "--max-games", "5",
+                        "--no-compress"]) == 0
+    assert "Used 5 of 5 games" in capsys.readouterr().out
+
+
+def test_build_dataset_script_without_games(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert _load("build_dataset").main(["--config", str(_config(tmp_path)), "--no-progress"]) == 1
+    assert "prepare_games" in capsys.readouterr().err
+
+
+def test_inspect_dataset_script(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _games_for_dataset(tmp_path)
+    config = _config(tmp_path, dataset={"workers": 1})
+    assert _load("build_dataset").main(["--config", str(config), "--no-progress"]) == 0
+    capsys.readouterr()
+    assert _load("inspect_dataset").main(["--config", str(config), "--samples", "2", "--seed", "1"]) == 0
+    out = capsys.readouterr().out
+    assert out.count("--- train sample") == 2
+    assert "to move, rated" in out and "played " in out and "legal moves" in out
+
+
+def test_inspect_dataset_script_missing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert _load("inspect_dataset").main(["--dataset", str(tmp_path / "none")]) == 1
+    assert "build_dataset" in capsys.readouterr().err

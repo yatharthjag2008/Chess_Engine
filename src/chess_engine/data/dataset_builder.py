@@ -285,3 +285,26 @@ def read_manifest(dataset_dir: str | Path) -> dict[str, Any]:
     if not path.is_file():
         raise FileNotFoundError(f"no {MANIFEST_NAME} in {dataset_dir} (build it with scripts/build_dataset.py)")
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def format_summary(manifest: dict[str, Any], output_dir: str | Path | None = None) -> str:
+    """Human-readable summary of a dataset manifest: games used, rejections, positions per split and bucket."""
+    stats = manifest["stats"]
+    splits = manifest["splits"]
+    total = sum(info["positions"] for info in splits.values())
+    lines = [f"Used {stats['games_used']:,} of {stats['games_in']:,} games -> {total:,} positions "
+             f"in {manifest['seconds']:.0f}s ({manifest['workers']} workers)"]
+    for reason, count in sorted(stats["games_rejected"].items()):
+        lines.append(f"  rejected game: {reason:<22} {count:>8,}")
+    if stats["skipped_opening"] or stats["skipped_low_clock"]:
+        lines.append(f"  skipped positions: opening {stats['skipped_opening']:,}, low clock {stats['skipped_low_clock']:,}")
+    labels = manifest["ratings"]["bucket_labels"]
+    lines.append("")
+    lines.append(f"  {'split':<6} {'games':>8} {'positions':>11} {'shards':>7}   "
+                 + " ".join(f"{label:>9}" for label in labels))
+    for name, info in splits.items():
+        buckets = " ".join(f"{count:>9,}" for count in info["positions_per_bucket"])
+        lines.append(f"  {name:<6} {info['games']:>8,} {info['positions']:>11,} {len(info['shards']):>7}   {buckets}")
+    if output_dir is not None:
+        lines.extend(["", f"  -> {output_dir}"])
+    return "\n".join(lines)
