@@ -214,3 +214,17 @@ def test_train_script_resume_latest_and_errors(tmp_path: Path, tiny_dataset: Pat
     assert script.find_run("a", tmp_path / "ckpt") == tmp_path / "ckpt" / "a"
     with pytest.raises(Exception, match="no run"):
         script.find_run("latest", tmp_path / "empty")
+
+
+def test_plot_training_script(tmp_path: Path, tiny_dataset: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    config = _train_override(tmp_path)
+    plot = _load("plot_training")
+    assert plot.main(["--config", str(config)]) == 1
+    assert "no training runs" in capsys.readouterr().err
+    assert _load("train").main(["--config", str(config), "--dataset", str(tiny_dataset), "--run-name", "p",
+                                "--max-steps", "4"]) == 0
+    capsys.readouterr()
+    out = tmp_path / "curves.png"
+    assert plot.main(["--config", str(config), "--out", str(out)]) == 0
+    printed = capsys.readouterr().out
+    assert out.is_file() and "p: 4 steps" in printed and "best validation" in printed
