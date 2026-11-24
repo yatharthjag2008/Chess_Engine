@@ -32,3 +32,25 @@ def test_accuracy_chart(tmp_path: Path) -> None:
     assert out.read_bytes()[:8] == PNG
     empty = plot_accuracy_by_rating(LABELS, [Series("model", [None, None, None])], tmp_path / "empty.png")
     assert empty.is_file()
+
+
+def test_calibration_chart(tmp_path: Path) -> None:
+    import numpy as np
+
+    from chess_engine.eval.calibration import binned_reliability
+    from chess_engine.eval.plots import plot_calibration
+
+    rng = np.random.default_rng(0)
+    p = rng.random(5000)
+    calibration = {"all_moves": binned_reliability(p, rng.random(5000) < p),
+                   "top1": binned_reliability(p[:100] * 0.5 + 0.5, rng.random(100) < 0.6)}
+    assert plot_calibration(calibration, tmp_path / "cal.png").read_bytes()[:8] == PNG
+
+
+def test_cross_rating_heatmap(tmp_path: Path) -> None:
+    from chess_engine.eval.plots import plot_cross_rating
+
+    cross = {"labels": LABELS, "top1": [[0.40, 0.35, None], [0.38, 0.41, None], [0.30, 0.39, None]]}
+    assert plot_cross_rating(cross, tmp_path / "cross.png").read_bytes()[:8] == PNG
+    flat = {"labels": LABELS[:1], "top1": [[0.4]]}
+    assert plot_cross_rating(flat, tmp_path / "flat.png").is_file()
