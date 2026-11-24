@@ -43,3 +43,20 @@ def test_per_bucket_and_bucket_mean() -> None:
 def test_zero_probability_does_not_give_minus_infinity() -> None:
     s = match_stats(make_table(rank=[30], prob=[0.0], bucket=[0]))
     assert np.isfinite(s["log_likelihood"])
+
+
+def test_breakdown_by_phase_clock_and_legal_moves() -> None:
+    from chess_engine.eval.move_matching import PHASES, breakdown, breakdowns
+
+    table = make_table(rank=[1, 2, 1, 1, 5], prob=[0.5] * 5, bucket=[0, 0, 2, 2, 2], ply=[0, 10, 30, 90, 91],
+                       clock=[180.0, 179.0, 10.0, 5.0, 100.0], legal=[20, 20, 30, 5, 50])
+    phase = breakdown(table, "ply", PHASES)
+    assert phase["moves 1-10"]["positions"] == 2 and phase["moves 1-10"]["top1"] == 0.5
+    assert phase["moves 11-25"]["top1"] == 1.0 and phase["moves 26-40"] == {"positions": 0, "bucket_top1":
+                                                                           [None, None, None]}
+    assert phase["moves 41+"]["bucket_top1"] == [None, None, 0.5]
+    every = breakdowns(table)
+    assert set(every) == {"phase", "clock", "legal_moves"}
+    assert every["clock"]["under 15 s"]["positions"] == 2 and every["clock"]["under 15 s"]["top1"] == 1.0
+    assert every["legal_moves"]["1-10 moves"]["positions"] == 1
+    assert sum(b["positions"] for b in every["legal_moves"].values()) == 5

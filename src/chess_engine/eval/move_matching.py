@@ -81,3 +81,43 @@ def format_move_matching(result: dict[str, Any]) -> str:
     lines.extend(row(label, s) for label, s in result["buckets"].items())
     lines.append(row("all", result["overall"]))
     return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------- breakdowns
+
+Band = tuple[str, float, float]  # label, lower bound (inclusive), upper bound (exclusive)
+
+#: Game phase by move number (plies 0-19 are moves 1-10).
+PHASES: tuple[Band, ...] = (("moves 1-10", 0, 20), ("moves 11-25", 20, 50), ("moves 26-40", 50, 80),
+                            ("moves 41+", 80, float("inf")))
+#: Time pressure by the mover's clock.
+CLOCK_BANDS: tuple[Band, ...] = (("under 15 s", 0, 15), ("15-60 s", 15, 60), ("1-2 min", 60, 120),
+                                 ("over 2 min", 120, float("inf")))
+#: How many legal moves the position has.
+LEGAL_BANDS: tuple[Band, ...] = (("1-10 moves", 1, 11), ("11-25 moves", 11, 26), ("26-40 moves", 26, 41),
+                                 ("41+ moves", 41, float("inf")))
+
+
+def breakdown(table: PredictionTable, column: str, bands: Sequence[Band],
+              labels: Sequence[str] | None = None) -> dict[str, dict[str, Any]]:
+    """Match statistics per band of ``column``, plus top-1 per rating bucket within each band."""
+    labels = list(labels if labels is not None else table.meta.get("bucket_labels", []))
+    values = table[column].astype(np.float64)
+    out = {}
+    for label, low, high in bands:
+        rows = (values >= low) & (values < high)
+        stats: dict[str, Any] = match_stats(table, rows)
+        if labels:
+            top1, _ = group_means(table.top1_hit[rows], table["bucket"][rows], len(labels))
+            stats["bucket_top1"] = [None if np.isnan(v) else float(v) for v in top1]
+        out[label] = stats
+    return out
+
+
+def breakdowns(table: PredictionTable, labels: Sequence[str] | None = None) -> dict[str, dict[str, Any]]:
+    """Accuracy by game phase, by the mover's clock and by the number of legal moves."""
+    return {
+        "phase": breakdown(table, "ply", PHASES, labels),
+        "clock": breakdown(table, "clock", CLOCK_BANDS, labels),
+        "legal_moves": breakdown(table, "legal_count", LEGAL_BANDS, labels),
+    }
