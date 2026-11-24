@@ -168,3 +168,49 @@ def test_model_summary_script(tmp_path: Path, capsys: pytest.CaptureFixture[str]
     out = capsys.readouterr().out
     assert "8 channels x 1 blocks" in out and "total" in out and "training step" in out
     assert "build the dataset" in out and "Untrained model on the start position" in out
+
+
+def _train_override(tmp_path: Path) -> Path:
+    override = tmp_path / "train.yaml"
+    override.write_text(yaml.safe_dump({
+        "paths": {"checkpoints_dir": str(tmp_path / "ckpt")},
+        "model": {"channels": 8, "residual_blocks": 1, "rating_embedding_dim": 4},
+        "training": {"device": "cpu", "batch_size": 32, "log_every_steps": 2, "warmup_steps": 1,
+                     "prefetch_batches": 0},
+    }), encoding="utf-8")
+    return override
+
+
+def test_train_script_new_run_then_resume(tmp_path: Path, tiny_dataset: Path,
+                                          capsys: pytest.CaptureFixture[str]) -> None:
+    script = _load("train")
+    config = str(_train_override(tmp_path))
+    args = ["--config", config, "--dataset", str(tiny_dataset), "--run-name", "r1", "--max-steps", "4"]
+    assert script.main(args) == 0
+    out = capsys.readouterr().out
+    assert "step       4/4" in out and "validation at step 4" in out
+    run = tmp_path / "ckpt" / "r1"
+    assert (run / "final_model.pt").is_file() and (run / "best_model.pt").is_file()
+
+    assert script.main(args) == 1  # the run exists already
+    assert "--resume r1" in capsys.readouterr().err
+
+    assert script.main(["--resume", str(run), "--max-steps", "6"]) == 0
+    out = capsys.readouterr().out
+    assert "resumed from step_00000004.pt" in out and "step       6/6" in out
+
+
+def test_train_script_resume_latest_and_errors(tmp_path: Path, tiny_dataset: Path,
+                                               capsys: pytest.CaptureFixture[str], monkeypatch) -> None:
+    script = _load("train")
+    config = str(_train_override(tmp_path))
+    with pytest.raises(SystemExit):
+        script.main(["--resume", "latest", "--config", config])
+    assert script.main(["--config", config, "--dataset", str(tmp_path / "none")]) == 1
+    assert "no dataset" in capsys.readouterr().err
+    assert script.main(["--config", config, "--dataset", str(tiny_dataset), "--run-name", "a",
+                        "--max-steps", "2"]) == 0
+    assert script.find_run("latest", tmp_path / "ckpt") == tmp_path / "ckpt" / "a"
+    assert script.find_run("a", tmp_path / "ckpt") == tmp_path / "ckpt" / "a"
+    with pytest.raises(Exception, match="no run"):
+        script.find_run("latest", tmp_path / "empty")
