@@ -47,3 +47,53 @@ def test_large_random_table_matches_a_dictionary() -> None:
         counts = np.bincount(moves[keys == key], minlength=6)
         found, move, total = table.lookup(np.array([key], dtype=np.uint64))
         assert found[0] and move[0] == counts.argmax() and total[0] == counts.sum()
+
+
+def _table(keys, targets, buckets, legal, ranks=None):
+    from eval_helpers import make_table
+
+    n = len(keys)
+    t = make_table(rank=ranks or [1] * n, prob=[0.5] * n, bucket=buckets, legal=legal)
+    t.columns["key"] = np.array(keys, dtype=np.uint64)
+    t.columns["target"] = np.array(targets, dtype=np.int16)
+    return t
+
+
+def test_most_common_move_with_bucket_table_and_fallbacks() -> None:
+    from chess_engine.eval.baselines import most_common_move_baseline, random_baseline, summarize_baseline
+    from chess_engine.eval.positions import combine_keys
+
+    train_keys = np.array([1, 1, 1, 1, 2], dtype=np.uint64)
+    train_moves = np.array([5, 5, 5, 7, 9])
+    train_buckets = np.array([0, 0, 0, 2, 0])
+    overall = MoveFrequencyTable.build(train_keys, train_moves)
+    by_bucket = MoveFrequencyTable.build(combine_keys(train_keys, train_buckets), train_moves)
+
+    # pos 1 by bucket 2 plays 7 (only the bucket table knows), pos 2 by bucket 2 falls back to the
+    # overall table, pos 3 is new (random, 1/4).
+    test = _table(keys=[1, 1, 2, 3], targets=[7, 5, 9, 0], buckets=[2, 0, 2, 0], legal=[20, 20, 20, 4])
+    plain = most_common_move_baseline(test, overall)
+    assert plain.hits.tolist() == [0.0, 1.0, 1.0, 0.25]
+    assert plain.covered.tolist() == [True, True, True, False]
+    same_rating = most_common_move_baseline(test, overall, by_bucket)
+    assert same_rating.hits.tolist() == [1.0, 1.0, 1.0, 0.25]
+    assert "same rating" in same_rating.name
+
+    rand = random_baseline(test)
+    assert rand.hits.tolist() == [0.05, 0.05, 0.05, 0.25] and rand.covered.all()
+
+    summary = summarize_baseline(plain, test)
+    assert summary["overall"]["coverage"] == 0.75 and summary["overall"]["top1"] == pytest.approx(2.25 / 4)
+    assert summary["overall"]["top1_covered"] == pytest.approx(2 / 3)
+    assert summary["overall"]["model_top1_covered"] == 1.0
+    assert summary["buckets"]["high"]["top1"] == 0.5 and summary["buckets"]["mid"] == {"positions": 0}
+
+
+def test_frequency_tables_from_real_samples(tiny_dataset) -> None:
+    from chess_engine.data.dataset import PositionDataset
+    from chess_engine.eval.baselines import build_frequency_tables
+
+    train = PositionDataset(tiny_dataset, "train").samples
+    overall, by_bucket = build_frequency_tables(train)
+    assert 0 < len(overall) <= len(by_bucket) <= len(train)
+    assert overall.total.sum() == by_bucket.total.sum() == len(train)
