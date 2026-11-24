@@ -11,6 +11,9 @@ must be right, not just their order. Two reliability views:
 
 The **expected calibration error** (ECE) is the average gap between predicted and
 observed frequency, weighted by how many predictions fall in each bin.
+
+The value head is checked the same way (:func:`value_calibration`): its expected
+score ``P(win) + P(draw) / 2`` against the score the mover actually got.
 """
 
 from __future__ import annotations
@@ -61,4 +64,29 @@ def move_calibration(table: PredictionTable) -> dict[str, Any]:
     return {
         "all_moves": reliability(hist[:, 0], hist[:, 1], hist[:, 2]),
         "top1": binned_reliability(table["top_probs"][:, 0], table.top1_hit, bins),
+    }
+
+
+def value_calibration(table: PredictionTable, bins: int = 10) -> dict[str, Any] | None:
+    """How well the value head predicts the game result (None if the model has no value head).
+
+    Returns accuracy of the most likely result, log loss and multi-class Brier score of the
+    (loss, draw, win) probabilities, and a reliability table of expected vs. actual score.
+    """
+    if "value" not in table:
+        return None
+    probs = table["value"].astype(np.float64)
+    result = table["result"].astype(np.int64) + 1  # 0 loss, 1 draw, 2 win
+    n = len(result)
+    onehot = np.zeros_like(probs)
+    onehot[np.arange(n), result] = 1
+    expected = probs[:, 2] + 0.5 * probs[:, 1]
+    actual = (table["result"].astype(np.float64) + 1) / 2
+    return {
+        "positions": int(n),
+        "accuracy": float((probs.argmax(1) == result).mean()),
+        "log_loss": float(-np.log(np.maximum(probs[np.arange(n), result], 1e-12)).mean()),
+        "brier": float(((probs - onehot) ** 2).sum(1).mean()),
+        "result_shares": {name: float((result == i).mean()) for i, name in enumerate(("loss", "draw", "win"))},
+        "score": binned_reliability(expected, actual, bins),
     }

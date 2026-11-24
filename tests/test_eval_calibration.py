@@ -53,3 +53,20 @@ def test_move_calibration_of_a_model(tiny_dataset: Path, default_config: Config)
     assert result["all_moves"]["predictions"] == table["legal_count"].sum()
     assert result["top1"]["predictions"] == len(table)
     assert 0 <= result["all_moves"]["ece"] <= 1 and 0 <= result["top1"]["ece"] <= 1
+
+
+def test_value_calibration() -> None:
+    from chess_engine.eval.calibration import value_calibration
+    from eval_helpers import make_table
+
+    value = np.array([[0.1, 0.1, 0.8], [0.7, 0.2, 0.1], [0.2, 0.6, 0.2], [0.1, 0.1, 0.8]], dtype=np.float32)
+    table = make_table(rank=[1] * 4, prob=[0.5] * 4, bucket=[0] * 4, result=[1, -1, 0, -1], value=value)
+    result = value_calibration(table, bins=4)
+    assert result["positions"] == 4 and result["accuracy"] == 0.75
+    assert result["log_loss"] == pytest.approx(-np.mean(np.log([0.8, 0.7, 0.6, 0.1])), rel=1e-5)
+    brier_first = 0.1**2 + 0.1**2 + 0.2**2
+    assert result["brier"] > brier_first / 4
+    assert result["result_shares"] == {"loss": 0.5, "draw": 0.25, "win": 0.25}
+    assert result["score"]["predictions"] == 4
+    no_value = make_table(rank=[1], prob=[0.5], bucket=[0])
+    assert value_calibration(no_value) is None
