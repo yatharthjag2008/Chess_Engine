@@ -26,7 +26,8 @@ from chess_engine.training.losses import compute_loss
 from chess_engine.training.metrics import MoveMetrics, RunningMeans
 
 
-def _first_batches(dataset: PositionDataset, batch_size: int, max_positions: int | None) -> Iterator[Batch]:
+def first_batches(dataset: PositionDataset, batch_size: int, max_positions: int | None) -> Iterator[Batch]:
+    """The first ``max_positions`` positions of ``dataset`` (all if None) in stored order, as batches."""
     remaining = len(dataset) if max_positions is None else min(max_positions, len(dataset))
     for batch in dataset.iter_batches(batch_size, shuffle=False):
         if remaining <= 0:
@@ -65,7 +66,7 @@ def validate(
     metrics = MoveMetrics(ratings.num_buckets, ratings.bucket_labels())
     losses = RunningMeans()
     try:
-        raw = _first_batches(dataset, batch_size, max_positions)
+        raw = first_batches(dataset, batch_size, max_positions)
         for batch in prefetch((to_train_batch(b, ratings) for b in raw), prefetch_batches):
             batch = batch.to(device)
             with precision.autocast():
