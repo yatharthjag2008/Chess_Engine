@@ -41,12 +41,12 @@ def default_run_name(cfg: Config, now: datetime | None = None) -> str:
     return f"{now:%Y%m%d-%H%M}_{cfg.model.channels}x{cfg.model.residual_blocks}"
 
 
-def _clean(value: Any) -> Any:
+def json_safe(value: Any) -> Any:
     """JSON-safe copy: NaN/inf become None, numpy scalars become Python numbers."""
     if isinstance(value, dict):
-        return {str(k): _clean(v) for k, v in value.items()}
+        return {str(k): json_safe(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
-        return [_clean(v) for v in value]
+        return [json_safe(v) for v in value]
     if hasattr(value, "item") and callable(value.item):
         value = value.item()
     if isinstance(value, float) and not math.isfinite(value):
@@ -61,7 +61,7 @@ class MetricsLog:
         self.path = Path(path)
 
     def write(self, kind: str, step: int, **values: Any) -> dict[str, Any]:
-        record = _clean({"kind": kind, "step": step, "time": datetime.now(UTC).isoformat(timespec="seconds"),
+        record = json_safe({"kind": kind, "step": step, "time": datetime.now(UTC).isoformat(timespec="seconds"),
                          **values})
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as f:
@@ -141,7 +141,7 @@ class RunDirectory:
     def write_info(self, **info: Any) -> dict[str, Any]:
         """Merge ``info`` into ``run.json``."""
         current = self.read_info()
-        current.update(_clean(info))
+        current.update(json_safe(info))
         self.path.mkdir(parents=True, exist_ok=True)
         self.info_path.write_text(json.dumps(current, indent=2) + "\n", encoding="utf-8")
         return current
