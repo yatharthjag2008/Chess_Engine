@@ -137,6 +137,28 @@ index_to_move(i, board)               # Move.from_uci('e2e4')
 The 1858 policy indices cover every from-to square pair a queen or knight move can reach,
 plus underpromotions. See [PROGRESS.md](PROGRESS.md) for the plane layout and the design choices.
 
+## Training dataset
+
+Turns the filtered games into one sample per position (board, move played, the mover's rating and
+bucket, both clocks, time spent, result), split into train/val/test **by game**, so no game appears
+in two splits.
+
+```bash
+python scripts/build_dataset.py              # after prepare_games.py; the 50k sample takes ~3-12 min
+python scripts/inspect_dataset.py            # summary + a few samples decoded back into boards
+```
+
+Output goes to `data/processed/datasets/lichess_<month>_sample/` (`manifest.json`, `games.parquet`,
+`train/`, `val/`, `test/` shards). Reading it for training:
+
+```python
+from chess_engine.data.dataset import PositionDataset
+
+train = PositionDataset("data/processed/datasets/lichess_2026-10_sample", "train")
+for batch in train.iter_batches(batch_size=256, shuffle=True, seed=0):
+    batch.planes, batch.legal_mask, batch.move, batch.features["bucket"]
+```
+
 ## Project structure
 
 ```

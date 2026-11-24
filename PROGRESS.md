@@ -7,7 +7,7 @@ See [PLAN.md](PLAN.md) for details on each step.
 - [x] 1. Project setup
 - [x] 2. Data download + streaming parser
 - [x] 3. Board + move encoding
-- [ ] 4. Dataset builder
+- [x] 4. Dataset builder
 - [ ] 5. Model
 - [ ] 6. Training pipeline
 - [ ] 7. Evaluation + baselines
@@ -172,3 +172,80 @@ the 50k-game sample take ~7 minutes to encode on one core (step 4 can use severa
   python-chess's move generator.
 - **`encode_board` returns float32 by default**; `fifty_move_clock` is the only fractional plane, so the
   other 19 planes can be stored as bits/uint8 in step 4.
+
+## Step 4: Dataset builder (done 2026-11-23)
+
+**Built**
+- `chess_engine.data.splits`: train/val/test assignment from a seeded hash of the game id.
+- `chess_engine.encoding.compact`: a 99-byte stored form of a position (12 bitboards + flags + en passant
+  + halfmove clock) and `planes_from_compact`, which rebuilds a whole batch of `encode_board` planes with numpy.
+- `chess_engine.data.samples`: replays a game into one sample per position (`Samples`, a columnar container
+  with ragged legal-move lists, `take`, `concat` and `legal_mask`).
+- `chess_engine.data.shards`: `.npz` shard files (versioned, written to `.tmp` then renamed) and
+  `ShardWriter`, which shuffles each shard with a fixed seed.
+- `chess_engine.data.dataset_builder`: `build_dataset` (games Parquet → shards per split + `games.parquet`
+  index + `manifest.json`), parallel across worker processes; the whole directory is built under `.tmp`
+  and renamed when complete.
+- `chess_engine.data.dataset`: `PositionDataset` reads a split and yields `Batch`es (planes, legal mask,
+  target move, features), either fully in memory or one shard at a time.
+- Scripts: `scripts/build_dataset.py`, `scripts/inspect_dataset.py` (decodes random samples back into
+  boards and moves as a sanity check).
+
+**One sample per position**
+
+| Column | Content |
+|---|---|
+| `pieces`, `flags`, `ep`, `halfmove` | the board, compact form (decodes to exactly `encode_board`'s 20 planes) |
+| `move` | policy index of the move the human played (the target) |
+| `legal_count` + shared `legal_moves` | the position's legal moves (rebuilt into the 1858-entry mask per batch) |
+| `rating`, `bucket`, `opp_rating` | the mover's rating and bucket, the opponent's rating |
+| `clock`, `opp_clock`, `time_spent` | both players' time left before the move, and seconds spent on it |
+| `base_seconds`, `increment`, `ply`, `result` | time control, move number, game result for the mover (+1/0/-1) |
+| `game` | row in the dataset's `games.parquet` (game id, split, ratings, positions kept) |
+
+**Real build** (`python scripts/build_dataset.py`, the 50k-game sample from step 2)
+
+| Split | Games | Positions | Shards |
+|---|---|---|---|
+| train | 45,086 | 3,191,533 | 16 |
+| val | 2,470 | 176,658 | 1 |
+| test | 2,444 | 172,086 | 1 |
+
+- All 50,000 games replayed with **0 illegal moves**, giving 3,540,277 positions, which matches step 2's count.
+- **164 MB on disk** (46 bytes/position with zlib) and 189 bytes/position in memory, so the whole training
+  split fits in ~0.6 GB of RAM.
+- Took 703 s with 7 workers. The laptop's CPU was ~95% busy with other programs during this session
+  (single-core encoding measured 5–9× slower than in step 3), so this is not a clean timing.
+- Loading: the val split loads in 0.8 s, and batches of 256 decode at ~24,000 positions/s, fast enough to
+  feed CPU training.
+- 2,000 random test samples were checked against a fresh replay of their games: the planes, legal mask,
+  target move and rating all match. The decoded boards look right in `inspect_dataset.py`.
+- Positions per bucket (train): 800: 113k · 1000: 253k · 1200: 406k · 1400: 599k · 1600: 678k · 1800: 625k
+  · 2000: 366k · 2200+: 152k. The lowest bucket has 6× fewer positions than the biggest. Step 6 should
+  weight or resample by bucket so low ratings are not under-learned.
+- Average 29.6 legal moves per position; median 2 s spent per move; 9% of positions have under 30 s on the clock.
+
+**Decisions**
+- **Split by game with a hash of `(seed, game_id)`**, not a shuffled list: every position of a game is in
+  one split, re-running gives the same split, adding games never moves existing ones, and later steps
+  (rating estimation on held-out games) can find the test games from their ids alone.
+- **Compact boards instead of stored planes**: 99 bytes instead of 5 KB per position. Decoding is a few numpy
+  operations per batch and is tested to match `encode_board` exactly on every test position.
+- **Legal moves stored as lists, not masks**: ~30 int16s instead of 1858 bits per position, about 3× smaller
+  and well compressed; masks are rebuilt per batch.
+- **Shuffled within shards when written, then globally when training**: positions of one game are spread
+  across a 200k-position shard (~2,800 games), so even shard-by-shard streaming gives well-mixed batches.
+- **Clocks before the move** for both players, plus time spent on it. Lichess doesn't run the clock or add
+  the increment on each side's first move, so the first two moves count as 0 s spent.
+- **Every position is kept by default** (`skip_first_plies: 0`, `min_clock_seconds: 0`). The bot has to
+  play openings and time scrambles like a human too; both filters are in the config for experiments.
+- **The mover's rating and the opponent's rating are both stored**, plus the bucket. Buckets are also
+  recomputable from the rating if the edges change.
+- **Parallel encoding with ordered results**: worker processes encode batches of 500 games, results are
+  collected in order with a bounded queue, so output is byte-identical for any worker count (tested)
+  and memory does not grow with the number of games.
+- **NumPy `.npz` shards** (compressed by default; `--no-compress` for faster loading) rather than
+  Parquet. Samples are fixed-size numeric arrays that the training loop wants as numpy, and there is
+  no per-row overhead.
+- **Each dataset records its encoding** (plane names, number of moves, format version) in its manifest, and
+  `PositionDataset` refuses to load a dataset built with a different encoding.
