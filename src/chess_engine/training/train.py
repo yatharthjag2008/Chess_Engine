@@ -14,7 +14,11 @@ What one optimizer step does:
 Every ``eval_every_steps`` (and at the end of every epoch) the model is validated on
 fixed validation positions; the model with the lowest validation loss so far is
 exported as ``best_model.pt``. Every ``checkpoint_every_steps`` a full training
-checkpoint is written for resuming.
+checkpoint is written for resuming:
+
+    trainer = Trainer.from_run("checkpoints/my_run")   # the run's own config and dataset
+    trainer.resume()                                  # latest checkpoint: weights, optimizer, schedule, data position
+    trainer.train()                                   # continues exactly where it stopped
 """
 
 from __future__ import annotations
@@ -30,13 +34,13 @@ import numpy as np
 import torch
 from torch import nn
 
-from chess_engine.config import Config, TrainingConfig
+from chess_engine.config import Config, TrainingConfig, load_config
 from chess_engine.data.dataset import PositionDataset
 from chess_engine.data.dataset_builder import dataset_output_dir
 from chess_engine.model.inference import save_model
 from chess_engine.model.network import build_model, count_parameters
 from chess_engine.training.balancing import bucket_weights, format_balance
-from chess_engine.training.checkpoint import CheckpointManager, TrainingState
+from chess_engine.training.checkpoint import CheckpointManager, TrainingState, load_checkpoint, restore_checkpoint
 from chess_engine.training.device import configure_threads, resolve_device, resolve_precision, seed_everything
 from chess_engine.training.loader import BatchLoader, TrainBatch
 from chess_engine.training.losses import compute_loss
@@ -87,7 +91,7 @@ class TrainResult:
     """What a :meth:`Trainer.train` call did."""
 
     state: TrainingState
-    stop_reason: str              # "finished" (all epochs) or "max_steps"
+    stop_reason: str              # "finished" (all epochs), "max_steps" or "paused" (stop_after_steps)
     final_model: Path
     best_model: Path | None       # lowest validation loss (None without a validation split)
     last_train: dict[str, float]  # the last logged training means
@@ -159,6 +163,47 @@ class Trainer:
         self._last_val: dict[str, Any] | None = None
         self._last_val_step: int | None = None
         self._last_checkpoint_step: int | None = None
+
+    @classmethod
+    def from_run(
+        cls,
+        run_dir: str | Path,
+        dataset_dir: str | Path | None = None,
+        training_overrides: dict[str, Any] | None = None,
+        log: Logger = print,
+    ) -> Trainer:
+        """A trainer for an existing run, built from the run's saved config (and dataset, unless given).
+
+        ``training_overrides`` changes training settings that are safe to change mid-run,
+        e.g. ``{"max_minutes": 60}`` or ``{"epochs": 5}`` (the schedule is stretched to the new length).
+        """
+        run = RunDirectory(run_dir)
+        if not run.exists():
+            raise TrainingError(f"no run at {run.path} (expected {run.config_path})")
+        cfg = load_config(run.config_path)
+        if training_overrides:
+            merged = {**cfg.training.model_dump(), **training_overrides}
+            cfg = cfg.model_copy(update={"training": TrainingConfig.model_validate(merged)})
+        if dataset_dir is None and run.read_info().get("dataset"):
+            dataset_dir = run.read_info()["dataset"]
+        return cls(cfg, run.path, dataset_dir, log=log)
+
+    def resume(self, checkpoint: str | Path | None = None) -> TrainingState:
+        """Load a checkpoint (default: the run's newest) into the model, optimizer, schedule and counters."""
+        path = Path(checkpoint) if checkpoint is not None else self.checkpoints.latest()
+        if path is None:
+            raise TrainingError(f"run {self.run.path} has no checkpoint to resume from")
+        payload = load_checkpoint(path, self.device)
+        saved_model = payload["config"].get("model")
+        if saved_model != self.cfg.model.model_dump(mode="json"):
+            raise TrainingError(f"checkpoint {path} was trained with a different model config: {saved_model}")
+        self.state = restore_checkpoint(payload, self.model, self.optimizer, self.scheduler, self.scaler)
+        dropped = self.run.metrics.truncate_after(self.state.step)
+        self._last_checkpoint_step = self.state.step
+        self.run.metrics.write("event", self.state.step, event="resumed", checkpoint=path.name)
+        self.log(f"resumed from {path.name}: step {self.state.step}, epoch {self.state.epoch + 1}, "
+                 f"batch {self.state.batch_in_epoch}" + (f" ({dropped} later log lines dropped)" if dropped else ""))
+        return self.state
 
     # ------------------------------------------------------------------ one step
 
@@ -270,9 +315,15 @@ class Trainer:
             steps_per_epoch=self.steps_per_epoch, total_steps=self.total_steps, status="running",
         )
 
-    def train(self) -> TrainResult:
-        """Train until every epoch is done or ``max_steps`` is reached; save the final model."""
+    def train(self, stop_after_steps: int | None = None) -> TrainResult:
+        """Train until every epoch is done or ``max_steps`` is reached; save the final model.
+
+        Args:
+            stop_after_steps: Pause after this many steps of *this session* (with a checkpoint),
+                keeping the schedule of the full run, e.g. to split a run over several sessions.
+        """
         t = self.cfg.training
+        session_end = self.state.step + stop_after_steps if stop_after_steps is not None else None
         self._start_run()
         self.log(self.describe())
         stop: str | None = None
@@ -294,6 +345,9 @@ class Trainer:
                     self.save_checkpoint()
                 if t.max_steps is not None and self.state.step >= t.max_steps:
                     stop = "max_steps"
+                    break
+                if session_end is not None and self.state.step >= session_end:
+                    stop = "paused"
                     break
             else:
                 self.state.epoch += 1

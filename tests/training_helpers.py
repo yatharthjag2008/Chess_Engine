@@ -29,6 +29,7 @@ def train_config(tmp_path: Path, model: dict[str, Any] | None = None, **training
             "prefetch_batches": 2, "val_max_positions": None, **training,
         },
     }
+    tmp_path.mkdir(parents=True, exist_ok=True)
     path = tmp_path / "train_override.yaml"
     path.write_text(yaml.safe_dump(override), encoding="utf-8")
     return load_config(path)
