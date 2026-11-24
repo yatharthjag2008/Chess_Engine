@@ -25,7 +25,9 @@ import json
 import logging
 import shutil
 import time
+from collections import deque
 from collections.abc import Iterable, Iterator, Sequence
+from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -119,9 +121,28 @@ def encode_task(task: _Task, ratings: RatingsConfig, dataset: DatasetConfig) -> 
 def _run_tasks(
     tasks: Iterable[_Task], ratings: RatingsConfig, dataset: DatasetConfig, workers: int
 ) -> Iterator[tuple[_Task, tuple[Samples, SampleStats, list[int]]]]:
-    """Encode tasks in order; ``workers`` > 1 is added in the next step."""
-    for task in tasks:
-        yield task, encode_task(task, ratings, dataset)
+    """Encode tasks and yield the results **in task order**, using ``workers`` processes.
+
+    At most ``2 * workers`` tasks are in flight, so memory stays bounded on full
+    months (millions of games) and the output is identical for any worker count.
+    """
+    if workers <= 1:
+        for task in tasks:
+            yield task, encode_task(task, ratings, dataset)
+        return
+    pool = ProcessPoolExecutor(max_workers=workers)
+    pending: deque[tuple[_Task, Future[tuple[Samples, SampleStats, list[int]]]]] = deque()
+    try:
+        for task in tasks:
+            pending.append((task, pool.submit(encode_task, task, ratings, dataset)))
+            if len(pending) >= 2 * workers:
+                done, future = pending.popleft()
+                yield done, future.result()
+        while pending:
+            done, future = pending.popleft()
+            yield done, future.result()
+    finally:
+        pool.shutdown(wait=True, cancel_futures=True)
 
 
 # --------------------------------------------------------------------------- the builder

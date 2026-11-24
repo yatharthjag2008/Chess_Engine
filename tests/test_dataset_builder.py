@@ -157,3 +157,24 @@ def test_default_paths(tmp_path: Path) -> None:
 def test_read_manifest_missing(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError, match="build_dataset"):
         read_manifest(tmp_path)
+
+
+def test_parallel_build_matches_single_process(tmp_path: Path, games_file: Path) -> None:
+    cfg = tmp_config(tmp_path, shard_size=400, games_per_task=5)
+    single = build_dataset(cfg, [games_file], tmp_path / "one", workers=1, show_progress=False)
+    multi = build_dataset(cfg, [games_file], tmp_path / "two", workers=2, show_progress=False)
+    assert multi.manifest["workers"] == 2
+    assert single.manifest["splits"] == multi.manifest["splits"]
+    assert single.manifest["stats"] == multi.manifest["stats"]
+    for split in SPLITS:
+        a, b = _load_split(single.output_dir, single.manifest, split), _load_split(multi.output_dir, multi.manifest, split)
+        for name in a.columns:
+            np.testing.assert_array_equal(a[name], b[name])
+        np.testing.assert_array_equal(a.legal_moves, b.legal_moves)
+    pd.testing.assert_frame_equal(pd.read_parquet(single.output_dir / GAMES_INDEX_NAME),
+                                  pd.read_parquet(multi.output_dir / GAMES_INDEX_NAME))
+
+
+def test_workers_default_from_config(tmp_path: Path, games_file: Path) -> None:
+    cfg = tmp_config(tmp_path, workers=1)
+    assert build_dataset(cfg, [games_file], tmp_path / "ds", max_games=5, show_progress=False).manifest["workers"] == 1
