@@ -109,3 +109,15 @@ training:                        # step 6: config-driven training loop
   val_max_positions: 50000       # validate on the first N validation positions (null = all)
   checkpoint_every_steps: 1000
   keep_checkpoints: 3            # older step checkpoints are deleted (latest + best are always kept)
+
+evaluation:                      # step 7: move-match accuracy, baselines, calibration
+  split: test                    # held-out games (never used for training or model selection)
+  max_positions: null            # null = the whole split (172k positions for the 50k-game sample)
+  batch_size: 1024
+  bootstrap_samples: 1000        # confidence intervals: resample whole games, not positions
+  confidence: 0.95
+  calibration_bins: 10
+  cross_rating_positions: 40000  # positions re-scored at every rating bucket (8 forward passes each)
+  stockfish_positions: 2000      # test positions given to Stockfish for its baseline (0 = skip)
+  stockfish_depth: 10
+  seed: 0

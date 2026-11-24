@@ -73,6 +73,12 @@ def test_default_training_settings(default_config: Config) -> None:
     assert t.value_loss_weight > 0 and t.mixed_precision == "auto"
 
 
+def test_default_evaluation_settings(default_config: Config) -> None:
+    e = default_config.evaluation
+    assert e.split == "test" and e.max_positions is None
+    assert e.bootstrap_samples > 0 and 0 < e.confidence < 1 and e.stockfish_positions > 0
+
+
 def test_training_limits_can_be_unset(tmp_path: Path) -> None:
     override = _write_yaml(tmp_path / "t.yaml", {"training": {"grad_clip_norm": None, "val_max_positions": None,
                                                             "max_steps": 10, "max_minutes": 1.5}})
@@ -156,6 +162,9 @@ def test_invalid_yaml_is_rejected(tmp_path: Path) -> None:
         ({"training": {"max_minutes": 0}}, "max_minutes"),
         ({"training": {"grad_clip_norm": 0}}, "grad_clip_norm"),
         ({"training": {"prefetch_batches": -1}}, "prefetch_batches"),
+        ({"evaluation": {"split": "holdout"}}, "split"),
+        ({"evaluation": {"confidence": 1.0}}, "confidence"),
+        ({"evaluation": {"stockfish_positions": -1}}, "stockfish_positions"),
     ],
 )
 def test_invalid_values_are_rejected(tmp_path: Path, override: dict, message: str) -> None:

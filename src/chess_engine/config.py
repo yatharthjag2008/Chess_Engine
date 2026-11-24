@@ -256,6 +256,21 @@ class TrainingConfig(_StrictModel):
     keep_checkpoints: PositiveInt = 3
 
 
+class EvaluationConfig(_StrictModel):
+    """Evaluation settings (see ``chess_engine.eval``)."""
+
+    split: Literal["train", "val", "test"] = "test"
+    max_positions: PositiveInt | None = None
+    batch_size: PositiveInt = 1024
+    bootstrap_samples: int = Field(default=1000, ge=0)
+    confidence: float = Field(default=0.95, gt=0, lt=1)
+    calibration_bins: PositiveInt = 10
+    cross_rating_positions: int = Field(default=40_000, ge=0)
+    stockfish_positions: int = Field(default=2000, ge=0)
+    stockfish_depth: PositiveInt = 10
+    seed: int = 0
+
+
 class Config(_StrictModel):
     """The full project configuration."""
 
@@ -265,6 +280,7 @@ class Config(_StrictModel):
     ratings: RatingsConfig
     model: ModelConfig
     training: TrainingConfig
+    evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
 
 
 # --------------------------------------------------------------------------- loading
