@@ -1,0 +1,17 @@
+# The step-6 reference run on a laptop CPU: the default 64x6 model, ~2 hours.
+# Only settings that differ from default.yaml are listed here.
+# Usage: python scripts/train.py --config configs/laptop.yaml --run-name laptop_64x6
+#
+# At ~340 positions/s (Core Ultra 9 288V, 4 threads) a full epoch of the 50k-game
+# sample takes ~2.6 h, so this run stops after 10,000 steps (2.56M positions, ~80%
+# of an epoch) with the learning rate fully decayed. max_minutes is a safety net;
+# the run can be continued with --resume.
+
+training:
+  threads: 4                     # the laptop's performance cores; 8 threads is no faster
+  epochs: 1
+  max_steps: 10000
+  max_minutes: 200
+  eval_every_steps: 1000
+  val_max_positions: 20000       # ~15 s per validation pass
+  checkpoint_every_steps: 500
