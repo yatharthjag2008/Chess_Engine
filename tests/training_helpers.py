@@ -22,9 +22,10 @@ def train_config(tmp_path: Path, model: dict[str, Any] | None = None, **training
             "checkpoints_dir": str(tmp_path / "ckpt"),
             "reports_dir": str(tmp_path / "reports"),
         },
+        "data": {"dataset": {"workers": 1}},  # no worker processes when a test builds a dataset
         "model": {**TINY_MODEL, **(model or {})},
         "training": {
-            "device": "cpu", "batch_size": 32, "epochs": 1, "warmup_steps": 2, "learning_rate": 0.003,
+            "device": "cpu", "threads": 2, "batch_size": 32, "epochs": 1, "warmup_steps": 2, "learning_rate": 0.003,
             "log_every_steps": 5, "eval_every_steps": 1000, "checkpoint_every_steps": 1000,
             "prefetch_batches": 2, "val_max_positions": None, **training,
         },
