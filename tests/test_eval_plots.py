@@ -54,3 +54,15 @@ def test_cross_rating_heatmap(tmp_path: Path) -> None:
     assert plot_cross_rating(cross, tmp_path / "cross.png").read_bytes()[:8] == PNG
     flat = {"labels": LABELS[:1], "top1": [[0.4]]}
     assert plot_cross_rating(flat, tmp_path / "flat.png").is_file()
+
+
+def test_breakdown_chart(tmp_path: Path) -> None:
+    from chess_engine.eval.move_matching import breakdowns
+    from chess_engine.eval.plots import plot_breakdowns
+    from eval_helpers import LABELS as BUCKETS
+    from eval_helpers import make_table
+
+    table = make_table(rank=[1, 2, 1, 1, 3, 1], prob=[0.5] * 6, bucket=[0, 0, 1, 1, 2, 2],
+                       ply=[0, 30, 60, 90, 10, 100], clock=[170.0, 100.0, 50.0, 10.0, 175.0, 5.0])
+    out = plot_breakdowns(breakdowns(table), BUCKETS, tmp_path / "b.png")
+    assert out.read_bytes()[:8] == PNG

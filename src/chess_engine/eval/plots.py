@@ -156,3 +156,27 @@ def plot_cross_rating(cross: dict[str, Any], path: str | Path) -> Path:
     colorbar.outline.set_visible(False)
     colorbar.ax.tick_params(colors=plotting.INK_MUTED, labelcolor=plotting.INK_SECONDARY, labelsize=8)
     return plotting.save_figure(fig, path)
+
+
+def plot_breakdowns(breakdowns: dict[str, Any], labels: Sequence[str], path: str | Path) -> Path:
+    """Top-1 accuracy by game phase and by the mover's clock, one line per rating bucket (light = low rating).
+
+    ``breakdowns`` is :func:`chess_engine.eval.move_matching.breakdowns`'s result.
+    """
+    panels = (("phase", "By game phase", "move number"), ("clock", "By time left on the mover's clock", "time left"))
+    fig, axes = plotting.new_figure(1, 2, width=11.0, height=4.4)
+    colors = plotting.bucket_colors(len(labels))
+    for ax, (key, title, xlabel) in zip(axes[0], panels):
+        bands = list(breakdowns[key])
+        x = np.arange(len(bands))
+        for b, (label, color) in enumerate(zip(labels, colors)):
+            values = _array([breakdowns[key][band].get("bucket_top1", [None] * len(labels))[b] for band in bands])
+            if np.isfinite(values).any():
+                ax.plot(x, values, color=color, lw=plotting.LINE_WIDTH, marker="o", ms=plotting.MARKER_SIZE - 1,
+                        label=label)
+        ax.set_xticks(x, bands)
+        ax.set_ylim(0, None)
+        plotting.style_axes(ax, title, xlabel, "top-1 move match")
+        plotting.percent_axis(ax)
+    plotting.legend(axes[0][1], loc="upper left", bbox_to_anchor=(1.02, 1.0), title="rating")
+    return plotting.save_figure(fig, path)
