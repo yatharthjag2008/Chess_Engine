@@ -249,3 +249,19 @@ def test_evaluate_script(tmp_path: Path, tiny_dataset: Path, capsys: pytest.Capt
     assert evaluate.find_model(str(run / "final_model.pt"), tmp_path / "ckpt") == run / "final_model.pt"
     with pytest.raises(FileNotFoundError):
         evaluate.find_model("nope", tmp_path / "ckpt")
+
+
+def test_compare_models_script(tmp_path: Path, tiny_dataset: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    config = _train_override(tmp_path)
+    assert _load("train").main(["--config", str(config), "--dataset", str(tiny_dataset), "--run-name", "cmp",
+                                "--max-steps", "3"]) == 0
+    run = tmp_path / "ckpt" / "cmp"
+    capsys.readouterr()
+    compare = _load("compare_models")
+    out = tmp_path / "cmp.json"
+    assert compare.main([str(run / "best_model.pt"), str(run / "final_model.pt"), "--config", str(config),
+                         "--dataset", str(tiny_dataset), "--json", str(out)]) == 0
+    printed = capsys.readouterr().out
+    assert "cmp_final_model - cmp_best_model" in printed and out.is_file()
+    with pytest.raises(SystemExit):
+        compare.main(["only_one"])
