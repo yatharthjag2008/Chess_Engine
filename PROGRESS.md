@@ -8,7 +8,7 @@ See [PLAN.md](PLAN.md) for details on each step.
 - [x] 2. Data download + streaming parser
 - [x] 3. Board + move encoding
 - [x] 4. Dataset builder
-- [ ] 5. Model
+- [x] 5. Model
 - [ ] 6. Training pipeline
 - [ ] 7. Evaluation + baselines
 - [ ] 8. Bot move selection + CLI
@@ -259,3 +259,86 @@ the 50k-game sample take ~7 minutes to encode on one core (step 4 can use severa
   no per-row overhead.
 - **Each dataset records its encoding** (plane names, number of moves, format version) in its manifest, and
   `PositionDataset` refuses to load a dataset built with a different encoding.
+
+## Step 5: Model (done 2026-11-23)
+
+**Built** (`chess_engine.model`)
+- `features`: dataset batch → `ModelInputs` (board planes, mover's bucket, opponent's bucket, 5 clock
+  features) and `Targets` (played move, legal mask, result as loss/draw/win).
+- `layers`: `ConditionEncoder` (rating embedding + opponent embedding + clock features → MLP → one vector
+  per position) and `ConditionedResidualBlock` (residual block modulated by that vector).
+- `policy_map`: the 1858 vocabulary moves laid out as 73 move types × 64 from-squares (AlphaZero-style),
+  so the policy head can be convolutional.
+- `heads`: convolutional policy head (default), dense policy head (alternative), win/draw/loss value head.
+- `network`: `RatingConditionedNet`, `build_model(cfg)`, `count_parameters`.
+- `masking`: illegal moves masked out: `masked_logits`, `legal_probs` (with temperature),
+  `legal_log_probs`, `policy_loss` (cross-entropy over legal moves only).
+- `inference`: `MovePredictor` (`chess.Board` + rating → every legal move with its probability, plus
+  win/draw/loss), `save_model` / `load_model` (weights + config + bucket edges + encoding in one file).
+- `scripts/model_summary.py`: parameters per part, CPU speed, estimated epoch time.
+
+**Architecture** (default config)
+
+```
+board planes (20x8x8) -> 3x3 conv stem (64) -> 6 residual blocks (64 channels) -> policy head -> 1858 logits
+                                                  ^ FiLM in every block          -> value head  -> W/D/L
+mover's bucket, opponent's bucket, clocks -> ConditionEncoder -> conditioning vector (64)
+```
+
+| Part | Parameters |
+|---|---|
+| condition encoder | 11,072 |
+| stem | 11,648 |
+| 6 residual blocks | 493,824 |
+| policy head (conv) | 41,737 |
+| value head | 74,771 |
+| **total** | **633,052** |
+
+**Checks**
+- The convolutional head's gather is tested move by move against the raw 73-plane output, and every
+  vocabulary move maps to a distinct (move type, square).
+- **The network learns what it is for** (tiny models, a few seconds of training each, in `tests/test_model_learning.py`):
+  - it memorizes a batch of real positions (over 90% top-1);
+  - from the *same* position it learns a different move for each rating bucket, with both `add` and `film`;
+  - it learns moves that depend on the opponent's rating combined with the clock;
+  - with opponent/clock conditioning turned off it cannot tell those cases apart;
+  - the value head learns that the higher-rated player wins.
+- Untrained, the rating has no effect on the policy, by design (see decisions); every parameter receives
+  gradients.
+- `MovePredictor` covers every legal move, including castling, promotions and Black to move, sums to 1,
+  gives the same results batched as one by one, and survives a save/load round trip.
+
+**Speed** (`python scripts/model_summary.py --threads 4`, laptop CPU, batch 256): forward pass ~1,450
+positions/s, training step ~380 positions/s, so **one epoch over the 3.19M training positions would take
+~2.3 h on this laptop**. This is compute-bound (~180 MFLOP per position per training step), not overhead.
+For comparison: 48 channels × 4 blocks trains at ~780 positions/s and 32 × 4 at ~1,250.
+- 4 torch threads is the fastest setting here (8 is no faster: 4 performance cores).
+- Channels-last memory layout gives only ~8%, and bfloat16 training is not supported by this CPU's oneDNN
+  build.
+- **Implication for step 6:** on the laptop, train on part of an epoch or use a smaller config for quick
+  runs; the full sample (and anything bigger) belongs on a GPU (Colab), as PLAN.md anticipated.
+
+**Decisions**
+- **FiLM conditioning in every residual block** (default; `add` is available). The rating has to change
+  *which* features matter, not just shift them, and putting it in every block lets it act at every depth.
+  The modulation layers start at zero, so training starts from a plain ResNet and learns how much the
+  rating matters; this keeps early training stable.
+- **The opponent's rating and both clocks are inputs too** (both can be turned off in the config). Humans
+  play differently against stronger opponents and in time trouble, and the bot needs to imitate that. At
+  play time they are set from the actual game (default: equal ratings, full clocks).
+- **Clock features are normalized two ways**: a fraction of the starting time *and* log-seconds, so the
+  model sees both "used half my time" and "10 seconds left", which mean different things in 3+0 and 5+3.
+- **Separate learned embedding per bucket** (8 × 32 numbers): simple, and the training data in every bucket
+  is plentiful. Neighbouring buckets are not forced to be similar; that can be revisited if low-data
+  buckets look noisy.
+- **Convolutional policy head** (73 move types per square, gathered to the 1858 moves): 42k parameters instead
+  of 3.8M for a dense head, weights shared across squares, and the spatial structure is kept. The dense
+  head is still available (`policy_head: fc`) for comparison in step 7.
+- **Value head included** (win/draw/loss for the mover, reading the conditioning too). It is an
+  auxiliary training target that helps the trunk learn what matters in a position, and it will be useful for
+  game review. Step 6 sets its loss weight.
+- **The network outputs unmasked logits**; masking is a separate function, applied identically in the loss,
+  in sampling and in inference. Illegal moves get the smallest finite value (not `-inf`), so nothing turns
+  into NaN, also in float16.
+- **Model files are self-describing and safe**: weights + config + bucket edges + encoding info, loaded with
+  `weights_only=True` (an untrusted file cannot run code), and rejected if the encoding differs.

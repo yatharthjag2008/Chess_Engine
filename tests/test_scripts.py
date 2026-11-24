@@ -156,3 +156,15 @@ def test_inspect_dataset_script(tmp_path: Path, capsys: pytest.CaptureFixture[st
 def test_inspect_dataset_script_missing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert _load("inspect_dataset").main(["--dataset", str(tmp_path / "none")]) == 1
     assert "build_dataset" in capsys.readouterr().err
+
+
+def test_model_summary_script(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    override = tmp_path / "small.yaml"
+    override.write_text(yaml.safe_dump({
+        "paths": {"processed_dir": str(tmp_path / "processed")},
+        "model": {"channels": 8, "residual_blocks": 1},
+    }), encoding="utf-8")
+    assert _load("model_summary").main(["--config", str(override), "--batch-size", "4", "--steps", "1"]) == 0
+    out = capsys.readouterr().out
+    assert "8 channels x 1 blocks" in out and "total" in out and "training step" in out
+    assert "build the dataset" in out and "Untrained model on the start position" in out

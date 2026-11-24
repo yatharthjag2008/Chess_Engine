@@ -159,6 +159,28 @@ for batch in train.iter_batches(batch_size=256, shuffle=True, seed=0):
     batch.planes, batch.legal_mask, batch.move, batch.features["bucket"]
 ```
 
+## Model
+
+A ResNet over the board planes whose every residual block is modulated (FiLM) by a learned embedding of
+the mover's rating bucket, the opponent's bucket and the clocks. It outputs logits for all 1858 moves
+(illegal ones are masked out) and a win/draw/loss estimate. The default size is 64 channels × 6 blocks,
+633k parameters.
+
+```python
+import chess
+from chess_engine.config import load_config
+from chess_engine.model import MovePredictor, build_model, load_model
+
+cfg = load_config()
+predictor = MovePredictor(build_model(cfg), cfg.ratings)      # or load_model("model.pt").predictor()
+for p in predictor.predict(chess.Board(), rating=1500)[:3]:
+    print(p.san, f"{p.prob:.1%}")
+```
+
+```bash
+python scripts/model_summary.py        # parameters, speed on this machine, estimated epoch time
+```
+
 ## Project structure
 
 ```
