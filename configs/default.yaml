@@ -62,11 +62,16 @@ ratings:
   # 800-999, 1000-1199, ..., 2000-2199, 2200+
   bucket_edges: [800, 1000, 1200, 1400, 1600, 1800, 2000, 2200]
 
-model:                           # placeholders until step 5
-  architecture: resnet
-  channels: 64
+model:                           # step 5: rating-conditioned policy network
+  architecture: resnet           # residual CNN over the 8x8 board planes
+  channels: 64                   # feature maps per square in the trunk
   residual_blocks: 6
-  rating_embedding_dim: 32
+  rating_embedding_dim: 32       # learned vector per rating bucket
+  conditioning: film             # how rating/clock reach every block: add (shift) | film (scale + shift)
+  condition_on_opponent: true    # also embed the opponent's rating bucket
+  use_clock: true                # both players' time left + increment as extra inputs
+  policy_head: conv              # conv (73 move types per square, few weights) | fc (dense layer)
+  value_head: true               # also predict win/draw/loss for the mover (auxiliary target in step 6)
 
 training:                        # placeholders until step 6
   seed: 42

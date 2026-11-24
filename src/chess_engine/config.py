@@ -207,12 +207,17 @@ class RatingsConfig(_StrictModel):
 
 
 class ModelConfig(_StrictModel):
-    """Model hyperparameters (placeholders until step 5)."""
+    """Rating-conditioned policy network hyperparameters (see ``chess_engine.model``)."""
 
     architecture: Literal["resnet"]
     channels: PositiveInt
     residual_blocks: PositiveInt
     rating_embedding_dim: PositiveInt
+    conditioning: Literal["add", "film"] = "film"
+    condition_on_opponent: bool = True
+    use_clock: bool = True
+    policy_head: Literal["conv", "fc"] = "conv"
+    value_head: bool = True
 
 
 class TrainingConfig(_StrictModel):

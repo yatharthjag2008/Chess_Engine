@@ -129,6 +129,9 @@ def test_invalid_yaml_is_rejected(tmp_path: Path) -> None:
         ({"data": {"dataset": {"shard_size": 0}}}, "shard_size"),
         ({"data": {"dataset": {"skip_first_plies": -1}}}, "skip_first_plies"),
         ({"data": {"dataset": {"workers": 0}}}, "workers"),
+        ({"model": {"conditioning": "concat"}}, "conditioning"),
+        ({"model": {"policy_head": "attention"}}, "policy_head"),
+        ({"model": {"channels": 0}}, "channels"),
     ],
 )
 def test_invalid_values_are_rejected(tmp_path: Path, override: dict, message: str) -> None:
@@ -175,6 +178,13 @@ def test_default_dataset_settings(default_config: Config) -> None:
     assert dataset.shard_size == 200_000
     assert dataset.workers is None
     assert 1 <= dataset.resolved_workers() <= 8
+
+
+def test_default_model_settings(default_config: Config) -> None:
+    model = default_config.model
+    assert (model.architecture, model.channels, model.residual_blocks) == ("resnet", 64, 6)
+    assert model.conditioning == "film" and model.policy_head == "conv"
+    assert model.condition_on_opponent and model.use_clock and model.value_head
 
 
 def test_dataset_workers_override(tmp_path: Path) -> None:
