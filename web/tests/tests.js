@@ -1,7 +1,8 @@
-// Unit tests of board.js, run in a real browser (see harness.js and tests/test_web_js.py).
+// Unit tests of board.js (and review.js, in review_unit.js), run in a real browser (see harness.js and tests/test_web_js.py).
 
 import { Board, START_FEN, glyph, isLightSquare, parseFen, squareOrder } from "../js/board.js";
 import { assert, equal, run, test } from "./harness.js";
+import "./review_unit.js";
 
 function fixture() {
   // A fresh element per test, so listeners of earlier boards cannot react to this test's clicks.
