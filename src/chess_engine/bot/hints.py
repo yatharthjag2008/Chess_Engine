@@ -12,7 +12,7 @@ at your rating): a move most players find gets the vaguest nudge, a rarely found
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from enum import Enum, IntEnum
 from collections import OrderedDict
 from typing import Any
@@ -285,3 +285,51 @@ class HintEngine:
         """The hint of ``tier`` for the side to move in ``board``, a player rated ``rating``."""
         best = self.best(board, rating, opp_rating, **clock)
         return make_hint(board, best.move, tier, best.find_rate, self.cfg, best.only_move)
+
+
+# --------------------------------------------------------------------------- the per-game limit
+
+
+class HintLimitError(Exception):
+    """No hints left in this game."""
+
+
+def position_key(board: chess.Board) -> str:
+    """A position for hint counting: pieces, side to move, castling and en passant (move counters ignored)."""
+    return " ".join(board.fen().split()[:4])
+
+
+@dataclass
+class HintBudget:
+    """Hints in one game: ``limit`` positions may get hints; within a position each request goes one tier further
+    (nudge -> point -> show) at no extra cost. Any hint makes the game unrated."""
+
+    limit: int
+    used: int = 0
+    given: dict[str, int] = field(default_factory=dict)     # position -> highest tier index given there
+
+    @property
+    def left(self) -> int:
+        return max(0, self.limit - self.used)
+
+    @property
+    def rated(self) -> bool:
+        return self.used == 0
+
+    def next_tier(self, board: chess.Board) -> Tier:
+        """The tier the next request in this position gets."""
+        key = position_key(board)
+        return TIERS[min(self.given[key] + 1, len(TIERS) - 1)] if key in self.given else Tier.NUDGE
+
+    def take(self, board: chess.Board, tier: Tier | None = None) -> Tier:
+        """Record a hint request (``tier``: a specific one, else the next) and return its tier.
+
+        Raises HintLimitError for a new position when no hints are left."""
+        key = position_key(board)
+        if key not in self.given:
+            if self.used >= self.limit:
+                raise HintLimitError("no hints left in this game" if self.limit else "hints are off for this game")
+            self.used += 1
+        tier = tier or self.next_tier(board)
+        self.given[key] = max(self.given.get(key, -1), TIERS.index(tier))
+        return tier

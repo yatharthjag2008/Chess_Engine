@@ -7,6 +7,8 @@ import pytest
 
 from chess_engine.bot.hints import (
     Detail,
+    HintBudget,
+    HintLimitError,
     HintEngine,
     HintError,
     Theme,
@@ -180,3 +182,35 @@ def test_no_hint_when_the_game_is_over() -> None:
     engine = HintEngine(FixedPredictor({}), ScriptedAnalyzer(), HintsConfig())
     with pytest.raises(HintError, match="over"):
         engine.hint(board, Tier.NUDGE, 1500)
+
+
+def test_budget_counts_positions_and_escalates_within_one() -> None:
+    budget = HintBudget(limit=2)
+    board = chess.Board()
+    assert budget.rated and budget.left == 2
+    assert [budget.take(board) for _ in range(4)] == [Tier.NUDGE, Tier.POINT, Tier.SHOW, Tier.SHOW]
+    assert budget.used == 1 and not budget.rated and budget.left == 1
+    board.push_uci("e2e4")
+    board.push_uci("e7e5")
+    assert budget.take(board, Tier.SHOW) is Tier.SHOW, "a tier can be asked for directly"
+    assert budget.next_tier(board) is Tier.SHOW and budget.left == 0
+    board.push_uci("g1f3")
+    board.push_uci("b8c6")
+    with pytest.raises(HintLimitError, match="no hints left"):
+        budget.take(board)
+    board.pop()
+    board.pop()
+    assert budget.take(board) is Tier.SHOW, "a position already hinted can still be shown"
+    assert budget.used == 2
+
+
+def test_budget_off_and_position_identity() -> None:
+    with pytest.raises(HintLimitError, match="off"):
+        HintBudget(limit=0).take(chess.Board())
+    budget = HintBudget(limit=1)
+    a = chess.Board()
+    budget.take(a)
+    same = chess.Board()
+    for uci in ["g1f3", "g8f6", "f3g1", "f6g8"]:     # back to the start position, move counters differ
+        same.push_uci(uci)
+    assert budget.next_tier(same) is Tier.POINT
