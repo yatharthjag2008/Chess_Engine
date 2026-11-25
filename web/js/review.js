@@ -186,7 +186,54 @@ export function showReview() {
   $("bottom-name").textContent = name(ui.side);
   renderMoveList();
   $("moves-panel").hidden = false;
+  $("stepper").hidden = false;
   setStatus(`Reviewed ${review.moves.length} moves at depth ${review.depth}.`);
+  goTo(0);
+}
+
+// ------------------------------------------------------------------ stepping
+
+/** The position after ``ply`` moves (0 = the start). */
+export function fenAt(ply) {
+  return ply === 0 ? ui.review.start_fen : ui.review.moves[ply - 1].fen_after;
+}
+
+/** Show the position after ``ply`` moves: board, highlighted move, label, and (later) the panels. */
+export function goTo(ply) {
+  if (!ui.review) return;
+  const moves = ui.review.moves;
+  ui.ply = Math.max(0, Math.min(moves.length, ply));
+  const move = ui.ply ? moves[ui.ply - 1] : null;
+  const fen = fenAt(ui.ply);
+  const check = move && /[+#]$/.test(move.san);
+  ui.board.setPosition(fen, { lastMove: move ? move.uci : null, check });
+  for (const cell of $("move-list").querySelectorAll(".san[data-ply]")) {
+    const current = cell.dataset.ply === String(ui.ply);
+    cell.classList.toggle("current", current);
+    if (current) cell.setAttribute("aria-current", "step"); else cell.removeAttribute("aria-current");
+    if (current && cell.scrollIntoView) cell.scrollIntoView({ block: "nearest" });
+  }
+  $("ply-label").textContent = move ? `${move.move_number} ${move.san}` : "Start";
+  $("first").disabled = $("prev").disabled = ui.ply === 0;
+  $("next").disabled = $("last").disabled = ui.ply === moves.length;
+  for (const listener of onStep) listener(ui.ply, move);
+}
+
+/** Called after every step with (ply, move or null); the panels register here. */
+export const onStep = [];
+
+export function step(delta) { goTo(ui.ply + delta); }
+
+function onKey(event) {
+  if (!ui.review) return;
+  const target = event.target;
+  if (target && target.closest && target.closest("input, textarea, select")) return;
+  const actions = { ArrowLeft: () => step(-1), ArrowRight: () => step(1), Home: () => goTo(0),
+                    End: () => goTo(ui.review.moves.length) };
+  if (actions[event.key]) {
+    event.preventDefault();
+    actions[event.key]();
+  }
 }
 
 /** The move list, one cell per move, each with its class (and symbol for the errors). */
@@ -200,7 +247,7 @@ export function renderMoveList() {
       row = document.createElement("li");
       const num = document.createElement("span");
       num.className = "num";
-      num.textContent = `${move.move_number}.`;
+      num.textContent = `${move.move_number.replace(/\.+$/, "")}.`;
       row.append(num);
       if (move.color === "black") row.append(document.createElement("span"));   // Black to move first
       items.push(row);
@@ -229,6 +276,16 @@ export function init() {
     radio.addEventListener("change", () => renderSourceForm(radio.value));
   }
   renderSourceForm("pgn");
+  $("first").addEventListener("click", () => goTo(0));
+  $("prev").addEventListener("click", () => step(-1));
+  $("next").addEventListener("click", () => step(1));
+  $("last").addEventListener("click", () => goTo(ui.review.moves.length));
+  $("flip").addEventListener("click", () => ui.board.flip());
+  $("move-list").addEventListener("click", (event) => {
+    const cell = event.target.closest(".san[data-ply]");
+    if (cell) goTo(Number(cell.dataset.ply));
+  });
+  document.addEventListener("keydown", onKey);
   $("source-form").addEventListener("submit", (event) => {
     event.preventDefault();
     const form = event.target;

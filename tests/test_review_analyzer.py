@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import chess
 import pytest
 
 from chess_engine.config import ReviewConfig
@@ -127,6 +128,11 @@ def test_graph_and_json_round_trip() -> None:
     assert [m.san for m in again.moves] == [m.san for m in review.moves]
     assert again.moves[5].classification is MoveClass.BLUNDER and again.moves[0].alternatives[0].san == "e4"
     assert review_to_dict(again) == review_to_dict(review)
+    board = chess.Board()
+    for move in data["moves"]:
+        assert move["fen_before"] == board.fen()
+        board.push_uci(move["uci"])
+        assert move["fen_after"] == board.fen()    # the position after the move (the web page shows it)
     assert eval_graph(review_pgn('[Result "*"]\n\n1. e4 *\n', ScriptedAnalyzer(), CFG))[0]["ply"] == 0
 
 

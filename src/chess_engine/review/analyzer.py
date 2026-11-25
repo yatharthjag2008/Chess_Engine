@@ -229,14 +229,20 @@ def eval_graph(review: GameReview) -> list[dict[str, float]]:
     return points
 
 
+def _fen_after(move: MoveReview) -> str:
+    board = chess.Board(move.fen_before)
+    board.push(chess.Move.from_uci(move.uci))
+    return board.fen()
+
+
 def review_to_dict(review: GameReview, key_moment_count: int = 5) -> dict[str, Any]:
     """Everything about a review as plain JSON-ready data (moves, summary, key moments, graph)."""
     return {
         "headers": review.headers,
         "start_fen": review.start_fen,
         "depth": review.depth,
-        "moves": [{**asdict(m), "classification": m.classification.value, "move_number": m.move_number}
-                  for m in review.moves],
+        "moves": [{**asdict(m), "classification": m.classification.value, "move_number": m.move_number,
+                   "fen_after": _fen_after(m)} for m in review.moves],
         "summary": {color: asdict(side) for color, side in review.summary().items()},
         "key_moments": [{**asdict(k), "classification": k.classification.value}
                         for k in key_moments(review, key_moment_count)],
@@ -248,7 +254,7 @@ def review_from_dict(data: dict[str, Any]) -> GameReview:
     """Rebuild a :class:`GameReview` from :func:`review_to_dict`'s output."""
     moves = []
     for m in data["moves"]:
-        fields = {k: v for k, v in m.items() if k != "move_number"}
+        fields = {k: v for k, v in m.items() if k not in ("move_number", "fen_after")}
         fields["classification"] = MoveClass(fields["classification"])
         fields["alternatives"] = [Alternative(**a) for a in fields.get("alternatives", [])]
         moves.append(MoveReview(**fields))

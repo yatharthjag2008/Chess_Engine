@@ -94,6 +94,39 @@ test("the review fills the move list with classes and symbols", async () => {
   assert($("status").textContent.startsWith("Reviewed 7 moves"), $("status").textContent);
 });
 
+test("stepping with buttons, keys and clicks", () => {
+  equal(app.ui.ply, 0);
+  assert($("prev").disabled && !$("next").disabled, "at the start");
+  $("next").click();
+  equal(app.ui.ply, 1);
+  equal($("ply-label").textContent, "1. e4");
+  assert(app.ui.board.squareEl("e4").querySelector(".piece"), "pawn on e4");
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+  equal(app.ui.ply, 2);
+  equal($("ply-label").textContent, "1... e5");
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
+  equal(app.ui.ply, 7);
+  assert($("next").disabled, "at the end");
+  assert(app.ui.board.squareEl("f7").querySelector(".piece"), "queen on f7 after mate");
+  document.querySelector('#move-list .san[data-ply="3"]').click();
+  equal(app.ui.ply, 3);
+  const current = document.querySelectorAll("#move-list .san.current");
+  equal(current.length, 1);
+  equal(current[0].dataset.ply, "3");
+  $("first").click();
+  equal(app.ui.ply, 0);
+  equal(document.querySelectorAll("#move-list .san.current").length, 0);
+  app.goTo(99);
+  equal(app.ui.ply, 7);
+});
+
+test("arrow keys typed into a text box do not step", () => {
+  app.goTo(2);
+  const box = document.querySelector("#source-form textarea, #source-form input");
+  box.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+  equal(app.ui.ply, 2);
+});
+
 test("errors are shown", async () => {
   await app.loadGames("lichess", "x");
   assert($("status").textContent.includes("not a valid"), $("status").textContent);
