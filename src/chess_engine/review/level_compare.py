@@ -1,4 +1,59 @@
-"""Compare what players at your rating play with what stronger players play.
+"""Your level vs. the next level: what players of your rating play here, and what stronger players play.
 
-Placeholder: implemented in step 15.
+For a position, the model gives the likeliest moves at your rating and at higher
+ratings (+200, +400 by default). Where the levels *disagree* and Stockfish says
+the stronger level's choice is clearly better (by at least ``min_win_gap`` win-%
+points), the position is a lesson: it shows a habit that separates you from the
+next level. Everywhere else the levels agree, or the difference does not matter,
+and nothing is flagged.
+
+    choices = level_choices(predictor, board, [1400, 1600, 1800], opp_rating=1450)
+    choices[0].moves[0].san, choices[0].moves[0].prob     # the 1400s' favourite move here
 """
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass
+
+import chess
+
+from chess_engine.model.inference import MovePredictor, MoveProbability
+
+
+@dataclass(frozen=True)
+class LevelChoice:
+    """The likeliest moves of players at one rating in one position."""
+
+    rating: int
+    moves: list[MoveProbability]          # likeliest first
+
+    @property
+    def top(self) -> MoveProbability:
+        return self.moves[0]
+
+
+def level_choices(
+    predictor: MovePredictor,
+    board: chess.Board,
+    ratings: Sequence[int],
+    opp_rating: int | None = None,
+    top: int = 3,
+    clock: float | None = None,
+    opp_clock: float | None = None,
+    base_seconds: int = 180,
+    increment: int = 0,
+) -> list[LevelChoice]:
+    """The ``top`` likeliest moves at each rating, in one batched model call.
+
+    The opponent's rating is the same for every level (default: each level's own rating):
+    the question is what a stronger player would play against *this* opponent.
+    """
+    if not ratings:
+        return []
+    n = len(ratings)
+    predictions = predictor.predict_many(
+        [board] * n, list(ratings), opp_ratings=[opp_rating] * n if opp_rating is not None else list(ratings),
+        clocks=clock, opp_clocks=opp_clock, base_seconds=base_seconds, increment=increment,
+    )
+    return [LevelChoice(rating, prediction.moves[:top]) for rating, prediction in zip(ratings, predictions)]
