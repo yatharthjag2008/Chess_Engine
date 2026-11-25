@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import chess
 import pytest
 
 from chess_engine.bot.adaptive import (
     HISTORY,
+    AdaptiveGame,
     LiveAdjuster,
     ProfileStore,
     bot_rating_for,
     expected_score,
     k_for,
+    score_for,
     update_rating,
 )
 from chess_engine.config import AdaptiveConfig
@@ -128,3 +131,45 @@ def test_live_averages_recent_moves_and_reports_the_mean_rating() -> None:
     for _ in range(10):
         live.observe(LOSING)
     assert 1500 < live.mean_rating < live.rating
+
+
+def _outcome(winner):
+    from chess_engine.bot.game import Outcome
+
+    result = "1/2-1/2" if winner is None else "1-0" if winner == chess.WHITE else "0-1"
+    return Outcome(result, "checkmate" if winner is not None else "stalemate", winner)
+
+
+class _Bot:
+    rating = 1500
+
+
+def test_score_for() -> None:
+    assert score_for(_outcome(chess.WHITE), chess.WHITE) == 1.0
+    assert score_for(_outcome(chess.WHITE), chess.BLACK) == 0.0
+    assert score_for(_outcome(None), chess.BLACK) == 0.5
+
+
+def test_adaptive_game_live_changes_the_bot_and_records_the_mean(tmp_path) -> None:
+    store = ProfileStore(tmp_path / "a.json", CFG)
+    game = AdaptiveGame("live", 1500, CFG)
+    bot = _Bot()
+    new = [game.after_bot_move(bot, LOSING) for _ in range(CFG.live_after + 1)]
+    assert new[-1] == 1550 and bot.rating == 1550 == game.current
+    profile = game.finish(store, _outcome(chess.BLACK), chess.WHITE, rated=True)
+    mean = game.live.mean_rating
+    assert profile.history[-1].bot_rating == round(mean) and profile.history[-1].mode == "live"
+    assert game.finish(store, _outcome(chess.BLACK), chess.WHITE, rated=True) is None, "recorded once"
+    assert store.load().games == 1
+
+
+def test_adaptive_game_records_only_rated_finished_games(tmp_path) -> None:
+    store = ProfileStore(tmp_path / "a.json", CFG)
+    assert AdaptiveGame("off", 1500, CFG).finish(store, _outcome(chess.WHITE), chess.WHITE, True) is None
+    between = AdaptiveGame("between", 1200, CFG)
+    assert between.after_bot_move(_Bot(), LOSING) is None and between.current is None
+    assert between.finish(store, None, chess.WHITE, True) is None, "not finished"
+    assert between.finish(store, _outcome(chess.WHITE), chess.WHITE, rated=False) is None, "hints used"
+    assert between.finish(store, _outcome(chess.WHITE), chess.WHITE, rated=True).rating == 1240
+    with pytest.raises(ValueError, match="mode"):
+        AdaptiveGame("sometimes", 1500, CFG)

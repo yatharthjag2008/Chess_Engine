@@ -16,8 +16,17 @@ import os
 import threading
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+import chess
 
 from chess_engine.config import AdaptiveConfig
+
+if TYPE_CHECKING:
+    from chess_engine.bot.game import Outcome
+    from chess_engine.bot.player import BotPlayer
+
+MODES = ("off", "between", "live")
 
 
 # --------------------------------------------------------------------------- between games
@@ -192,3 +201,51 @@ class LiveAdjuster:
         self.rating = target
         self.changes.append(RatingChange(moves, target, round(average, 3)))
         return target
+
+
+# --------------------------------------------------------------------------- one game
+
+
+def score_for(outcome: Outcome, human: chess.Color) -> float:
+    """Your score in a finished game: 1 win, 0.5 draw, 0 loss."""
+    if outcome.winner is None:
+        return 0.5
+    return 1.0 if outcome.winner == human else 0.0
+
+
+@dataclass
+class AdaptiveGame:
+    """Adaptive difficulty for one game: live changes to the bot, and recording the result once it ends."""
+
+    mode: str
+    start: int                               # the bot's rating when the game started
+    cfg: AdaptiveConfig
+    live: LiveAdjuster | None = None
+    recorded: Profile | None = None          # the profile after this game was recorded
+
+    def __post_init__(self) -> None:
+        if self.mode not in MODES:
+            raise ValueError(f"adaptive mode must be one of {MODES}, got {self.mode!r}")
+        if self.mode == "live" and self.live is None:
+            self.live = LiveAdjuster(self.start, self.cfg)
+
+    @property
+    def current(self) -> int | None:
+        return self.live.rating if self.live else None
+
+    def after_bot_move(self, bot: BotPlayer, wdl: tuple[float, float, float] | None) -> int | None:
+        """Live mode: look at the bot's view of the position it moved from; returns its new rating if it changed."""
+        if self.live is None:
+            return None
+        new = self.live.observe(wdl)
+        if new is not None:
+            bot.rating = new
+        return new
+
+    def finish(self, store: ProfileStore, outcome: Outcome | None, human: chess.Color, rated: bool) -> Profile | None:
+        """Record a finished, rated game (no hints) in your profile, once. Mode "off" never records."""
+        if self.mode == "off" or self.recorded is not None or outcome is None or not rated:
+            return None
+        bot_rating = int(round(self.live.mean_rating)) if self.live else self.start
+        self.recorded = store.record(bot_rating, score_for(outcome, human), self.mode)
+        return self.recorded
