@@ -124,3 +124,47 @@ def test_examples_from_games() -> None:
 
     with pytest.raises(ValueError, match="no positions"):
         examples_from_games(games, predictor.ratings, 1500, skip_opening_plies=50)
+
+
+def _examples(n_games: int = 12):
+    from chess_engine.eval.player_games import player_games_from_pgn
+    from chess_engine.style.data import examples_from_games, split_games
+
+    predictor = small_predictor()
+    games = player_games_from_pgn(style_pgn(n_games), player="Ann")
+    train, val = split_games(games, 0.25, seed=0)
+    return predictor, examples_from_games(train, predictor.ratings, 1500), examples_from_games(val, predictor.ratings,
+                                                                                               1500)
+
+
+def test_training_learns_the_players_moves() -> None:
+    from chess_engine.config import StyleConfig
+    from chess_engine.style.train import score, train_style
+
+    predictor, train, val = _examples()
+    before = score(predictor.model, val)
+    logs: list[str] = []
+    result = train_style(predictor.model, train, val, StyleConfig(epochs=30, learning_rate=0.05, patience=5),
+                         log=logs.append)
+    assert result.base == before
+    assert result.styled.loss < before.loss * 0.5, (before, result.styled)
+    # Not 100%: moves are encoded from the mover's side, so Ann's ...Nf6 as Black shares a slot with Nf3 as White.
+    assert result.styled.top1 >= before.top1 + 0.3, (before, result.styled)
+    assert result.best_epoch >= 1 and len(logs) == len(result.history) and logs[0].startswith("epoch 1:")
+    assert result.train_positions == len(train) and result.val_positions == len(val)
+    for p in predictor.model.parameters():
+        assert p.requires_grad is False, "the base is frozen by the styled net"
+
+
+def test_training_keeps_the_best_epoch_and_stops_early() -> None:
+    from chess_engine.config import StyleConfig
+    from chess_engine.style.train import train_style
+
+    predictor, train, val = _examples()
+    # A huge learning rate makes the held-out loss blow up: the best is the untrained adapter (epoch 0) or an
+    # early epoch, and training stops after `patience` bad epochs.
+    result = train_style(predictor.model, train, val, StyleConfig(epochs=30, learning_rate=50.0, patience=2))
+    assert len(result.history) < 30
+    assert result.styled.loss <= result.base.loss + 1e-6, "never worse than the base on held-out games"
+    no_val = train_style(predictor.model, train, None, StyleConfig(epochs=2))
+    assert no_val.base is None and no_val.styled is None and no_val.best_epoch == 2
