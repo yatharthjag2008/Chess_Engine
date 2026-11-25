@@ -8,17 +8,46 @@
 
 The opponent's rating and both clocks are passed to the model too (they change
 what humans play), so a bot in time trouble plays like a human in time trouble.
+
+Building a bot from the config (``bot:`` section) or a model file::
+
+    bot = load_bot(cfg)                              # cfg.bot.model at cfg.bot.rating
+    bot = load_bot(cfg, rating=1800, model_path="checkpoints/my_run/best_model.pt")
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import chess
 import numpy as np
 
 from chess_engine.bot.sampling import SamplingSettings, adjust_probabilities, sample_index
-from chess_engine.model.inference import MovePredictor, MoveProbability
+from chess_engine.config import BotConfig, Config, RatingsConfig
+from chess_engine.model.inference import MovePredictor, MoveProbability, load_model
+
+#: Ratings a bot accepts. Below the lowest bucket edge there is no training data; far above the
+#: open-ended top bucket the model only knows "2200+", so very high ratings are refused, not faked.
+MIN_RATING = 400
+MAX_RATING = 3000
+
+
+class BotError(Exception):
+    """A bot cannot be created (missing model file, rating out of range, ...)."""
+
+
+def check_rating(rating: int) -> int:
+    """``rating`` if it is in ``[MIN_RATING, MAX_RATING]``; raises :class:`BotError` otherwise."""
+    if not MIN_RATING <= rating <= MAX_RATING:
+        raise BotError(f"rating must be between {MIN_RATING} and {MAX_RATING}, got {rating}")
+    return rating
+
+
+def rating_label(rating: int, ratings: RatingsConfig) -> str:
+    """The training bucket a rating falls in, e.g. ``1400-1599`` (ratings below the lowest edge use bucket 0)."""
+    index = ratings.bucket_index(rating) if rating >= ratings.bucket_edges[0] else 0
+    return ratings.bucket_labels()[index]
 
 
 @dataclass(frozen=True)
@@ -45,12 +74,23 @@ class BotPlayer:
 
     def __init__(self, predictor: MovePredictor, rating: int, sampling: SamplingSettings | None = None,
                  seed: int | None = None) -> None:
-        if rating <= 0:
-            raise ValueError("rating must be positive")
         self.predictor = predictor
-        self.rating = rating
+        self.rating = check_rating(rating)
         self.sampling = sampling or SamplingSettings()
         self.rng = np.random.default_rng(seed)
+
+    @property
+    def bucket(self) -> str:
+        """The rating bucket whose players the bot imitates, e.g. ``1400-1599``."""
+        return rating_label(self.rating, self.predictor.ratings)
+
+    def describe(self) -> str:
+        s = self.sampling
+        how = ("always the likeliest move" if s.greedy else
+               "moves as often as humans play them" if s == SamplingSettings() else
+               f"temperature {s.temperature:g}" + (f", top-{s.top_k}" if s.top_k else "")
+               + (f", top-p {s.top_p:g}" if s.top_p < 1 else "") + (f", min {s.min_prob:g}" if s.min_prob else ""))
+        return f"bot rated {self.rating} (plays like {self.bucket} players; {how})"
 
     def choose_move(
         self,
@@ -86,3 +126,29 @@ class BotPlayer:
         index = sample_index(play, self.rng)
         chosen = candidates[index]
         return BotMove(chosen.move, chosen.san, chosen.prob, float(play[index]), candidates, prediction.wdl)
+
+
+def sampling_from_config(bot: BotConfig) -> SamplingSettings:
+    return SamplingSettings(bot.temperature, bot.top_k, bot.top_p, bot.min_prob)
+
+
+def load_bot(
+    cfg: Config,
+    rating: int | None = None,
+    model_path: str | Path | None = None,
+    sampling: SamplingSettings | None = None,
+    seed: int | None = None,
+    device: str = "cpu",
+) -> BotPlayer:
+    """A bot from a saved model; anything not given comes from ``cfg.bot``.
+
+    Raises:
+        BotError: the model file does not exist or the rating is out of range.
+    """
+    path = Path(model_path) if model_path is not None else cfg.bot.model
+    if not path.is_file():
+        raise BotError(f"model file not found: {path} (train one with scripts/train.py, or pass --model)")
+    rating = check_rating(rating if rating is not None else cfg.bot.rating)
+    predictor = load_model(path, device).predictor(device)
+    return BotPlayer(predictor, rating, sampling or sampling_from_config(cfg.bot),
+                     seed if seed is not None else cfg.bot.seed)

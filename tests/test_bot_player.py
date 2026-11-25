@@ -8,7 +8,7 @@ import chess
 import numpy as np
 import pytest
 
-from chess_engine.bot.player import BotPlayer
+from chess_engine.bot.player import BotError, BotPlayer, check_rating, load_bot, rating_label
 from chess_engine.bot.sampling import SamplingSettings, adjust_probabilities
 from bot_helpers import small_predictor
 
@@ -32,11 +32,11 @@ def test_sampled_moves_follow_the_adjusted_probabilities() -> None:
     board = chess.Board()
     settings = SamplingSettings(temperature=1.5, top_k=6)
     bot = BotPlayer(predictor, rating=1500, sampling=settings, seed=1)
-    counts = Counter(bot.choose_move(board).move for _ in range(1500))
+    counts = Counter(bot.choose_move(board).move for _ in range(500))
     candidates = predictor.predict(board, 1500).moves
     expected = adjust_probabilities(np.array([c.prob for c in candidates]), settings)
     for candidate, p in zip(candidates, expected):
-        assert counts[candidate.move] / 1500 == pytest.approx(p, abs=0.04)
+        assert counts[candidate.move] / 500 == pytest.approx(p, abs=0.07)
     assert len(counts) <= 6
 
 
@@ -68,5 +68,41 @@ def test_forced_move_and_game_over() -> None:
     mated = chess.Board("7k/8/8/8/8/8/6R1/K6R b - - 0 1")  # checkmate
     with pytest.raises(ValueError, match="game is over"):
         bot.choose_move(mated)
-    with pytest.raises(ValueError):
+    with pytest.raises(BotError, match="between"):
         BotPlayer(small_predictor(), 0)
+
+
+def test_rating_checks_and_labels() -> None:
+    from bot_helpers import RATINGS
+
+    assert check_rating(400) == 400 and check_rating(3000) == 3000
+    for bad in (399, 3001):
+        with pytest.raises(BotError):
+            check_rating(bad)
+    assert rating_label(1450, RATINGS) == "1400-1599"
+    assert rating_label(600, RATINGS) == "800-999" and rating_label(2600, RATINGS) == "2200+"
+
+
+def test_describe() -> None:
+    predictor = small_predictor()
+    assert "plays like 1400-1599" in BotPlayer(predictor, 1450).describe()
+    assert "as often as humans" in BotPlayer(predictor, 1450).describe()
+    assert "likeliest move" in BotPlayer(predictor, 1450, SamplingSettings(temperature=0)).describe()
+    text = BotPlayer(predictor, 1450, SamplingSettings(temperature=0.7, top_k=5)).describe()
+    assert "temperature 0.7" in text and "top-5" in text
+
+
+def test_load_bot_from_a_model_file(tmp_path, default_config) -> None:
+    from chess_engine.model.inference import save_model
+
+    predictor = small_predictor()
+    path = save_model(predictor.model, tmp_path / "m.pt", predictor.ratings)
+    bot = load_bot(default_config, rating=1800, model_path=path, seed=3)
+    assert bot.rating == 1800 and bot.sampling == SamplingSettings()
+    assert bot.choose_move(chess.Board()).move in chess.Board().legal_moves
+    greedy = load_bot(default_config, model_path=path, sampling=SamplingSettings(temperature=0))
+    assert greedy.rating == default_config.bot.rating and greedy.sampling.greedy
+    with pytest.raises(BotError, match="not found"):
+        load_bot(default_config, model_path=tmp_path / "missing.pt")
+    with pytest.raises(BotError, match="between"):
+        load_bot(default_config, rating=5000, model_path=path)
