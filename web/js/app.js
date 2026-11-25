@@ -18,6 +18,8 @@ export const ui = {
   hint: null,        // { id, fen, data }: the latest hint, shown while that game and position are on the board
   adaptive: null,    // your adaptive-difficulty profile from the server
   adaptiveFor: null, // the finished game whose result was last loaded into it
+  styles: [],        // trained styles and ghosts the bot can play in
+  savedStyle: "",    // the style chosen last time (from this browser's settings)
 };
 
 const LOW_TIME = 20; // seconds: the clock turns red below this
@@ -356,6 +358,7 @@ export function loadSettings(form) {
   if (color) color.checked = true;
   const select = form.elements.time_control;
   if ([...select.options].some((o) => o.value === (saved.time_control || ""))) select.value = saved.time_control || "";
+  ui.savedStyle = typeof saved.style === "string" ? saved.style : "";   // applied once the styles are loaded
   const adaptive = form.querySelector(`input[name="adaptive"][value="${saved.adaptive}"]`);
   if (adaptive) adaptive.checked = true;
   const hints = form.elements.hint_limit;
@@ -370,6 +373,7 @@ export function readForm(form) {
   if (time) options.time_control = time;
   if (data.get("hint_limit") !== null) options.hint_limit = Number(data.get("hint_limit"));
   if (data.get("adaptive")) options.adaptive = data.get("adaptive");
+  if (data.get("style")) options.style = data.get("style");
   return options;
 }
 
@@ -378,8 +382,48 @@ export function readForm(form) {
 /** "Bot 1550", with an arrow when live adaptation has moved it from where the game started. */
 export function botLabel(state) {
   const a = state.adaptive;
-  if (!a || a.mode !== "live" || state.bot_rating === a.start_rating) return `Bot ${state.bot_rating}`;
-  return `Bot ${state.bot_rating} ${state.bot_rating > a.start_rating ? "\u2191" : "\u2193"}`;
+  const name = `Bot ${state.bot_rating}` + (state.style ? ` (${state.style.player})` : "");
+  if (!a || a.mode !== "live" || state.bot_rating === a.start_rating) return name;
+  return `${name} ${state.bot_rating > a.start_rating ? "\u2191" : "\u2193"}`;
+}
+
+// ------------------------------------------------------------------ styles (step 19)
+
+/** "Ann: style, 120 games" / "me: ghost, games up to 2025-05-31". */
+export function styleLabel(style) {
+  const what = style.kind === "ghost" ? `ghost, games up to ${style.until}` : `style, ${style.games} games`;
+  return `${style.player}: ${what}`;
+}
+
+/** Fill the Style choice from the server (hidden when no style has been trained). */
+export async function loadStyles() {
+  let styles = [];
+  try {
+    styles = await api.styles();
+  } catch {
+    styles = [];
+  }
+  ui.styles = styles;
+  const select = $("style");
+  const keep = select.value || ui.savedStyle || "";
+  select.replaceChildren(select.options[0]);
+  for (const style of styles) {
+    const option = document.createElement("option");
+    option.value = style.name;
+    option.textContent = styleLabel(style);
+    select.append(option);
+  }
+  if (styles.some((s) => s.name === keep)) select.value = keep;
+  $("style-field").hidden = styles.length === 0;
+  renderStyleNote();
+  return styles;
+}
+
+export function renderStyleNote() {
+  const style = (ui.styles || []).find((s) => s.name === $("style").value);
+  $("style-note").textContent = !style ? "" : style.weight < 1
+    ? `Few games, so it is blended with the rating model (weight ${style.weight.toFixed(2)}).`
+    : `Imitates ${style.player}'s choices fully.`;
 }
 
 /** The sentence about your adaptive rating once a game is over. */
@@ -501,6 +545,8 @@ export function init() {
   }
   renderDifficulty();
   loadAdaptive();
+  $("style").addEventListener("change", renderStyleNote);
+  loadStyles();
   $("new-game").addEventListener("submit", (event) => {
     event.preventDefault();
     const options = readForm(event.target);

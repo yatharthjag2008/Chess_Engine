@@ -49,6 +49,13 @@
           <span>Bot rating <output id="rating-value">1500</output></span>
           <input id="rating" name="rating" type="range" min="800" max="2400" step="50" value="1500">
         </label>
+        <label class="field" id="style-field" hidden>
+          <span>Style</span>
+          <select id="style" name="style">
+            <option value="">None: players of this rating</option>
+          </select>
+          <small class="hint" id="style-note"></small>
+        </label>
         <fieldset class="field">
           <legend>Your side</legend>
           <div class="segmented" role="radiogroup">
