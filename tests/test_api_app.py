@@ -327,3 +327,9 @@ def test_review_page_and_navigation_are_served(client: TestClient) -> None:
     for asset in ("/css/review.css", "/js/review.js", "/js/api.js"):
         assert client.get(asset).status_code == 200
     assert "reviewBotGame" in client.get("/js/api.js").text
+
+
+def test_review_styles(client: TestClient) -> None:
+    css = client.get("/css/review.css").text
+    for rule in (".graph .marker.blunder", ".square.best-from", ".review-moves .san.current", "prefers-color-scheme"):
+        assert rule in css, rule
