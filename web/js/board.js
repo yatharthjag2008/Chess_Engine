@@ -8,9 +8,9 @@
 //   board.setPosition(fen, { lastMove: "e2e4", check: false });
 //   board.setLegalMoves(state.legal_moves, "white");   // who may move now (null = nobody)
 //
-// Moving: click a piece to see where it can go, then click the target square. The
-// board only offers legal moves (it is given the list by the server, it does not know
-// the rules itself). Promotions ask which piece to take.
+// Moving: click a piece to see where it can go, then click the target square, or drag the
+// piece there (mouse, pen or touch). The board only offers legal moves (it is given the
+// list by the server, it does not know the rules itself). Promotions ask which piece to take.
 //
 // Pieces are Unicode chess symbols (the filled set for both colours, coloured with CSS),
 // so there are no image files and no third-party code.
@@ -82,8 +82,76 @@ export class Board {
     this.legal = [];          // [{ uci, from_square, to_square, promotion }]
     this.mover = null;        // the colour allowed to move, or null
     this.selected = null;     // square of the selected piece
+    this.drag = null;         // { from, startX, startY, ghost, moved }
+    this.suppressClick = false;
     this.el.addEventListener("click", (event) => this.handleClick(event));
+    this.el.addEventListener("pointerdown", (event) => this.dragStart(event));
     this.render();
+  }
+
+  /** The square under viewport point (x, y), from the board's geometry (null outside the board). */
+  squareAt(x, y) {
+    const rect = this.el.getBoundingClientRect();
+    const col = Math.floor(((x - rect.left) / rect.width) * 8);
+    const row = Math.floor(((y - rect.top) / rect.height) * 8);
+    if (col < 0 || col > 7 || row < 0 || row > 7) return null;
+    return squareOrder(this.orientation)[row * 8 + col];
+  }
+
+  dragStart(event) {
+    if (!this.mover || this.promotionOpen || event.button > 0) return;
+    const cell = event.target.closest("[data-square]");
+    if (!cell) return;
+    const piece = parseFen(this.fen).pieces.get(cell.dataset.square);
+    if (!piece || piece.color !== this.mover || !this.targetsFrom(cell.dataset.square).length) return;
+    event.preventDefault();
+    this.drag = { from: cell.dataset.square, startX: event.clientX, startY: event.clientY, ghost: null, moved: false };
+    const move = (e) => this.dragMove(e);
+    const up = (e) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      this.dragEnd(e);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  }
+
+  dragMove(event) {
+    const drag = this.drag;
+    if (!drag) return;
+    if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 4) return;
+    if (!drag.moved) {
+      drag.moved = true;
+      this.select(drag.from);                     // show the targets while dragging
+      const source = this.squareEl(drag.from).querySelector(".piece");
+      source.classList.add("dragging");
+      const ghost = source.cloneNode(true);
+      ghost.classList.remove("dragging");
+      ghost.classList.add("drag-ghost");
+      ghost.style.fontSize = `${this.el.getBoundingClientRect().width * 0.102}px`;
+      document.body.append(ghost);
+      drag.ghost = ghost;
+    }
+    drag.ghost.style.left = `${event.clientX}px`;
+    drag.ghost.style.top = `${event.clientY}px`;
+  }
+
+  dragEnd(event) {
+    const drag = this.drag;
+    this.drag = null;
+    if (!drag || !drag.moved) return;             // a plain click: the click handler deals with it
+    drag.ghost.remove();
+    this.suppressClick = true;                    // the browser also fires a click after a drag
+    setTimeout(() => { this.suppressClick = false; }, 0);
+    const to = this.squareAt(event.clientX, event.clientY);
+    const moves = this.targetsFrom(drag.from).filter((m) => m.to_square === to);
+    if (moves.length) {
+      this.commit(moves);
+    } else {
+      this.select(null);                          // dropped off target: the piece goes back
+    }
   }
 
   /** Moves the player may make now (from the API's legal_moves) and whose they are. */
@@ -100,7 +168,7 @@ export class Board {
 
   handleClick(event) {
     const cell = event.target.closest("[data-square]");
-    if (!cell || !this.mover || this.promotionOpen) return;
+    if (!cell || !this.mover || this.promotionOpen || this.suppressClick) return;
     const square = cell.dataset.square;
     if (this.selected) {
       const moves = this.targetsFrom(this.selected).filter((m) => m.to_square === square);

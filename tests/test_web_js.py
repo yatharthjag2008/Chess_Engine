@@ -110,9 +110,9 @@ def check_results(dom: str, minimum: int) -> None:
 
 
 def test_web_ui_javascript_unit_tests(web_server: str, tmp_path: Path) -> None:
-    check_results(dump_dom(browser_or_skip(), f"{web_server}/tests/index.html", tmp_path / "profile"), 9)
+    check_results(dump_dom(browser_or_skip(), f"{web_server}/tests/index.html", tmp_path / "profile"), 12)
 
 
 def test_play_page_end_to_end(api_server: str, tmp_path: Path) -> None:
     dom = dump_dom(browser_or_skip(), f"{api_server}/tests/app.html", tmp_path / "profile", budget_ms=20000)
-    check_results(dom, 16)
+    check_results(dom, 18)

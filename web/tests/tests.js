@@ -148,4 +148,59 @@ test("promotion asks which piece and plays the choice", async () => {
   promotionEl.remove();
 });
 
+// ------------------------------------------------------------------ dragging
+
+function pointer(type, target, x, y) {
+  target.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0, pointerId: 1 }));
+}
+
+function centre(board, square) {
+  const rect = board.squareEl(square).getBoundingClientRect();
+  return [rect.left + rect.width / 2, rect.top + rect.height / 2];
+}
+
+test("squareAt maps points to squares in both orientations", () => {
+  const board = new Board(fixture());
+  const rect = board.el.getBoundingClientRect();
+  equal(board.squareAt(rect.left + 1, rect.top + 1), "a8");
+  equal(board.squareAt(rect.right - 1, rect.bottom - 1), "h1");
+  equal(board.squareAt(rect.left - 5, rect.top + 5), null);
+  board.flip();
+  equal(board.squareAt(rect.left + 1, rect.top + 1), "h1");
+});
+
+test("dragging a piece to a target plays the move", () => {
+  const played = [];
+  const board = new Board(fixture(), { onMove: (uci) => played.push(uci) });
+  board.setLegalMoves(START_MOVES, "white");
+  const [x0, y0] = centre(board, "g1");
+  const [x1, y1] = centre(board, "f3");
+  pointer("pointerdown", board.squareEl("g1").querySelector(".piece"), x0, y0);
+  pointer("pointermove", window, (x0 + x1) / 2, (y0 + y1) / 2);
+  assert(document.querySelector(".drag-ghost"), "a ghost piece follows the pointer");
+  assert(board.squareEl("f3").classList.contains("target"), "targets shown while dragging");
+  pointer("pointermove", window, x1, y1);
+  pointer("pointerup", window, x1, y1);
+  equal(played, ["g1f3"]);
+  equal(document.querySelectorAll(".drag-ghost").length, 0, "ghost removed");
+});
+
+test("dropping off a target or a tiny drag plays nothing", () => {
+  const played = [];
+  const board = new Board(fixture(), { onMove: (uci) => played.push(uci) });
+  board.setLegalMoves(START_MOVES, "white");
+  const [x0, y0] = centre(board, "e2");
+  const [x1, y1] = centre(board, "e5");
+  pointer("pointerdown", board.squareEl("e2").querySelector(".piece"), x0, y0);
+  pointer("pointermove", window, x1, y1);
+  pointer("pointerup", window, x1, y1);
+  equal(played, []);
+  equal(board.selected, null, "the piece went back");
+  pointer("pointerdown", board.squareEl("e2").querySelector(".piece"), x0, y0);
+  pointer("pointermove", window, x0 + 2, y0 + 1);   // under the drag threshold: a click, not a drag
+  pointer("pointerup", window, x0 + 2, y0 + 1);
+  equal(document.querySelectorAll(".drag-ghost").length, 0);
+  equal(played, []);
+});
+
 run();

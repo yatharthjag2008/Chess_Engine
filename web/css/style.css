@@ -162,6 +162,9 @@ body {
 .clock.low { color: var(--danger); }
 .clock.running.low { background: var(--danger); color: #ffffff; border-color: var(--danger); }
 .status { margin: 4px 2px 0; color: var(--ink-2); min-height: 1.45em; }
+.keys { margin: 6px 2px 0; }
+kbd { font: 0.85em ui-monospace, monospace; padding: 0 5px; border: 1px solid var(--line); border-radius: 4px;
+  background: var(--surface); }
 
 /* ---------------------------------------------------------------- side panels */
 

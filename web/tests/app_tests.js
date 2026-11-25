@@ -185,6 +185,26 @@ test("a checkmate ends the game with the right banner", async () => {
   assert($("result-banner").hidden, "banner closed");
 });
 
+test("new-game settings are remembered in this browser", () => {
+  app.saveSettings({ rating: 1750, color: "black", time_control: "10+0" });
+  const form = $("new-game");
+  form.elements.rating.value = "1500";
+  app.loadSettings(form);
+  equal(app.readForm(form), { rating: 1750, color: "black", time_control: "10+0" });
+  localStorage.setItem("human-chess-bot.settings", "{broken");
+  app.loadSettings(form);                             // ignored, no error
+  localStorage.removeItem("human-chess-bot.settings");
+});
+
+test("the f key flips the board, but not while typing in the form", () => {
+  const before = app.ui.board.orientation;
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "f", bubbles: true }));
+  assert(app.ui.board.orientation !== before, "flipped");
+  $("rating").dispatchEvent(new KeyboardEvent("keydown", { key: "f", bubbles: true }));
+  assert(app.ui.board.orientation !== before, "not flipped back by a key typed in the form");
+  $("flip").click();
+});
+
 test("server errors are shown, and the game resyncs", async () => {
   await app.startGame({ rating: 1500, color: "white", seed: 3 });
   await app.playMove("e2e5");           // illegal: the server says so

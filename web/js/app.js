@@ -260,6 +260,24 @@ export async function playMove(uci) {
   if (error) showError(error);
 }
 
+const SETTINGS_KEY = "human-chess-bot.settings";
+
+/** Remember the new-game settings in this browser (best effort: storage may be unavailable). */
+export function saveSettings(options) {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(options)); } catch { /* private mode etc. */ }
+}
+
+export function loadSettings(form) {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null"); } catch { saved = null; }
+  if (!saved || typeof saved !== "object") return;
+  if (Number.isFinite(saved.rating)) form.elements.rating.value = String(saved.rating);
+  const color = form.querySelector(`input[name="color"][value="${saved.color}"]`);
+  if (color) color.checked = true;
+  const select = form.elements.time_control;
+  if ([...select.options].some((o) => o.value === (saved.time_control || ""))) select.value = saved.time_control || "";
+}
+
 export function readForm(form) {
   const data = new FormData(form);
   const options = { rating: Number(data.get("rating")), color: data.get("color") };
@@ -338,9 +356,19 @@ export function init() {
   const showRating = () => { output.textContent = rating.value; };
   rating.addEventListener("input", showRating);
   showRating();
+  loadSettings($("new-game"));
+  showRating();
   $("new-game").addEventListener("submit", (event) => {
     event.preventDefault();
-    startGame(readForm(event.target));
+    const options = readForm(event.target);
+    saveSettings(options);
+    startGame(options);
+  });
+  document.addEventListener("keydown", (event) => {
+    const typing = event.target instanceof Element && event.target.closest("input, select, textarea, button");
+    if (typing || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.key === "f") $("flip").click();
+    if (event.key === "Escape") ui.board.select(null);
   });
   setInterval(updateClocks, 100);
   $("resign").addEventListener("click", resign);
