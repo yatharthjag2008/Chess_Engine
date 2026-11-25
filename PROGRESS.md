@@ -1203,3 +1203,21 @@ warnings and 99% statement coverage.
   no extra dependency (`requests` was already there), and nothing in the tests touches the real site.
 - **Honest docs over polished claims**: the README leads with what works and what does not yet (the model's weak
   sense of rating), and points to the full training config as the next step rather than to more features.
+
+## After the plan: the public website (2026-11-25)
+
+**Built**: a GitHub Pages site ([yatharthjag2008.github.io/Chess_Engine](https://yatharthjag2008.github.io/Chess_Engine/),
+published by `.github/workflows/pages.yml`) where anyone can play the bot without installing anything.
+- `chess_engine.web_export` writes the model as plain numbers (batch norm folded into the convolutions, 632k floats,
+  2.5 MB) with a manifest: the move vocabulary, the rating buckets, the clock scaling, and PyTorch's predictions for
+  six test positions (start, Black to move, mate threats, promotions, castling, en passant).
+- `site/js/engine.js` recomputes the network in plain JavaScript (convolutions, FiLM, both heads) and encodes positions
+  exactly like the Python code; `site/js/site.js` is the page: rating, side, the bot sampling moves as often as players
+  of that rating do, "what players at this rating play", take back, resign, PGN download. The rules come from chess.js
+  1.4.0 (BSD-2, vendored in `site/vendor/`).
+- **Checked**: in headless Chrome the JavaScript reproduces PyTorch's move probabilities and win/draw/loss to within
+  0.001 for both the trained model and a freshly exported test model with non-trivial batch-norm statistics; the page
+  runs the same check whenever it loads and says so. Tests also play through a game, a takeback, a resignation,
+  playing Black and a checkmate. Screenshots at desktop and 390 px phone width.
+- **Decision**: a plain-JavaScript forward pass instead of an ONNX runtime: no extra download or dependency, and the
+  network is small (about 30 million multiply-adds per move, a fraction of a second).

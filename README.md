@@ -1,9 +1,11 @@
 # Human-Like Chess Engine
 
-**▶ Open the website: [http://127.0.0.1:8000](http://127.0.0.1:8000)** (play) ·
-[http://127.0.0.1:8000/review.html](http://127.0.0.1:8000/review.html) (review a game).
-It runs on your own computer: start it first with `python scripts/serve.py` (setup below), then click the link.
-To open it from your phone or share it, see [DEPLOY.md](DEPLOY.md).
+**🔗 Live site: [yatharthjag2008.github.io/Chess_Engine](https://yatharthjag2008.github.io/Chess_Engine/)**. Play the
+bot at any rating from 800 to 2400 and see what players of that rating would play; the neural network runs in your
+browser, no install needed.
+
+The full app (game review, hints, the coach, adaptive difficulty, styles) needs Stockfish and runs on your own
+computer: `python scripts/serve.py`, then open [http://127.0.0.1:8000](http://127.0.0.1:8000) (setup below).
 
 A chess engine that plays like a **human at a given rating**, not like a perfect machine.
 Given a position and a target rating (800–2200+), a neural network trained on millions of real

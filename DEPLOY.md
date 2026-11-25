@@ -4,6 +4,22 @@ Everything runs on one machine: a Python process (FastAPI + the model) that also
 database and no account system. Games live in memory, and the few files it writes (your adaptive rating, reviews,
 styles, cached imports) go to `data/`.
 
+## 0. The public website (GitHub Pages)
+
+[yatharthjag2008.github.io/Chess_Engine](https://yatharthjag2008.github.io/Chess_Engine/) lets anyone play the bot
+in their browser: the network is recomputed in JavaScript from an exported copy of the model, and chess.js knows the
+rules. It is built from `site/` by `.github/workflows/pages.yml` on every push to `main`.
+
+- **After training a new model**, export it and commit the result: `python scripts/build_site.py --export` (writes
+  `site/model/`). The site checks itself against PyTorch's numbers in every browser that loads it.
+- **To look before pushing**: `python scripts/build_site.py`, then `python -m http.server -d _site 8001` and open
+  `http://localhost:8001`.
+- **One-time setup on GitHub**: Settings → Pages → Build and deployment → Source: **GitHub Actions** (as for any
+  Pages site published by a workflow).
+
+Only playing is on the website. Reviews, hints, the coach, adaptive difficulty and styles need Stockfish and the
+Python server, so they run on your computer (below).
+
 ## 1. On your own computer
 
 ```bash
