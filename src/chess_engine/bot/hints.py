@@ -12,6 +12,7 @@ at your rating): a move most players find gets the vaguest nudge, a rarely found
 
 from __future__ import annotations
 
+from dataclasses import asdict, dataclass
 from enum import Enum, IntEnum
 from typing import Any
 
@@ -26,6 +27,7 @@ from chess_engine.review.features import (
     captured_piece,
     gives_mate,
     hanging_pieces,
+    piece_name,
 )
 
 
@@ -119,3 +121,110 @@ def detail_for(rate: float, cfg: HintsConfig) -> Detail:
     if rate < cfg.hard_find_rate:
         return Detail.PIECE
     return Detail.THEME
+
+
+# --------------------------------------------------------------------------- the texts
+
+
+class Tier(str, Enum):
+    NUDGE = "nudge"     # what kind of move to look for
+    POINT = "point"     # which piece
+    SHOW = "show"       # the move
+
+
+TIERS = [Tier.NUDGE, Tier.POINT, Tier.SHOW]
+
+_FORCING = {Theme.MATE, Theme.CHECK, Theme.WIN_MATERIAL, Theme.CAPTURE, Theme.PROMOTION}
+
+_THEME_NUDGE = {
+    Theme.MATE: "There is a checkmate!",
+    Theme.CHECK: "Look for a strong check.",
+    Theme.WIN_MATERIAL: "One of your opponent's pieces can be won.",
+    Theme.CAPTURE: "Look at the captures.",
+    Theme.PROMOTION: "One of your pawns can promote.",
+    Theme.SAVE_PIECE: "One of your pieces is in danger: save it.",
+    Theme.DEFEND: "One of your pieces is loose: protect it.",
+    Theme.THREAT: "You can attack something your opponent has left loose.",
+    Theme.CASTLE: "Think about your king's safety.",
+    Theme.QUIET: "Look for a quiet move that improves your position.",
+}
+
+_SHOW_REASON = {
+    Theme.MATE: "checkmate", Theme.CHECK: "a check", Theme.WIN_MATERIAL: "it wins material",
+    Theme.CAPTURE: "a capture", Theme.PROMOTION: "it promotes", Theme.SAVE_PIECE: "it saves the piece",
+    Theme.DEFEND: "it protects your loose piece", Theme.THREAT: "it creates a threat",
+    Theme.CASTLE: "it gets your king to safety",
+}
+
+
+def nudge_text(themes: list[Theme], piece_type: chess.PieceType, detail: Detail, only_move: bool = False,
+               threatened: chess.PieceType | None = None) -> str:
+    """The first hint: what kind of move to look for, giving more away for rarely found moves."""
+    main = themes[0]
+    if detail is Detail.VAGUE:
+        if main in _FORCING:
+            text = "There is a forcing move here: look at checks, captures and threats."
+        elif main in (Theme.SAVE_PIECE, Theme.DEFEND):
+            text = "Before anything else, check that all your pieces are safe."
+        elif main is Theme.THREAT:
+            text = "You can put your opponent under pressure."
+        else:
+            text = "No need for anything sharp: look for a calm, useful move."
+    else:
+        text = _THEME_NUDGE[main]
+        if main is Theme.THREAT and threatened is not None:
+            text = f"You can attack their {piece_name(threatened)}."
+        if detail is Detail.PIECE:
+            text += f" It's a {piece_name(piece_type)} move."
+    if only_move:
+        text += " Careful: only one move keeps your position together."
+    return text
+
+
+def point_text(board: chess.Board, move: chess.Move) -> str:
+    piece = board.piece_at(move.from_square)
+    return f"Move your {piece_name(piece.piece_type)} on {chess.square_name(move.from_square)}."
+
+
+def show_text(board: chess.Board, move: chess.Move, themes: list[Theme]) -> str:
+    reasons = [_SHOW_REASON[t] for t in themes if t in _SHOW_REASON]
+    san = board.san(move)
+    return f"Play {san}" + (f": {', and '.join(reasons[:2])}." if reasons else ".")
+
+
+@dataclass(frozen=True)
+class Hint:
+    """One hint about the best move in a position."""
+
+    tier: Tier
+    text: str
+    from_square: str | None        # highlighted from the "point" tier on
+    to_square: str | None          # and this one at "show"
+    san: str | None                # the move, at "show" only
+    themes: list[str]
+    find_rate: float               # how often players at your rating play the move
+    detail: Detail
+    only_move: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        data = asdict(self)
+        data["tier"] = self.tier.value
+        data["detail"] = self.detail.name.lower()
+        return data
+
+
+def make_hint(board: chess.Board, move: chess.Move, tier: Tier, rate: float, cfg: HintsConfig,
+              only_move: bool = False) -> Hint:
+    """The hint of ``tier`` about ``move`` (the best move) in ``board``."""
+    themes = move_themes(board, move)
+    detail = detail_for(rate, cfg)
+    piece = board.piece_at(move.from_square).piece_type
+    nudge = nudge_text(themes, piece, detail, only_move, threatened_piece(board, move))
+    if tier is Tier.NUDGE:
+        text, frm, to, san = nudge, None, None, None
+    elif tier is Tier.POINT:
+        text, frm, to, san = f"{nudge} {point_text(board, move)}", chess.square_name(move.from_square), None, None
+    else:
+        text = show_text(board, move, themes)
+        frm, to, san = chess.square_name(move.from_square), chess.square_name(move.to_square), board.san(move)
+    return Hint(tier, text, frm, to, san, [t.value for t in themes], rate, detail, only_move)

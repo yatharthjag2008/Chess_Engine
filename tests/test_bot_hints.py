@@ -5,7 +5,17 @@ from __future__ import annotations
 import chess
 import pytest
 
-from chess_engine.bot.hints import Detail, Theme, detail_for, find_rate, move_themes, threatened_piece
+from chess_engine.bot.hints import (
+    Detail,
+    Theme,
+    Tier,
+    detail_for,
+    find_rate,
+    make_hint,
+    move_themes,
+    nudge_text,
+    threatened_piece,
+)
 from chess_engine.config import HintsConfig
 
 
@@ -78,3 +88,48 @@ def test_find_rate_is_the_models_probability_at_your_rating() -> None:
                                               (0.10, Detail.THEME), (0.09, Detail.PIECE), (0.0, Detail.PIECE)])
 def test_detail_follows_the_find_rate(rate: float, detail: Detail) -> None:
     assert detail_for(rate, HintsConfig()) is detail
+
+
+def test_nudges_give_more_away_for_rarely_found_moves() -> None:
+    themes = [Theme.WIN_MATERIAL]
+    vague = nudge_text(themes, chess.KNIGHT, Detail.VAGUE)
+    theme = nudge_text(themes, chess.KNIGHT, Detail.THEME)
+    piece = nudge_text(themes, chess.KNIGHT, Detail.PIECE)
+    assert vague == "There is a forcing move here: look at checks, captures and threats."
+    assert theme == "One of your opponent's pieces can be won."
+    assert piece == "One of your opponent's pieces can be won. It's a knight move."
+    assert "knight" not in vague and "knight" not in theme
+
+
+def test_nudge_wording_by_theme() -> None:
+    assert nudge_text([Theme.SAVE_PIECE], chess.BISHOP, Detail.VAGUE).startswith("Before anything else")
+    assert nudge_text([Theme.QUIET], chess.PAWN, Detail.VAGUE).startswith("No need for anything sharp")
+    assert nudge_text([Theme.THREAT], chess.KNIGHT, Detail.THEME, threatened=chess.ROOK) == "You can attack their rook."
+    assert nudge_text([Theme.MATE], chess.ROOK, Detail.PIECE) == "There is a checkmate! It's a rook move."
+    assert nudge_text([Theme.QUIET], chess.PAWN, Detail.THEME, only_move=True).endswith(
+        "Careful: only one move keeps your position together.")
+    for theme in Theme:      # every theme has words at every detail
+        for detail in Detail:
+            assert nudge_text([theme], chess.QUEEN, detail)
+
+
+def test_the_three_tiers() -> None:
+    board, move = legal("4k3/8/8/3r4/8/4N3/8/4K3 w - - 0 1", "e3d5")
+    cfg = HintsConfig()
+    nudge = make_hint(board, move, Tier.NUDGE, 0.2, cfg)
+    assert nudge.text == "One of your opponent's pieces can be won." and nudge.from_square is None
+    assert nudge.detail is Detail.THEME and nudge.themes == ["win_material"] and nudge.san is None
+    point = make_hint(board, move, Tier.POINT, 0.2, cfg)
+    assert point.text.endswith("Move your knight on e3.") and point.from_square == "e3" and point.to_square is None
+    show = make_hint(board, move, Tier.SHOW, 0.2, cfg)
+    assert show.text == "Play Nxd5: it wins material." and (show.from_square, show.to_square) == ("e3", "d5")
+    assert show.san == "Nxd5"
+    data = show.to_dict()
+    assert data["tier"] == "show" and data["detail"] == "theme" and data["find_rate"] == 0.2
+
+
+def test_show_names_up_to_two_reasons() -> None:
+    board, move = legal("r3k3/1P6/8/8/8/8/8/4K3 w - - 0 1", "b7a8q")
+    assert make_hint(board, move, Tier.SHOW, 0.5, HintsConfig()).text == "Play bxa8=Q+: a check, and it wins material."
+    board, move = legal(chess.STARTING_FEN, "e2e4")
+    assert make_hint(board, move, Tier.SHOW, 0.5, HintsConfig()).text == "Play e4."
