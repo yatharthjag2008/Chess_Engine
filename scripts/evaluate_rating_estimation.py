@@ -18,7 +18,6 @@ import sys
 import time
 from pathlib import Path
 
-import numpy as np
 
 from chess_engine.config import ConfigError, load_config
 from chess_engine.data.dataset import PositionDataset

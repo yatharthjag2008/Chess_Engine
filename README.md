@@ -453,12 +453,14 @@ src/chess_engine/
   encoding/           board -> tensor, move <-> index
   model/              rating-conditioned policy network
   training/           training loop, checkpoints, metrics log
-  eval/               move-match accuracy, baselines, calibration (later: Elo validation, rating estimation)
-  bot/                move sampling, games + clocks, terminal play, self-play (later: hints, adaptive, styles)
+  eval/               move-match accuracy, baselines, calibration, Elo validation, rating estimation
+  bot/                move sampling, games + clocks, terminal play, self-play, hints, adaptive difficulty
   review/             Stockfish game review, level comparison
   style/              style adapters: imitate a player, or yourself up to a date (ghost)
   api/                FastAPI backend (schemas, game store, service, app)
+  lichess_bot.py      play on a Lichess BOT account (optional)
 web/                  browser play and review pages (plain HTML/CSS/JS, no build step)
+DEPLOY.md             running it on your network, a server or Lichess
 scripts/              command-line entry points
 tests/                pytest suite
 reports/              generated plots and result tables

@@ -41,3 +41,7 @@ addopts = "-ra"
 markers = [
     "stockfish: needs a real Stockfish binary (skipped automatically if it is not installed)",
 ]
+filterwarnings = [
+    # FastAPI's TestClient (via Starlette) asks for httpx2; httpx works and is what the project pins.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+]
