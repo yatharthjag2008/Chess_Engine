@@ -350,6 +350,21 @@ your moves (with an estimate of the rating you played at).
 
 ![The review page](reports/web/review_page.png)
 
+## Hints
+
+Stuck? Ask for a hint, in the browser (the Hint button, or `h`) or in the terminal (`hint`). Each hint goes one
+step further: a **nudge** (what kind of move to look for), then **the piece** to move (its square is marked), then
+**the move** itself. The nudge is vaguer when players at your rating usually find the move, and more specific
+when they rarely do. Hints come from Stockfish and need it installed. A game has 3 hints by default (choose 0-20
+in the new-game form or with `--hints N`), and any hint makes the game unrated (its PGN says so).
+
+```bash
+python scripts/hint.py --fen "<FEN>" --rating 1200                     # all three tiers for a position
+python scripts/hint.py --pgn game.pgn --color black --rating 1100     # what each hint would have said
+```
+
+![A hint on the play page](reports/web/hint_panel.png)
+
 ## API server
 
 The same server also exposes the JSON API (interactive docs at `/docs`):

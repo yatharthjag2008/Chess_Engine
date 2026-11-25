@@ -20,7 +20,7 @@ See [PLAN.md](PLAN.md) for details on each step.
 - [x] 14. Game review engine
 - [x] 15. "Your level vs. next level" + mistake coach
 - [x] 16. Review UI
-- [ ] 17. Tiered hints
+- [x] 17. Tiered hints
 - [ ] 18. Adaptive difficulty
 - [ ] 19. Style imitation + ghost mode
 - [ ] 20. Polish
@@ -967,3 +967,64 @@ Chrome will not open a window narrower than 504 px).
   next step returns to the game.
 - **The level comparison is shown as it is**: with the current model it rarely disagrees (step 15), so most moves
   get "Nothing to add about this move" rather than invented advice.
+
+## Step 17: Tiered hints (done 2026-11-25)
+
+**Built** (`chess_engine.bot.hints`)
+- **Themes** from one-move board facts (no search): mate, check, win material (takes a hanging piece), capture,
+  promotion, save a piece, defend a loose piece, threat (newly attacks a loose piece), castle, quiet.
+- **Find rate**: how often players at your rating play Stockfish's best move here (the model's probability at your
+  rating, against the bot's rating, with the clocks). It sets how much the first hint gives away: at least 35% →
+  only the kind of move ("there is a forcing move here: look at checks, captures and threats"); 10-35% → the theme
+  ("one of your opponent's pieces can be won"); under 10% → the theme and the piece type ("... It's a knight move.").
+- **Three tiers**: nudge → point (the piece, its square marked) → show (the move, both squares marked, and why:
+  "Play Nxd5: it wins material."). An "only move" (best keeps 15+ win-% points more than the runner-up) adds
+  "Careful: only one move keeps your position together", or "Only one move makes the most of it" when winning.
+- `HintEngine`: Stockfish (depth 12, 2 lines) + the model, one shared engine for the API's threads, positions cached
+  so the next tier is instant. `HintBudget`: a limit of positions per game (default 3, 0 = off, up to 20); asking
+  again in the same position goes a tier further for free; a takeback does not give a hint back.
+- **Hinted games are unrated**: the game state has `hints {limit, used, left, rated}`, and the PGN gets
+  `[Hints "n"]` and `[Annotator "unrated: hints used"]` (adaptive difficulty, step 18, will skip such games).
+- `POST /api/games/{id}/hint` (next tier, or a chosen one; a hint is counted only once it is ready, so a missing
+  Stockfish costs nothing); `hint_limit` when starting a game; errors `no_hints_left`, `not_your_turn`, `game_over`.
+- Terminal: `hint` / `hint show` in `scripts/play.py` (`--hints N`). Web: a Hints setting in the new-game form, a
+  Hint button (`h` key) with hints left, a hint panel ("Which piece?" → "Show the move"), squares marked on the
+  board, an Unrated badge. `scripts/hint.py` prints all tiers for a FEN, or the nudge for every position of a game.
+- Tests (about 45 new): every theme on a built position (each move checked for legality), the detail thresholds,
+  the texts, the engine with a scripted analyser, the budget, the endpoint and its errors, the terminal, the script,
+  and the web page end to end (tiers, marks surviving a flip, running out, hints off).
+
+![A hint on the play page](reports/web/hint_panel.png)
+
+**A real run** (`python scripts/hint.py --pgn tests/fixtures/lichess_real.pgn --index 3 --color black --rating
+1109`: Stockfish depth 12, the step-6 model, the game coached in step 15):
+
+```
+13... Nxf2    best hxg6     51% missed  There is a forcing move here: look at checks, captures and threats.
+16... Qf6     best Qd8       1% missed  One of your pieces is in danger: save it. It's a queen move.
+21... e4      best h6       13% missed  You can attack their bishop.
+24... Qe4     best Rxe3+     1% missed  Look for a strong check. It's a rook move.
+
+31 positions; found Stockfish's move in 7 (23%).
+Nudge detail: vague 8, theme 8, piece 15
+```
+
+- **The find rate does what the vagueness needs**: the 7 moves the player found had a median find rate of 54%
+  (20-99%), the 24 missed ones 6.5% (21 of them under 20%). Hard-to-find moves get the more specific nudges.
+- **One weak spot, again the model**: in the scholar's-mate position (`Qxf7#` available) the model says players
+  rated 1200 find the mate only 4% of the time, so the nudge names the piece ("There is a checkmate! It's a queen
+  move."). Being too generous on easy moves is the safe direction for a hint, but it is another sign of the weak
+  rating conditioning found in steps 7, 11, 12 and 15.
+- Two wordings were fixed after this run: a winning only-move no longer says "keeps your position together", and
+  a mate's show text is just "checkmate" (not "checkmate, and a capture").
+- Found by the web tests: a hint from the previous game reappeared in a new game (both start from the same
+  position); hints are now tied to the game as well as the position.
+
+**Decisions**
+- **Hints are about Stockfish's move**, explained with board facts only; the model decides how vague to be, not
+  what to suggest, so a hint never steers you to a human-typical mistake.
+- **One hint per position, not per tier**: going from a nudge to the move in the same position counts once, so
+  the limit is "positions you needed help in".
+- **Any hint makes the game unrated**, even an unused nudge: simple, visible (badge, PGN header), and it keeps
+  adaptive difficulty honest.
+- **Quicker analysis than a review** (depth 12, 2 lines): a hint should arrive in about a second.
