@@ -23,6 +23,8 @@ POST     /api/review                     Stockfish review of a PGN game (classes
 GET      /api/games/{id}/review          the same for a game played against the bot
 POST     /api/coach                      coach one player: mistakes and "your level vs. next level"
 POST     /api/games/{id}/hint            a hint for your move: nudge -> point -> show (uses the game's hints)
+GET      /api/adaptive                   your adaptive-difficulty rating and latest rated games
+POST     /api/adaptive/reset             start your adaptive rating again
 =======  ==============================  ===================================================
 
 The model is loaded once when the app starts (from ``bot.model`` in the config),
@@ -53,6 +55,8 @@ from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from chess_engine.api.schemas import (
+    AdaptiveProfile,
+    AdaptiveResetRequest,
     GameState,
     Health,
     ImportedGameInfo,
@@ -75,6 +79,7 @@ from chess_engine.api.schemas import (
 from chess_engine.api.service import GameRuleError, GameService
 from chess_engine.api.store import GameNotFoundError, Session
 from chess_engine.bot.game import IllegalMoveError
+from chess_engine.bot.adaptive import Profile
 from chess_engine.bot.hints import HintEngine
 from chess_engine.data.game_import import (
     GameImportError,
@@ -282,6 +287,19 @@ def create_app(cfg: Config | None = None, predictor: MovePredictor | None = None
     @app.get("/api/games/{game_id}/review")
     def review_bot_game(game_id: str, request: Request) -> dict:
         return reviewed(service(request).pgn(session(request, game_id)))
+
+    def profile_info(profile: Profile) -> AdaptiveProfile:
+        return AdaptiveProfile(rating=round(profile.rating, 1), games=profile.games,
+                               next_bot_rating=profile.bot_rating(cfg.adaptive), default_mode=cfg.adaptive.mode,
+                               history=[asdict(g) for g in profile.history[-10:]])
+
+    @app.get("/api/adaptive", response_model=AdaptiveProfile)
+    def adaptive_profile(request: Request) -> AdaptiveProfile:
+        return profile_info(service(request).profiles.load())
+
+    @app.post("/api/adaptive/reset", response_model=AdaptiveProfile)
+    def adaptive_reset(request: Request, body: AdaptiveResetRequest | None = None) -> AdaptiveProfile:
+        return profile_info(service(request).profiles.reset(body.rating if body else None))
 
     def hint_engine(request: Request) -> HintEngine:
         """One engine for all hints, started on the first hint (Stockfish at ``hints.depth``)."""

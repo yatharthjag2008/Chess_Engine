@@ -380,3 +380,21 @@ def test_hint_without_stockfish(default_config: Config, monkeypatch) -> None:
         r = c.post(f"/api/games/{game['id']}/hint")
         assert r.status_code == 503 and r.json()["error"] == "stockfish_unavailable"
         assert c.get(f"/api/games/{game['id']}").json()["hints"]["used"] == 0, "a failed hint is not counted"
+
+
+def test_adaptive_endpoints(default_config: Config, tmp_path) -> None:
+    cfg = default_config.model_copy(update={"paths": default_config.paths.model_copy(update={"data_dir": tmp_path})})
+    with TestClient(create_app(cfg, small_predictor())) as c:
+        fresh = c.get("/api/adaptive").json()
+        assert fresh == {"rating": 1200.0, "games": 0, "next_bot_rating": 1200, "default_mode": "off", "history": []}
+        assert c.post("/api/adaptive/reset", json={"rating": 1630}).json()["next_bot_rating"] == 1650
+        game = c.post("/api/games", json={"adaptive": "between", "seed": 1}).json()
+        assert game["bot_rating"] == 1650 and game["adaptive"]["mode"] == "between"
+        over = c.post(f"/api/games/{game['id']}/resign").json()
+        assert over["adaptive"]["result"]["rating_after"] == 1592.3 and over["adaptive"]["result"]["next_bot_rating"] == 1600
+        profile = c.get("/api/adaptive").json()
+        assert profile["games"] == 1 and profile["history"][0]["score"] == 0 and profile["history"][0]["bot_rating"] == 1650
+        assert (tmp_path / cfg.adaptive.profile_file).is_file()
+        assert c.post("/api/adaptive/reset").json()["rating"] == 1200
+        assert c.post("/api/adaptive/reset", json={"rating": 5}).status_code == 422
+        assert c.post("/api/games", json={"adaptive": "sometimes"}).status_code == 422

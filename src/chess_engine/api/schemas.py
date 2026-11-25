@@ -315,3 +315,28 @@ class CoachRequest(_Body):
     color: Literal["white", "black"] | None = None
     rating: int | None = Field(default=None, ge=MIN_RATING, le=MAX_RATING)
     game_index: int = Field(default=0, ge=0)
+
+
+# --------------------------------------------------------------------------- adaptive difficulty (step 18)
+
+
+class AdaptiveGameRecord(BaseModel):
+    date: str
+    bot_rating: int
+    score: float
+    rating_before: float
+    rating_after: float
+    mode: str
+
+
+class AdaptiveProfile(BaseModel):
+    rating: float = Field(description="your adaptive rating")
+    games: int = Field(description="rated games counted")
+    next_bot_rating: int = Field(description="the bot's rating in your next \"between games\" game")
+    default_mode: Literal["off", "between", "live"]
+    history: list[AdaptiveGameRecord] = Field(description="the latest games, oldest first")
+
+
+class AdaptiveResetRequest(_Body):
+    rating: int | None = Field(default=None, ge=MIN_RATING, le=MAX_RATING,
+                               description="start again from this rating (default: the configured start)")
