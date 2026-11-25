@@ -287,3 +287,33 @@ def test_cache_reuses_recent_imports(default_config, tmp_path) -> None:
     assert any((tmp_path / "imports" / "lichess").iterdir())
     off = ImportCache(tmp_path / "off", ttl_minutes=0)
     assert off.get("lichess", "someone", 3, [], False) is None
+
+
+# --------------------------------------------------------------------------- the user's side
+
+
+def test_player_side_and_pgn_text() -> None:
+    import chess
+
+    from chess_engine.data.game_import import pgn_text, player_side
+
+    (g,) = parse_pgn_text(CHESSCOM_PGN)
+    assert player_side(g, "playerone") == chess.WHITE and player_side(g, " PLAYERTWO ") == chess.BLACK
+    assert player_side(g, "someone else") is None
+    games = parse_pgn_text(FIXTURE.read_text(encoding="utf-8"))
+    assert len(parse_pgn_text(pgn_text(games))) == len(games)  # round trip
+
+
+def test_imported_games_feed_the_rating_estimate(default_config) -> None:
+    from bot_helpers import small_predictor
+    from chess_engine.data.game_import import pgn_text
+    from chess_engine.eval.player_games import player_games_from_pgn
+    from chess_engine.eval.rating_estimation import estimate_rating
+
+    games = parse_pgn_text(FIXTURE.read_text(encoding="utf-8"))
+    name = games[0].white
+    mine = player_games_from_pgn(pgn_text(games), player=name)
+    assert mine and all(pg.name.lower() == name.lower() for pg in mine)
+    estimate = estimate_rating(small_predictor(), mine, default_config.rating_estimation.model_copy(
+        update={"prior": "flat"}))
+    assert estimate.overall.moves == sum(len(pg) for pg in mine)

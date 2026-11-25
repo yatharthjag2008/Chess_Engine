@@ -5,6 +5,7 @@
     games = fetch_lichess("someone", max_games=20)       # the most recent games, newest first
     games = fetch_chesscom("someone", max_games=20)
     result = import_games(cfg.game_import, "lichess", username="someone")   # one entry point, config defaults
+    player_side(result.games[0], "someone")              # chess.WHITE / chess.BLACK (None if not their game)
 
 Every imported game keeps its PGN text plus a summary (players, ratings, result,
 date, time control, speed, a stable id). Only standard chess is kept: the model
@@ -416,3 +417,21 @@ def import_games(
     if cache is not None:
         cache.put(result, max_games, speeds, rated_only)
     return result
+
+
+# --------------------------------------------------------------------------- the user's side
+
+
+def player_side(game: ImportedGame, username: str) -> chess.Color | None:
+    """The side ``username`` played in ``game`` (usernames compared ignoring case), or None."""
+    name = username.strip().lower()
+    if game.white.lower() == name:
+        return chess.WHITE
+    if game.black.lower() == name:
+        return chess.BLACK
+    return None
+
+
+def pgn_text(games: list[ImportedGame]) -> str:
+    """All games as one PGN text (e.g. to save, or to read the player's moves for a rating estimate)."""
+    return "\n".join(g.pgn.strip() + "\n" for g in games)
