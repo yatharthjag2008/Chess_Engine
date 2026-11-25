@@ -22,7 +22,7 @@ See [PLAN.md](PLAN.md) for details on each step.
 - [x] 16. Review UI
 - [x] 17. Tiered hints
 - [x] 18. Adaptive difficulty
-- [ ] 19. Style imitation + ghost mode
+- [x] 19. Style imitation + ghost mode
 - [ ] 20. Polish
 
 ## Step 1: Project setup (done 2026-11-20)
@@ -1082,3 +1082,62 @@ Nudge detail: vague 8, theme 8, piece 15
   needs no engine; the cap and the interval keep the bot from swinging within a game.
 - **Only games without hints count**, and a game counts once, when it ends (by a move, resignation or time).
 - **One local profile**: this is a single-player app on your machine; the file is easy to reset or delete.
+
+## Step 19: Style imitation + ghost mode (done 2026-11-25)
+
+**Built** (`chess_engine.style`)
+- **A style adapter** on the frozen rating model (`adapter`): an offset to the conditioning vector, a shift to
+  every residual block's FiLM modulation and a bias per move (moves are encoded from the mover's side, so one
+  preference covers both colours): about 2,700 parameters for the step-6 model, all starting at zero, so an
+  untrained style is exactly the rating model. The base keeps its weights and batch-norm statistics.
+- **Training** (`data`, `train`): the player's positions encoded like the training data (their rating, the
+  opponent's, the clocks), held-out games (15%, by game) to pick the best epoch and stop early, so a style is never
+  worse than the rating model on unseen games. A few seconds to a minute on a CPU.
+- **Blending** (`predictor`): the bot's move probabilities are `w × style + (1 − w) × rating model`, with
+  `w = 0.25 + 0.75 × games / 200` (1 from 200 games), so a style from a handful of games only nudges the bot.
+  `StylePredictor` has the predictor's interface, so the bot, hints and the API use it unchanged.
+- **Ghost mode** is a style trained on your games up to a date (`--until`), so you can play your past self.
+- **Styles on disk** (`store`, `build`): one file per style in `data/styles/` with what it was trained on (player,
+  games, dates, typical rating, held-out scores); safe names; a style only loads into the model shape it was made
+  for. `scripts/train_style.py` (from a PGN or a player's recent Lichess / Chess.com games; `--list`, `--delete`),
+  `scripts/evaluate_styles.py` (rating model vs style on each player's held-out games).
+- Play: `GET /api/styles`, `style` when starting a game (the state and the PGN name it), `scripts/play.py --style`,
+  and a Style choice in the browser's new-game form (hidden until a style exists; the bot's name shows whose
+  style it plays).
+- Tests (about 30 new): an untrained adapter changes nothing, only the adapter learns, training learns a player
+  with a fixed repertoire and never ends worse than the base on held-out games, dates and cutoffs, the style file
+  and its errors, blending, a bot in a style plays the style's favourite opening (API, terminal and web page).
+
+**A real check** (`python scripts/evaluate_styles.py --pgn <10 players' games> --top 10`: the 10 players with the
+most games in the step-2 sample, 24-72 blitz games each, one style per player, the step-6 model):
+
+| Player | Games | Held-out loss | Held-out top-1 |
+|---|---|---|---|
+| adalar_fayi | 72 | 2.563 → 2.468 | 25.4% → 24.5% |
+| Dahir_UD | 28 | 1.874 → 1.819 | 48.3% → 51.7% |
+| kant41 | 26 | 1.876 → 1.851 | 41.7% → 45.7% |
+| gmnick111 | 26 | 1.843 → 1.801 | 43.9% → 46.6% |
+| alooodedik | 25 | 1.838 → 1.838 | 51.5% → 51.5% |
+| ers1234m | 25 | 1.897 → 1.819 | 41.4% → 42.3% |
+| Michael_Tal_fromTemu | 25 | 1.809 → 1.809 | 45.3% → 45.3% |
+| onlychess1954 | 25 | 2.230 → 2.147 | 33.3% → 39.6% |
+| ChVen | 25 | 1.881 → 1.868 | 42.8% → 42.8% |
+| Melchz | 24 | 2.069 → 1.963 | 28.6% → 30.5% |
+
+- **Styles help, a little, even from 25 games**: the held-out loss is lower for 8 of 10 players (by 0.05 on
+  average) and the top-1 match rises by 1.8 points on average (up to +6.3). For the other two, early stopping kept
+  the untrained adapter, so the style is exactly the rating model there, as designed.
+- **Small, honest numbers**: each player has only 3-11 held-out games (the sample covers one day), and most of
+  these games were probably in the rating model's own training data, which favours the rating model. With a
+  player's full history (hundreds of games, from `--lichess`) the style gets full weight and more to learn from.
+- Ghost mode was checked only by the tests (the sample spans a single day, so there is no "past" to cut at); it is
+  the same training with a date filter.
+
+**Decisions**
+- **Adapters, not fine-tuning or a player-embedding table**: a style needs no retraining of the rating model, is
+  tiny on disk, cannot damage the model, and starts exactly at "a player of this rating", learning only the
+  difference.
+- **Blend by number of games** (the plan's "fewer than ~200 games"): a style trained on 20 games is mostly the
+  rating model with a lean towards the player's habits; at 200 games it is the style alone.
+- **Held-out games choose the epoch**, so overfitting a small set of games can only stop training early, never
+  make the bot imitate the player worse than the rating model does.

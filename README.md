@@ -382,6 +382,23 @@ than its strength (see PROGRESS.md, steps 11 and 18).
 
 ![The Difficulty setting](reports/web/difficulty.png)
 
+## Styles and ghosts
+
+Make the bot play like a particular player, or like yourself as you played until some date (a **ghost**):
+
+```bash
+python scripts/train_style.py --pgn games.pgn --player "Some Player" --name some-player
+python scripts/train_style.py --lichess YourName --name me-may --until 2025-05-31   # your past self
+python scripts/train_style.py --list
+python scripts/play.py --style some-player          # or pick it under Style in the browser
+python scripts/evaluate_styles.py --pgn games.pgn --top 10   # does a style beat the rating model?
+```
+
+A style is a small adapter (a few thousand numbers) on top of the rating model, trained in seconds to a minute on
+a CPU; it needs at least 5 games, and with fewer than 200 it is blended with the rating model so it only leans
+towards the player's habits. On 10 real players with 24-72 games each, styles predicted the players' moves on
+unseen games better for 8 of them (top-1 +1.8 points on average; PROGRESS.md, step 19).
+
 ## API server
 
 The same server also exposes the JSON API (interactive docs at `/docs`):
@@ -412,6 +429,7 @@ src/chess_engine/
   eval/               move-match accuracy, baselines, calibration (later: Elo validation, rating estimation)
   bot/                move sampling, games + clocks, terminal play, self-play (later: hints, adaptive, styles)
   review/             Stockfish game review, level comparison
+  style/              style adapters: imitate a player, or yourself up to a date (ghost)
   api/                FastAPI backend (schemas, game store, service, app)
 web/                  browser play and review pages (plain HTML/CSS/JS, no build step)
 scripts/              command-line entry points
