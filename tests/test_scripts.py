@@ -368,3 +368,26 @@ def test_evaluate_rating_estimation_script(tmp_path: Path, tiny_dataset: Path,
     assert script.main(args) == 0
     assert "using cached" in capsys.readouterr().out          # the second run reuses the scored games
     assert script.main(["--model", str(tmp_path / "none.pt"), "--out", str(out)]) == 1
+
+
+def test_estimate_rating_script(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    import io
+
+    script = _load("estimate_rating")
+    model = _small_model_file(tmp_path)
+    override = tmp_path / "paths.yaml"
+    override.write_text(yaml.safe_dump({"paths": {"processed_dir": str(tmp_path / "none"),
+                                                  "reports_dir": str(tmp_path / "reports")}}), encoding="utf-8")
+    base = ["--model", str(model), "--config", str(override)]
+    assert script.main([str(FIXTURE), "--color", "white", "--temper", "3"] + base) == 0
+    out = capsys.readouterr()
+    assert "white in every game: about" in out.out and "per game:" in out.out and "rated" in out.out
+    assert "flat prior" in out.err                          # no dataset here
+    one_game = '[White "Ann"]\n[Black "Ben"]\n[Result "*"]\n\n1. e4 e5 2. Nf3 Nc6 *\n'
+    assert script.main(["-", "--player", "ben"] + base, stdin=io.StringIO(one_game)) == 0
+    out = capsys.readouterr()
+    assert out.out.startswith("ben: about") and "no fitted tempering" in out.err
+    assert script.main([str(FIXTURE), "--player", "nobody"] + base) == 1
+    assert "no games" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        script.main([str(FIXTURE)])                         # --player or --color is required
