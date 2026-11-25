@@ -85,3 +85,26 @@ def test_summary_per_side() -> None:
     assert white.accuracy > black.accuracy and 0 <= black.accuracy <= 100
     assert black.average_cp_loss == pytest.approx(sum(m.cp_loss for m in review.for_color("black")) / 3)
     assert "1 blunder" in black.describe() and "no errors" in white.describe()
+
+
+def test_key_moments() -> None:
+    from chess_engine.review.analyzer import key_moments
+
+    script = {
+        position_key(): ("e2e4", 20, {}),
+        position_key("e4"): ("e7e5", -20, {}),
+        position_key("e4", "e5"): ("g1f3", 30, {"f2f3": -150}),      # 2. f3: an inaccuracy-sized loss
+        position_key("e4", "e5", "f3"): ("b8c6", 150, {}),
+        position_key("e4", "e5", "f3", "Nc6"): ("b1c3", -100, {"e1e2": -600}),   # 3. Ke2: a big error
+        position_key("e4", "e5", "f3", "Nc6", "Ke2"): ("d8h4", 600, {"a7a6": 100}),  # 3...a6: a big miss
+    }
+    review = review_pgn('[Result "*"]\n\n1. e4 e5 2. f3 Nc6 3. Ke2 a6 *\n', ScriptedAnalyzer(script), CFG)
+    moments = key_moments(review, count=5)
+    assert [m.san for m in moments] == ["f3", "Ke2", "a6"]                 # errors only, in game order
+    two = key_moments(review, count=2)
+    assert {m.san for m in two} == {"Ke2", "a6"}                            # the two biggest losses
+    ke2 = next(m for m in moments if m.san == "Ke2")
+    assert ke2.text.startswith("3. Ke2") and "White's chances" in ke2.text and "Better was Nc3." in ke2.text
+    a6 = next(m for m in moments if m.san == "a6")
+    assert a6.move_number == "3..." and "Better was Qh4" in a6.text
+    assert key_moments(review_pgn(PGN, ScriptedAnalyzer(), CFG)) == []      # no evaluations, no errors

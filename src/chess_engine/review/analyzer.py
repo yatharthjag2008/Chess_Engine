@@ -172,3 +172,42 @@ def review_pgn(text: str, analyzer: Analyzer, cfg: ReviewConfig, game_index: int
     if game is None or game.errors or next(iter(game.mainline_moves()), None) is None:
         raise ValueError(f"no reviewable game number {game_index + 1} in the PGN")
     return review_game(game, analyzer, cfg, depth)
+
+
+# --------------------------------------------------------------------------- key moments
+
+
+@dataclass
+class KeyMoment:
+    """A turning point: a move that gave away a lot of the mover's winning chances."""
+
+    ply: int
+    move_number: str
+    color: str
+    san: str
+    classification: MoveClass
+    win_before: float
+    win_after: float
+    best_san: str | None
+    text: str
+
+
+def _side(color: str) -> str:
+    return "White" if color == "white" else "Black"
+
+
+def describe_moment(m: MoveReview) -> str:
+    """A one-line explanation, e.g. ``3... Nf6?? dropped Black's chances from 48% to 0%. Better was g6.``"""
+    text = (f"{m.move_number} {m.san}{m.classification.symbol} dropped {_side(m.color)}'s chances from "
+            f"{m.win_before:.0f}% to {m.win_after:.0f}%.")
+    if m.best_san and m.best_san != m.san:
+        text += f" Better was {m.best_san}."
+    return text
+
+
+def key_moments(review: GameReview, count: int = 5) -> list[KeyMoment]:
+    """The ``count`` moves that lost the most win %, errors (inaccuracy or worse) only, in game order."""
+    errors = [m for m in review.moves if m.classification.is_error]
+    worst = sorted(errors, key=lambda m: -m.win_lost)[:count]
+    return [KeyMoment(m.ply, m.move_number, m.color, m.san, m.classification, m.win_before, m.win_after,
+                      m.best_san, describe_moment(m)) for m in sorted(worst, key=lambda m: m.ply)]
