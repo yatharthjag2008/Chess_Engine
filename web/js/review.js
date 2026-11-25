@@ -17,6 +17,7 @@ export const ui = {
   review: null,       // the review from the API
   coach: null,        // the coach report from the API
   ply: 0,             // 0 = start position, n = after move n
+  busy: false,        // a request (import or review) is running
   coaching: null,     // the pending coach request (a promise)
   pgn: null,          // the PGN that was reviewed
 };
@@ -33,8 +34,29 @@ export function setStatus(text, isError = false, busy = false) {
   el.style.color = isError ? "var(--danger)" : "";
 }
 
+/** Errors as plain sentences; the codes the server sends get a hint on what to do. */
+export function errorText(err) {
+  if (err instanceof ApiError) {
+    if (err.code === "stockfish_unavailable") {
+      return "Reviews need Stockfish, which the server cannot find. Install it (see the README) and restart the server.";
+    }
+    if (err.code === "network") return "Cannot reach the server. Is scripts/serve.py running?";
+    return err.message;
+  }
+  return err && err.message ? err.message : String(err);
+}
+
 export function showError(err) {
-  setStatus(err instanceof ApiError ? err.message : String(err), true);
+  setStatus(errorText(err), true);
+}
+
+/** While a request runs: the buttons that start another one are disabled, and the page is marked busy. */
+export function setBusy(busy) {
+  ui.busy = busy;
+  document.querySelector("main").setAttribute("aria-busy", String(busy));
+  for (const el of document.querySelectorAll("#source-form button, #review-button, #game-list button")) {
+    el.disabled = busy;
+  }
 }
 
 // ------------------------------------------------------------------ choosing a game
@@ -65,7 +87,9 @@ export function renderSourceForm(source) {
 }
 
 export async function loadGames(source, value) {
+  if (ui.busy) return;
   setStatus(source === "pgn" ? "Reading the PGN..." : `Fetching games from ${source}...`, false, true);
+  setBusy(true);
   try {
     const result = source === "pgn" ? await api.importPgn(value) : await api.importUser(source, value.trim());
     ui.games = result.games;
@@ -75,6 +99,8 @@ export async function loadGames(source, value) {
       : "No standard chess games found.", !ui.games.length);
   } catch (err) {
     showError(err);
+  } finally {
+    setBusy(false);
   }
 }
 
@@ -193,18 +219,30 @@ export const SYMBOLS = { inaccuracy: "?!", mistake: "?", blunder: "??" };
 
 /** Review the chosen game (or ``pgn``) and show it from the start. */
 export async function startReview(pgn = ui.game && ui.game.pgn) {
+  if (ui.busy || !pgn) return null;
   setStatus("Stockfish is reviewing the game (this takes a few seconds per move)...", false, true);
+  setBusy(true);
   try {
     ui.review = await api.review(pgn);
   } catch (err) {
+    ui.review = null;
+    hideReview();
     showError(err);
     return null;
+  } finally {
+    setBusy(false);
   }
   ui.pgn = pgn;
   ui.coach = null;
   showReview();
   ui.coaching = loadCoach();      // in the background: the board is usable meanwhile
   return ui.review;
+}
+
+/** Hide everything that belongs to a review (before a new one, or when it failed). */
+export function hideReview() {
+  for (const id of ["stepper", "graph", "summary-panel", "detail-panel", "coach-panel", "moves-panel"]) $(id).hidden = true;
+  clearBestSquares();
 }
 
 export function showReview() {

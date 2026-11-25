@@ -1,6 +1,7 @@
 // End-to-end tests of the review page (review.js) against the real API server.
 
-import { assert, equal, run, test, until } from "./harness.js";
+import { assert, equal, run, test } from "./harness.js";
+import { api, ApiError } from "../js/api.js";
 
 export const PGN = `[White "Ann"]
 [Black "Ben"]
@@ -253,6 +254,35 @@ test("a game against the bot opens from its id, from the side you played", async
 test("an unknown bot game says so", async () => {
   equal(await app.reviewBotGame("no-such-game"), null);
   assert($("status").textContent.includes("no longer on the server"), $("status").textContent);
+});
+
+test("buttons are disabled while a review runs", async () => {
+  await app.loadGames("pgn", PGN);
+  app.chooseGame(1);
+  const pending = app.startReview();
+  assert($("review-button").disabled, "Review disabled while busy");
+  equal(document.querySelector("main").getAttribute("aria-busy"), "true");
+  assert($("status").querySelector(".loading"), "spinner");
+  equal(await app.startReview(), null, "a second review is not started");
+  const review = await pending;
+  equal(review.moves.length, 2);
+  assert(!$("review-button").disabled, "enabled again");
+  equal(document.querySelector("main").getAttribute("aria-busy"), "false");
+  await app.ui.coaching;
+});
+
+test("a missing Stockfish is explained and the old review is hidden", async () => {
+  const original = api.review;
+  api.review = async () => { throw new ApiError(503, "stockfish_unavailable", "Stockfish not found"); };
+  try {
+    equal(await app.startReview(), null);
+  } finally {
+    api.review = original;
+  }
+  assert($("status").textContent.startsWith("Reviews need Stockfish"), $("status").textContent);
+  assert($("moves-panel").hidden && $("graph").hidden && $("stepper").hidden, "stale review hidden");
+  assert(!$("review-button").disabled, "can try again");
+  equal(app.errorText(new ApiError(0, "network", "x")), "Cannot reach the server. Is scripts/serve.py running?");
 });
 
 test("errors are shown", async () => {
