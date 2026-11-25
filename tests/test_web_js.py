@@ -77,9 +77,15 @@ def dump_dom(browser: str, url: str, profile: Path, budget_ms: int = 5000) -> st
 
 
 @pytest.fixture(scope="module")
-def api_server(default_config: Config):
-    """The real app (API + web UI) with a small model, served by uvicorn on a free port."""
-    app = create_app(default_config, small_predictor())
+def api_server(default_config: Config, tmp_path_factory: pytest.TempPathFactory):
+    """The real app (API + web UI) with a small model and a scripted analyser (no Stockfish needed),
+    writing into a temporary data directory, served by uvicorn on a free port."""
+    from review_helpers import ScriptedAnalyzer
+
+    data = tmp_path_factory.mktemp("web_data")
+    cfg = default_config.model_copy(update={"paths": default_config.paths.model_copy(
+        update={"data_dir": data, "processed_dir": data / "processed", "reports_dir": data / "reports"})})
+    app = create_app(cfg, small_predictor(), review_analyzer=ScriptedAnalyzer())
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -116,3 +122,8 @@ def test_web_ui_javascript_unit_tests(web_server: str, tmp_path: Path) -> None:
 def test_play_page_end_to_end(api_server: str, tmp_path: Path) -> None:
     dom = dump_dom(browser_or_skip(), f"{api_server}/tests/app.html", tmp_path / "profile", budget_ms=20000)
     check_results(dom, 18)
+
+
+def test_review_page_end_to_end(api_server: str, tmp_path: Path) -> None:
+    dom = dump_dom(browser_or_skip(), f"{api_server}/tests/review.html", tmp_path / "profile", budget_ms=20000)
+    check_results(dom, 4)

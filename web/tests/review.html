@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Review page tests</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/review.css">
+</head>
+<body>
+  <!-- End-to-end tests of the review page against a running API server (tests/test_web_js.py starts one,
+       with a scripted analyser instead of Stockfish). review_tests.js copies review.html's markup into #page. -->
+  <pre id="results">running</pre>
+  <div id="page"></div>
+  <script>window.__noAutoInit = true;</script>
+  <script type="module" src="review_tests.js"></script>
+</body>
+</html>
