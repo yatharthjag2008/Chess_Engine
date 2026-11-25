@@ -91,3 +91,41 @@ def test_compare_position_flags_only_disagreements_that_matter() -> None:
     same = FixedLevels({1200: [("e4", 0.4)], 1400: [("e4", 0.5)], 1600: [("e4", 0.6)]})
     agree = compare_position(same, board, 1200, analyzer, cfg)
     assert agree.stronger is None and agree.win_gap == 0 and not agree.matters
+
+
+def test_compare_game() -> None:
+    from chess_engine.config import CoachConfig, ReviewConfig
+    from chess_engine.review.analyzer import review_pgn
+    from chess_engine.review.level_compare import compare_game, known_from_review
+    from test_review_analyzer import PGN, _scripted
+
+    analyzer = _scripted()
+    review = review_pgn(PGN, analyzer, ReviewConfig())
+    known = known_from_review(review.moves[5])
+    assert known.best.san == "g6" and known.line_for(chess.Move.from_uci("g8f6")).cp == -9997
+
+    # Black's level always prefers the move Black played; the next level (+200) prefers the engine's move.
+    class Levels:
+        def predict_many(self, boards, ratings, **kwargs):
+            from chess_engine.model.inference import MoveProbability, Prediction
+
+            out = []
+            for board, rating in zip(boards, ratings):
+                played = next(m for m in review.moves if m.fen_before == board.fen())
+                san = played.san if rating == 1300 else (played.best_san or played.san)
+                out.append(Prediction([MoveProbability(0.5, board.parse_san(san), san)], None))
+            return out
+
+    cfg = CoachConfig(level_offsets=[200, 400], min_win_gap=8, max_moments=5)
+    calls = analyzer.calls
+    result = compare_game(review, "black", 1300, Levels(), analyzer, cfg, opp_rating=1350)
+    assert len(result.moments) == 3 and result.your_level_match == 1.0
+    assert [m.played_san for m in result.flagged] == ["Nf6"]                 # the only disagreement that matters
+    flagged = result.flagged[0]
+    from chess_engine.review.scoring import win_percent
+
+    assert flagged.comparison.stronger.san == "g6"
+    assert flagged.comparison.win_gap == pytest.approx(win_percent(-40) - 0)   # g6 keeps ~46%, Nf6 loses all
+    assert flagged.move_number == "3..." and flagged.played_win == 0
+    assert result.next_level_match == pytest.approx(2 / 3)                   # e5 and Nc6 match the next level too
+    assert analyzer.calls == calls                                           # the review's lines were enough

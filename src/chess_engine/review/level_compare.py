@@ -20,7 +20,8 @@ import chess
 
 from chess_engine.config import CoachConfig
 from chess_engine.model.inference import MovePredictor, MoveProbability
-from chess_engine.review.engine import Analyzer, PositionAnalysis
+from chess_engine.review.analyzer import GameReview, MoveReview
+from chess_engine.review.engine import Analyzer, EngineLine, PositionAnalysis
 from chess_engine.review.scoring import win_percent
 
 
@@ -134,3 +135,60 @@ def compare_position(
     stronger = next((level for level in levels[1:] if level.uci != yours.uci), None)
     gap = (stronger.win - yours.win) if stronger is not None else 0.0
     return PositionComparison(levels, stronger, gap, stronger is not None and gap >= cfg.min_win_gap)
+
+
+# --------------------------------------------------------------------------- a whole game
+
+
+@dataclass(frozen=True)
+class LevelMoment:
+    """One of your moves, with the level comparison of the position before it."""
+
+    ply: int
+    move_number: str
+    played_san: str
+    played_uci: str
+    played_win: float                     # your win % after the move you played
+    comparison: PositionComparison
+
+
+@dataclass(frozen=True)
+class GameComparison:
+    """Every move of one player compared with the levels; the moments that matter; match rates."""
+
+    color: str
+    rating: int
+    moments: list[LevelMoment]
+    flagged: list[LevelMoment]            # the biggest gaps that matter, in game order
+    your_level_match: float               # share of your moves that were your level's favourite
+    next_level_match: float               # share that were the favourite of the first higher level
+
+
+def known_from_review(move: MoveReview) -> PositionAnalysis:
+    """The engine lines stored in a review, as an analysis (so a cached review needs no new search)."""
+    board = chess.Board(move.fen_before)
+    lines = [EngineLine(chess.Move.from_uci(a.uci), a.san, a.cp, [a.uci]) for a in move.alternatives]
+    return PositionAnalysis(move.fen_before, lines, move.best_cp)
+
+
+def compare_game(
+    review: GameReview,
+    color: str,
+    rating: int,
+    predictor: MovePredictor,
+    analyzer: Analyzer,
+    cfg: CoachConfig,
+    opp_rating: int | None = None,
+) -> GameComparison:
+    """Compare every move ``color`` played in ``review`` with the levels (see the module docstring)."""
+    moments = []
+    for move in review.for_color(color):
+        board = chess.Board(move.fen_before)
+        comparison = compare_position(predictor, board, rating, analyzer, cfg, known_from_review(move), opp_rating)
+        moments.append(LevelMoment(move.ply, move.move_number, move.san, move.uci, move.win_after, comparison))
+    mattering = [m for m in moments if m.comparison.matters]
+    flagged = sorted(sorted(mattering, key=lambda m: -m.comparison.win_gap)[:cfg.max_moments], key=lambda m: m.ply)
+    n = len(moments)
+    yours = sum(m.played_uci == m.comparison.levels[0].uci for m in moments)
+    nxt = sum(m.played_uci == m.comparison.levels[1].uci for m in moments)
+    return GameComparison(color, rating, moments, flagged, yours / n if n else 0.0, nxt / n if n else 0.0)
