@@ -27,7 +27,8 @@ play and what the difference is worth, then what you actually played.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from typing import Any
 
 import chess
 
@@ -139,3 +140,26 @@ def coach_game(
                                    " ".join(parts)))
     return CoachReport(color, rating, review.summary()[color], comparison.your_level_match,
                        comparison.next_level_match, notes)
+
+
+_SYMBOLS = {"inaccuracy": "?!", "mistake": "?", "blunder": "??"}
+
+
+def report_to_dict(report: CoachReport) -> dict[str, Any]:
+    """The report as JSON-ready data."""
+    data = asdict(report)
+    data["notes"] = [{**asdict(n), "kinds": list(n.kinds)} for n in report.notes]
+    return data
+
+
+def format_report(report: CoachReport, next_offset: int = 200) -> str:
+    """The report as readable text."""
+    side = report.color.capitalize()
+    lines = [f"Coach report for {side} (rated about {report.rating})", "  " + report.summary.describe(),
+             f"  You played your level's favourite move {report.your_level_match:.0%} of the time, and the "
+             f"{report.rating + next_offset}-level move {report.next_level_match:.0%}."]
+    if not report.notes:
+        lines.append("\nNo mistakes, and nothing stronger players would do clearly better. Well played.")
+    for note in report.notes:
+        lines.append(f"\n{note.move_number} {note.san}{_SYMBOLS.get(note.classification, '')}  {note.text}")
+    return "\n".join(lines)

@@ -103,3 +103,22 @@ def test_coach_game_merges_mistakes_and_level_notes() -> None:
     assert note.text.startswith("This allows a forced mate.") and "Players around 1500 prefer g6" in note.text
     white = coach_game(review, "white", 1300, Levels(), analyzer, CoachConfig())
     assert white.notes == []                                  # White made no errors and matched its level
+
+
+def test_report_json_and_text() -> None:
+    import json
+
+    from chess_engine.review.analyzer import SideSummary
+    from chess_engine.review.coach import CoachNote, CoachReport, format_report, report_to_dict
+
+    summary = SideSummary("black", 3, 61.0, 330.0, {"best": 2, "good": 0, "inaccuracy": 0, "mistake": 0, "blunder": 1})
+    note = CoachNote(5, "3...", "Nf6", ("mistake", "level"), "blunder", "This allows a forced mate.")
+    report = CoachReport("black", 1300, summary, 1.0, 0.6667, [note])
+    data = json.loads(json.dumps(report_to_dict(report)))
+    assert data["notes"][0]["kinds"] == ["mistake", "level"] and data["summary"]["counts"]["blunder"] == 1
+    text = format_report(report)
+    assert text.startswith("Coach report for Black (rated about 1300)")
+    assert "favourite move 100% of the time, and the 1500-level move 67%" in text
+    assert "3... Nf6??  This allows a forced mate." in text
+    clean = format_report(CoachReport("white", 1600, summary, 0.5, 0.5, []))
+    assert "Well played." in clean
