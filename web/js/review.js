@@ -185,6 +185,7 @@ export function showReview() {
   $("top-name").textContent = name(ui.side === "white" ? "black" : "white");
   $("bottom-name").textContent = name(ui.side);
   renderMoveList();
+  renderGraph();
   $("moves-panel").hidden = false;
   $("stepper").hidden = false;
   setStatus(`Reviewed ${review.moves.length} moves at depth ${review.depth}.`);
@@ -315,6 +316,74 @@ export function clearBestSquares() {
 }
 
 onStep.push(renderDetail);
+
+// ------------------------------------------------------------------ the eval graph
+
+const SVG = "http://www.w3.org/2000/svg";
+export const GRAPH = { width: 600, height: 120 };
+
+function svg(tag, attrs = {}) {
+  const el = document.createElementNS(SVG, tag);
+  for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, String(value));
+  return el;
+}
+
+/** White's win chance per ply as an area (white below the line, black above), with the errors marked.
+ *  Each ply has a full-height hit column with a tooltip; clicking it jumps to that position. */
+export function renderGraph() {
+  const box = $("graph");
+  const points = ui.review.graph;
+  box.hidden = !points.length;
+  if (!points.length) return;
+  const { width, height } = GRAPH;
+  const last = points.length - 1;
+  const x = (ply) => (last ? (ply / last) * width : 0);
+  const y = (win) => ((100 - win) / 100) * height;
+  const root = svg("svg", { viewBox: `0 0 ${width} ${height}`, role: "img", preserveAspectRatio: "none",
+                            "aria-label": "White's win chance after each move" });
+  root.append(svg("rect", { class: "area-black", x: 0, y: 0, width, height }));
+  const outline = points.map((p) => `${x(p.ply).toFixed(1)},${y(p.white_win).toFixed(1)}`);
+  root.append(svg("polygon", { class: "area-white", points: `0,${height} ${outline.join(" ")} ${width},${height}` }));
+  root.append(svg("line", { class: "midline", x1: 0, x2: width, y1: height / 2, y2: height / 2 }));
+  const current = svg("line", { class: "current", y1: 0, y2: height, x1: 0, x2: 0 });
+  root.append(current);
+  const step = last ? width / last : width;
+  for (const p of points) {
+    const move = p.ply ? ui.review.moves[p.ply - 1] : null;
+    const hit = svg("rect", { class: "hit", x: Math.max(0, x(p.ply) - step / 2), y: 0, width: step, height,
+                              fill: "transparent", "data-ply": p.ply });
+    const title = svg("title");
+    title.textContent = `${move ? `${move.move_number} ${move.san}${SYMBOLS[move.classification] || ""}` : "Start"}`
+      + ` · ${formatEval(p.eval)} · White ${Math.round(p.white_win)}%`;
+    hit.append(title);
+    root.append(hit);
+  }
+  ui.review.moves.forEach((move, index) => {
+    if (!SYMBOLS[move.classification]) return;
+    const p = points[index + 1];
+    root.append(svg("circle", { class: `marker ${move.classification}`, cx: x(p.ply), cy: y(p.white_win), r: 4,
+                                "data-ply": p.ply, "pointer-events": "none" }));
+  });
+  root.append(svg("rect", { class: "frame", x: 0.5, y: 0.5, width: width - 1, height: height - 1 }));
+  root.addEventListener("click", (event) => {
+    const hit = event.target.closest("[data-ply]");
+    if (hit) goTo(Number(hit.getAttribute("data-ply")));
+  });
+  box.replaceChildren(root);
+  moveGraphCursor(ui.ply);
+}
+
+/** Put the current-position line on ``ply``. */
+export function moveGraphCursor(ply) {
+  const line = document.querySelector("#graph .current");
+  if (!line || !ui.review) return;
+  const last = ui.review.graph.length - 1;
+  const at = last ? (ply / last) * GRAPH.width : 0;
+  line.setAttribute("x1", at);
+  line.setAttribute("x2", at);
+}
+
+onStep.push((ply) => moveGraphCursor(ply));
 
 export function step(delta) { goTo(ui.ply + delta); }
 

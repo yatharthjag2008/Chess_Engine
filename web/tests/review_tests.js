@@ -165,6 +165,25 @@ test("the detail panel explains the move and shows the better one", () => {
   assert(mate.textContent.startsWith("4. Qxf7#"), mate.textContent);
 });
 
+test("the eval graph shows the game and jumps to a clicked move", () => {
+  const graph = $("graph");
+  assert(!graph.hidden, "graph shown");
+  const hits = graph.querySelectorAll("rect.hit");
+  equal(hits.length, 8, "start + 7 moves");
+  const markers = graph.querySelectorAll("circle.marker");
+  equal(markers.length, 1, "one error");
+  assert(markers[0].classList.contains("blunder"), "the blunder");
+  equal(markers[0].getAttribute("data-ply"), "6");
+  assert(Number(markers[0].getAttribute("cy")) < app.GRAPH.height / 2, "White is winning after the blunder");
+  assert(hits[6].querySelector("title").textContent.startsWith("3... Nf6??"), hits[6].querySelector("title").textContent);
+  hits[3].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  equal(app.ui.ply, 3);
+  const cursor = graph.querySelector("line.current");
+  equal(Number(cursor.getAttribute("x1")), (3 / 7) * app.GRAPH.width);
+  app.goTo(7);
+  equal(Number(cursor.getAttribute("x1")), app.GRAPH.width);
+});
+
 test("errors are shown", async () => {
   await app.loadGames("lichess", "x");
   assert($("status").textContent.includes("not a valid"), $("status").textContent);

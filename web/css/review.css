@@ -25,9 +25,9 @@
 .graph svg { display: block; width: 100%; height: auto; cursor: pointer; }
 .graph .area-white { fill: var(--graph-white); }
 .graph .area-black { fill: var(--graph-black); }
-.graph .midline { stroke: var(--ink-muted); stroke-width: 1; stroke-dasharray: 3 3; }
-.graph .current { stroke: var(--accent); stroke-width: 2; }
-.graph .marker { stroke: var(--surface); stroke-width: 1.5; }
+.graph .midline { stroke: var(--ink-muted); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.graph .current { stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.graph .marker { stroke: var(--surface); stroke-width: 2; }
 .graph .marker.inaccuracy { fill: var(--inaccuracy); }
 .graph .marker.mistake { fill: var(--mistake); }
 .graph .marker.blunder { fill: var(--blunder); }
