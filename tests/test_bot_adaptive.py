@@ -4,7 +4,15 @@ from __future__ import annotations
 
 import pytest
 
-from chess_engine.bot.adaptive import HISTORY, ProfileStore, bot_rating_for, expected_score, k_for, update_rating
+from chess_engine.bot.adaptive import (
+    HISTORY,
+    LiveAdjuster,
+    ProfileStore,
+    bot_rating_for,
+    expected_score,
+    k_for,
+    update_rating,
+)
 from chess_engine.config import AdaptiveConfig
 
 CFG = AdaptiveConfig()
@@ -72,3 +80,51 @@ def test_profile_store_reset_and_bad_file(tmp_path) -> None:
     assert store.reset(1650).rating == 1650 and store.load().games == 0
     assert store.reset(9999).rating == CFG.max_rating and store.reset().rating == CFG.start_rating
     assert not (tmp_path / "adaptive.json.tmp").exists()
+
+
+LOSING = (0.1, 0.2, 0.7)      # the bot expects 0.2
+WINNING = (0.8, 0.1, 0.1)     # the bot expects 0.85
+EVEN = (0.35, 0.3, 0.35)
+
+
+def test_live_waits_for_the_opening_then_steps_up_when_losing() -> None:
+    live = LiveAdjuster(1500, CFG)
+    changes = [live.observe(LOSING) for _ in range(CFG.live_after)]
+    assert changes == [None] * CFG.live_after and live.rating == 1500, "no change during the opening"
+    assert live.observe(LOSING) == 1550
+    assert [live.observe(LOSING) for _ in range(CFG.live_every - 1)] == [None] * (CFG.live_every - 1)
+    assert live.observe(LOSING) == 1600, "the next step after live_every bot moves"
+    assert [c.rating for c in live.changes] == [1550, 1600] and live.changes[0].expected == pytest.approx(0.2)
+    assert live.played_at[:CFG.live_after + 1] == [1500] * (CFG.live_after + 1)
+
+
+def test_live_is_capped_and_steps_down_when_winning() -> None:
+    live = LiveAdjuster(1500, CFG)
+    for _ in range(100):
+        live.observe(LOSING)
+    assert live.rating == 1500 + CFG.live_cap
+    down = LiveAdjuster(900, CFG)
+    for _ in range(100):
+        down.observe(WINNING)
+    assert down.rating == CFG.min_rating, "the configured range wins over the cap"
+
+
+def test_live_even_positions_and_no_value_head() -> None:
+    live = LiveAdjuster(1500, CFG)
+    for _ in range(20):
+        assert live.observe(EVEN) is None
+    blind = LiveAdjuster(1500, CFG)
+    for _ in range(20):
+        assert blind.observe(None) is None
+    assert blind.mean_rating == 1500 and len(blind.played_at) == 20
+
+
+def test_live_averages_recent_moves_and_reports_the_mean_rating() -> None:
+    live = LiveAdjuster(1500, CFG)
+    for _ in range(CFG.live_after):
+        live.observe(EVEN)
+    assert live.observe(LOSING) is None, "one bad move is not enough: the window is averaged"
+    assert LiveAdjuster(1500, CFG).mean_rating == 1500
+    for _ in range(10):
+        live.observe(LOSING)
+    assert 1500 < live.mean_rating < live.rating

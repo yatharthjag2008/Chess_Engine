@@ -129,3 +129,66 @@ class ProfileStore:
             profile = self.fresh(rating)
             self._save(profile)
             return profile
+
+
+# --------------------------------------------------------------------------- live, within a game
+
+
+@dataclass
+class RatingChange:
+    bot_move: int          # after the bot's n-th move
+    rating: int            # the new rating
+    expected: float        # the bot's averaged expected score that caused it
+
+
+@dataclass
+class LiveAdjuster:
+    """Moves the bot's rating during one game from its own view of the position.
+
+    Call :meth:`observe` after each bot move with the model's (win, draw, loss) for the bot in the position it
+    moved from; it returns the new rating when it changes. The rating stays within ``start +- live_cap`` and the
+    configured range, changes at most every ``live_every`` bot moves, and not during the first ``live_after``.
+    """
+
+    start: int
+    cfg: AdaptiveConfig
+    rating: int = 0
+    expected: list[float] = field(default_factory=list)      # the bot's expected score, per bot move
+    played_at: list[int] = field(default_factory=list)       # the rating each bot move was played at
+    changes: list[RatingChange] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self.rating = self.rating or self.start
+
+    @property
+    def mean_rating(self) -> float:
+        """The rating the bot played at on average (what a rated game's result is measured against)."""
+        return sum(self.played_at) / len(self.played_at) if self.played_at else float(self.start)
+
+    def observe(self, wdl: tuple[float, float, float] | None) -> int | None:
+        cfg = self.cfg
+        self.played_at.append(self.rating)
+        if wdl is None:                                  # a model without a value head: no live changes
+            return None
+        win, draw, _ = wdl
+        self.expected.append(win + draw / 2)
+        moves = len(self.played_at)
+        last_change = self.changes[-1].bot_move if self.changes else 0
+        if moves <= cfg.live_after or (self.changes and moves - last_change < cfg.live_every):
+            return None
+        recent = self.expected[-cfg.live_window:]
+        average = sum(recent) / len(recent)
+        if average < cfg.live_low:
+            target = self.rating + cfg.live_step
+        elif average > cfg.live_high:
+            target = self.rating - cfg.live_step
+        else:
+            return None
+        low = max(self.start - cfg.live_cap, cfg.min_rating)
+        high = min(self.start + cfg.live_cap, cfg.max_rating)
+        target = min(max(target, low), high)
+        if target == self.rating:
+            return None
+        self.rating = target
+        self.changes.append(RatingChange(moves, target, round(average, 3)))
+        return target
