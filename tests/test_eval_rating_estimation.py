@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -15,6 +17,7 @@ from chess_engine.eval.rating_estimation import (
     summarize,
 )
 
+FIXTURE_DIR = Path(__file__).parent / "fixtures"
 RATINGS = RatingsConfig(bucket_edges=[800, 1000, 1200, 1400, 1600, 1800, 2000, 2200])
 CFG = RatingEstimationConfig()
 
@@ -150,5 +153,3 @@ def test_estimate_rating_from_pgn_games() -> None:
     with pytest.raises(ValueError):
         estimate_rating(predictor, [], CFG)
 
-
-FIXTURE_DIR = __import__("pathlib").Path(__file__).parent / "fixtures"
