@@ -182,6 +182,6 @@ review:                          # step 14: Stockfish game review (depth comes f
   inaccuracy_drop: 10            # win-% points lost: inaccuracy (?!)
   mistake_drop: 20               # mistake (?)
   blunder_drop: 30               # blunder (??)
-  good_drop: 2                   # up to this many points lost (and not the engine's move) counts as "good"
+  good_drop: 2                   # losing at most this many points still counts as "best" (an equally good move)
   key_moments: 5                 # how many turning points to highlight
   cache: true                    # keep finished reviews on disk (data/reviews/) to show them again instantly
