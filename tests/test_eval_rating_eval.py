@@ -58,7 +58,7 @@ def test_save_and_load(eval_data: EvalData, tmp_path: Path) -> None:
         assert np.array_equal(getattr(loaded, name), getattr(eval_data, name))
 
 
-def _synthetic(n_players: int = 300, moves: int = 40, seed: int = 0) -> EvalData:
+def _synthetic(n_players: int = 300, moves: int = 40, seed: int = 0, offset_sd: float = 250) -> EvalData:
     """Players whose moves are generated so that the likelihood peaks at their true rating's bucket."""
     rng = np.random.default_rng(seed)
     centers = np.array([900, 1100, 1300, 1500, 1700, 1900, 2100, 2300], dtype=float)
@@ -66,7 +66,7 @@ def _synthetic(n_players: int = 300, moves: int = 40, seed: int = 0) -> EvalData
     player = np.repeat(np.arange(n_players), moves)
     # Each move favours buckets near the true rating, shifted by a per-player offset shared by all
     # of that player's moves (one style, one opening): the moves are correlated evidence, as in real games.
-    offset = rng.normal(0, 250, n_players)
+    offset = rng.normal(0, offset_sd, n_players)
     looks_like = rating[player] + offset[player]
     ll = -0.5 * ((centers[None, :] - looks_like[:, None]) / 500) ** 2 + rng.normal(0, 0.3, (len(player), 8))
     ll -= np.log(np.exp(ll).sum(1, keepdims=True))
@@ -114,3 +114,18 @@ def test_fit_temper_reaches_the_target_coverage(default_config: Config) -> None:
     never = fit_temper(calibrate, default_config.ratings, cfg.model_copy(update={"interval": 0.999}), prior,
                        candidates=np.array([1.0, 1.5]))
     assert never["temper"] == 1.5  # target not reached: the widest candidate
+
+
+def test_convergence_with_more_moves(default_config: Config) -> None:
+    from chess_engine.config import RatingEstimationConfig
+    from chess_engine.eval.rating_eval import convergence
+
+    cfg = RatingEstimationConfig(prior="flat")
+    # No per-player offset: every move is fresh evidence about the same rating.
+    rows = convergence(_synthetic(moves=40, offset_sd=0), default_config.ratings, cfg, np.zeros(221), temper=3.0,
+                       steps=(2, 10, 40))
+    assert [r["max_moves"] for r in rows] == [2, 10, 40, None]
+    assert [r["mean_moves"] for r in rows] == [2, 10, 40, 40]
+    widths = [r["mean_width"] for r in rows]
+    assert widths[0] > widths[1] > widths[2] and widths[2] == pytest.approx(widths[3])
+    assert rows[2]["mae"] < rows[0]["mae"]

@@ -201,3 +201,23 @@ def fit_temper(data: EvalData, ratings: RatingsConfig, cfg: RatingEstimationConf
     chosen = reached[0] if reached else rows[-1]
     return {"temper": chosen["temper"], "target_coverage": target, "coverage": chosen["coverage"],
             "mae": chosen["mae"], "candidates": rows}
+
+
+# --------------------------------------------------------------------------- convergence
+
+
+def convergence(data: EvalData, ratings: RatingsConfig, cfg: RatingEstimationConfig, log_prior: np.ndarray,
+                temper: float = 1.0, steps: tuple[int, ...] = (5, 10, 20, 30, 40)) -> list[dict[str, float]]:
+    """How the estimate improves with more moves: error, coverage and range width after each player's
+    first ``n`` moves (players with fewer moves use all of theirs), and with every move (``n`` = None)."""
+    rows = []
+    moves = data.moves_per_player()
+    for n in (*steps, None):
+        est = estimate_all(data, ratings, cfg, log_prior, temper, max_moves=n)
+        err = est.estimate - data.rating
+        inside = (est.low <= data.rating) & (data.rating <= est.high)
+        used = moves if n is None else np.minimum(moves, n)
+        rows.append({"max_moves": n, "mean_moves": float(used.mean()), "mae": float(np.abs(err).mean()),
+                     "rmse": float(np.sqrt((err**2).mean())), "coverage": float(inside.mean()),
+                     "mean_width": float((est.high - est.low).mean())})
+    return rows
