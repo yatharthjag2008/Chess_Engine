@@ -71,3 +71,27 @@ def test_pasted_games_without_ids_and_junk() -> None:
 def test_rated_from_the_event(event: str, rated: bool | None) -> None:
     (g,) = parse_pgn_text(f'[Event "{event}"]\n[Result "*"]\n\n1. e4 *\n')
     assert g.rated is rated
+
+
+@pytest.mark.parametrize("source, name, ok", [
+    ("lichess", "DrNykterstein", True), ("lichess", " some_player-2 ", True), ("lichess", "ab", True),
+    ("lichess", "a", False), ("lichess", "-dash", False), ("lichess", "x" * 31, False),
+    ("lichess", "../admin", False), ("lichess", "a/b", False), ("lichess", "name?x=1", False),
+    ("chess.com", "Hikaru", True), ("chess.com", "ab", False), ("chess.com", "with space", False),
+    ("chess.com", "x" * 26, False),
+])
+def test_check_username(source: str, name: str, ok: bool) -> None:
+    from chess_engine.data.game_import import InvalidUsernameError, check_username
+
+    if ok:
+        assert check_username(source, name) == name.strip()
+    else:
+        with pytest.raises(InvalidUsernameError):
+            check_username(source, name)
+
+
+def test_unknown_source() -> None:
+    from chess_engine.data.game_import import InvalidUsernameError, check_username
+
+    with pytest.raises(InvalidUsernameError, match="unknown source"):
+        check_username("chess24", "someone")

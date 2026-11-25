@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import re
 from dataclasses import asdict, dataclass
 
 import chess.pgn
@@ -19,6 +20,37 @@ import chess.pgn
 from chess_engine.data.pgn_stream import game_id_from_site, speed_from_seconds
 
 STANDARD_VARIANTS = {"", "standard", "from position"}
+SOURCES = ("lichess", "chess.com")
+
+# Lichess: 2-30 letters, digits, "_" or "-", starting and ending with a letter or digit.
+# Chess.com: 3-25 letters, digits, "_" or "-". Checking also guarantees a username can never
+# change the API URL it is put into (no "/", "?", "..", spaces).
+_USERNAME = {
+    "lichess": re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9_-]{0,28}[A-Za-z0-9])?$"),
+    "chess.com": re.compile(r"^[A-Za-z0-9_-]{3,25}$"),
+}
+
+
+class ImportError_(Exception):
+    """A game import failed (bad username, unknown user, network trouble); the message is shown to the user."""
+
+
+class InvalidUsernameError(ImportError_):
+    """The username cannot exist on that site."""
+
+
+def check_username(source: str, username: str) -> str:
+    """The username without surrounding spaces, if it is valid for ``source``.
+
+    Raises:
+        InvalidUsernameError: unknown source, or a name the site would not allow.
+    """
+    if source not in _USERNAME:
+        raise InvalidUsernameError(f"unknown source {source!r} (use one of {', '.join(SOURCES)})")
+    name = username.strip()
+    if not _USERNAME[source].fullmatch(name) or (source == "lichess" and len(name) < 2):
+        raise InvalidUsernameError(f"{username!r} is not a valid {source} username")
+    return name
 
 
 @dataclass(frozen=True)
