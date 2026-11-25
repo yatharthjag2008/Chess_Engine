@@ -265,3 +265,41 @@ def test_compare_models_script(tmp_path: Path, tiny_dataset: Path, capsys: pytes
     assert "cmp_final_model - cmp_best_model" in printed and out.is_file()
     with pytest.raises(SystemExit):
         compare.main(["only_one"])
+
+
+def _small_model_file(tmp_path: Path) -> Path:
+    from bot_helpers import small_predictor
+    from chess_engine.model.inference import save_model
+
+    predictor = small_predictor()
+    return save_model(predictor.model, tmp_path / "bot.pt", predictor.ratings)
+
+
+def test_play_script(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    script = _load("play")
+    model = _small_model_file(tmp_path)
+    lines = iter(["e4", "d4", "resign"])
+    out: list[str] = []
+    pgn = tmp_path / "games" / "g.pgn"
+    code = script.main(["--model", str(model), "--rating", "1300", "--seed", "1", "--temperature", "0.5",
+                        "--time", "3+2", "--ascii", "--show-thinking", "--save-pgn", str(pgn)],
+                       read=lambda prompt: next(lines), write=out.append)
+    assert code == 0
+    text = "\n".join(out)
+    assert "Time control 3+2" in text and "bot rated 1300" in text and "temperature 0.5" in text
+    assert "Black wins by resignation" in text and f"Game saved to {pgn}" in text
+    saved = pgn.read_text(encoding="utf-8")
+    assert '[White "You"]' in saved and '[BlackElo "1300"]' in saved and "1. e4" in saved
+
+
+def test_play_script_as_black_prints_pgn_and_errors(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    script = _load("play")
+    model = _small_model_file(tmp_path)
+    out: list[str] = []
+    assert script.main(["--model", str(model), "--color", "black", "--ascii"],
+                       read=lambda prompt: "quit", write=out.append) == 0
+    assert '[Black "You"]' in "\n".join(out)  # quit after the bot's first move: the PGN is printed
+    assert script.main(["--model", str(tmp_path / "missing.pt")]) == 1
+    assert "not found" in capsys.readouterr().err
+    assert script.main(["--model", str(model), "--rating", "9999"]) == 1
+    assert script.main(["--model", str(model), "--time", "soon"]) == 1
