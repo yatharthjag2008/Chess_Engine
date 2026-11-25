@@ -9,12 +9,17 @@ resumed without replaying anything.
     run_matches(schedule(cfg.elo_validation), players, judge, "reports/elo/games.jsonl", games=20)
 
 Player keys are ``bot:<rating>`` and ``sf:<UCI_Elo>``.
+
+:func:`analyze` turns the log into results: a score table per pairing, every
+bot's measured Elo on Stockfish's scale (anchored to the levels' UCI_Elo, with
+bootstrap intervals) and how measured strength follows the dial.
 """
 
 from __future__ import annotations
 
 import itertools
 import json
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +29,7 @@ from chess_engine.bot.player import BotPlayer
 from chess_engine.bot.sampling import SamplingSettings
 from chess_engine.config import EloValidationConfig
 from chess_engine.eval.arena import MatchGame, play_match_game
+from chess_engine.eval.elo_fit import Result, bootstrap_ratings, dial_summary
 from chess_engine.eval.players import BotAgent, Judge, Player, StockfishPlayer
 from chess_engine.model.inference import MovePredictor
 
@@ -144,3 +150,72 @@ def run_matches(
             if progress is not None:
                 progress(pairing, index, game)
     return log
+
+
+# --------------------------------------------------------------------------- analysis
+
+
+def _rating_of(key: str) -> int:
+    return int(key.split(":", 1)[1])
+
+
+def _score_for(record: Mapping[str, Any], key: str) -> float:
+    white = {"1-0": 1.0, "0-1": 0.0}.get(record["result"], 0.5)
+    return white if record["white_key"] == key else 1 - white
+
+
+def pairing_table(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Per pairing: games, A's wins / draws / losses and score, adjudicated games, average length."""
+    rows: dict[str, dict[str, Any]] = {}
+    for r in records:
+        a, b = r["pairing"].split(" vs ")
+        row = rows.setdefault(r["pairing"], {"pairing": r["pairing"], "a": a, "b": b, "games": 0, "wins": 0,
+                                             "draws": 0, "losses": 0, "adjudicated": 0, "plies": 0})
+        score = _score_for(r, a)
+        row["games"] += 1
+        row["wins" if score == 1 else "losses" if score == 0 else "draws"] += 1
+        row["adjudicated"] += int(r.get("adjudicated", False))
+        row["plies"] += r["plies"]
+    for row in rows.values():
+        row["score"] = (row["wins"] + 0.5 * row["draws"]) / row["games"]
+        row["average_plies"] = row.pop("plies") / row["games"]
+    return list(rows.values())
+
+
+def analyze(records: Sequence[Mapping[str, Any]], bootstrap: int = 200, seed: int = 0) -> dict[str, Any]:
+    """Everything the report shows, from logged games (see the module docstring).
+
+    Returns:
+        ``pairings`` (see :func:`pairing_table`), ``bots`` (per dial rating: measured Elo, interval,
+        score against every opponent), ``stockfish`` (the anchor levels), ``dial`` (from
+        :func:`chess_engine.eval.elo_fit.dial_summary`), ``terminations`` and ``games``.
+    """
+    if not records:
+        raise ValueError("no games to analyze")
+    results = [Result(r["white_key"], r["black_key"], _score_for(r, r["white_key"])) for r in records]
+    keys = {r["white_key"] for r in records} | {r["black_key"] for r in records}
+    anchors = {k: float(_rating_of(k)) for k in keys if k.startswith("sf:")}
+    bots = sorted((k for k in keys if k.startswith("bot:")), key=_rating_of)
+    center = sum(_rating_of(k) for k in bots) / len(bots) if bots else 1500.0
+    estimate, intervals, fits = bootstrap_ratings(results, [r["pairing"] for r in records], anchors or None,
+                                                  samples=bootstrap, seed=seed, center=center)
+    table = pairing_table(records)
+    bot_rows = []
+    for key in bots:
+        scores = {}
+        for row in table:
+            if key in (row["a"], row["b"]):
+                other = row["b"] if row["a"] == key else row["a"]
+                scores[other] = row["score"] if row["a"] == key else 1 - row["score"]
+        bot_rows.append({"key": key, "dial": _rating_of(key), "measured": estimate[key],
+                         "interval": list(intervals[key]), "scores": scores})
+    return {
+        "games": len(records),
+        "pairings": table,
+        "bots": bot_rows,
+        "stockfish": sorted(anchors.values()),
+        "anchored": bool(anchors),
+        "dial": dial_summary({k: _rating_of(k) for k in bots}, estimate, fits),
+        "terminations": dict(Counter(r["termination"] for r in records).most_common()),
+        "adjudicated_share": sum(bool(r.get("adjudicated")) for r in records) / len(records),
+    }
