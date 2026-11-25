@@ -56,3 +56,36 @@ def test_save_and_load(eval_data: EvalData, tmp_path: Path) -> None:
     loaded = EvalData.load(eval_data.save(tmp_path / "ll.npz"))
     for name in ("player", "ply", "ll", "rating", "opp_rating", "game", "color"):
         assert np.array_equal(getattr(loaded, name), getattr(eval_data, name))
+
+
+def _synthetic(n_players: int = 300, moves: int = 40, seed: int = 0) -> EvalData:
+    """Players whose moves are generated so that the likelihood peaks at their true rating's bucket."""
+    rng = np.random.default_rng(seed)
+    centers = np.array([900, 1100, 1300, 1500, 1700, 1900, 2100, 2300], dtype=float)
+    rating = rng.uniform(900, 2300, n_players)
+    player = np.repeat(np.arange(n_players), moves)
+    # each move favours buckets near the true rating, with noise
+    ll = -0.5 * ((centers[None, :] - rating[player][:, None]) / 500) ** 2 + rng.normal(0, 0.3, (len(player), 8))
+    ll -= np.log(np.exp(ll).sum(1, keepdims=True))
+    opp = rating + rng.normal(0, 150, n_players)
+    return EvalData(player=player, ply=np.tile(np.arange(moves) * 2, n_players), ll=ll.astype(np.float32),
+                    rating=rating, opp_rating=opp, game=np.arange(n_players), color=np.zeros(n_players, np.int8))
+
+
+def test_estimates_and_scores_on_synthetic_players(default_config: Config) -> None:
+    from chess_engine.config import RatingEstimationConfig
+    from chess_engine.eval.rating_eval import estimate_all, score
+
+    cfg = RatingEstimationConfig(prior="flat")
+    data = _synthetic()
+    est = estimate_all(data, default_config.ratings, cfg, np.zeros(len(np.arange(600, 2801, 10))))
+    assert est.estimate.shape == (300,) and (est.low <= est.estimate).all() and (est.estimate <= est.high).all()
+    result = score(est, data, default_config.ratings)
+    overall = result["overall"]
+    assert overall["players"] == 300 and overall["mae"] < overall["baseline_average"]["mae"]
+    assert 0 <= overall["coverage"] <= 1 and overall["mean_width"] > 0 and overall["mean_moves"] == 40
+    assert overall["baseline_opponent"]["mae"] == pytest.approx(np.abs(data.opp_rating - data.rating).mean())
+    assert sum(b["players"] for b in result["buckets"].values()) == 300
+    fewer = estimate_all(data, default_config.ratings, cfg, np.zeros(221), max_moves=5)
+    assert np.mean(fewer.high - fewer.low) > np.mean(est.high - est.low)  # fewer moves, wider ranges
+    assert result["buckets"]["800-999"]["players"] >= 0

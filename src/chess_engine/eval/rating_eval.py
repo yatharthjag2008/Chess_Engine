@@ -7,6 +7,12 @@ game, whose true rating the dataset knows.
 
     data = collect_eval_data(model, PositionDataset(ds, "test"), ratings)
     data.save("reports/rating/test_ll.npz")
+    est = estimate_all(data, ratings, cfg.rating_estimation, log_prior, temper=2.0)
+    score(est, data, ratings)          # errors, interval coverage, baselines, by true rating
+
+The baselines are what the estimate must beat to be worth anything: "everyone is
+average" (the mean training rating) and "the opponent's rating" (Lichess pairs
+players of similar strength, so this is a strong guess when the opponent is known).
 """
 
 from __future__ import annotations
@@ -14,13 +20,15 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
 
-from chess_engine.config import RatingsConfig
+from chess_engine.config import RatingEstimationConfig, RatingsConfig
 from chess_engine.data.dataset import PositionDataset
 from chess_engine.eval.predictions import predict_split
+from chess_engine.eval.rating_estimation import bucket_centers, grid_log_likelihood, posterior, rating_grid
 from chess_engine.model.network import RatingConditionedNet
 
 
@@ -104,3 +112,68 @@ def collect_eval_data(
                     opp_rating=base["opp_rating"][first].astype(np.float64),
                     game=unique // 2, color=(unique % 2).astype(np.int8))
 
+
+
+# --------------------------------------------------------------------------- estimates and scores
+
+
+@dataclass
+class Estimates:
+    """Estimates for every player-game: posterior mean and central interval."""
+
+    estimate: np.ndarray
+    low: np.ndarray
+    high: np.ndarray
+    interval: float
+
+
+def estimate_all(data: EvalData, ratings: RatingsConfig, cfg: RatingEstimationConfig, log_prior: np.ndarray,
+                 temper: float = 1.0, max_moves: int | None = None) -> Estimates:
+    """The estimate of every player-game (optionally from its first ``max_moves`` moves only)."""
+    grid = rating_grid(cfg)
+    ll = grid_log_likelihood(data.summed(max_moves), bucket_centers(ratings.bucket_edges), grid)
+    post = posterior(ll, log_prior, temper)
+    cdf = np.cumsum(post, axis=1)
+    tail = (1 - cfg.interval) / 2
+    low = np.array([np.interp(tail, row, grid) for row in cdf])
+    high = np.array([np.interp(1 - tail, row, grid) for row in cdf])
+    return Estimates(post @ grid, low, high, cfg.interval)
+
+
+def _errors(predicted: np.ndarray, truth: np.ndarray) -> dict[str, float]:
+    err = predicted - truth
+    return {"players": int(len(err)), "mae": float(np.abs(err).mean()), "rmse": float(np.sqrt((err**2).mean())),
+            "bias": float(err.mean()), "median_abs_error": float(np.median(np.abs(err)))}
+
+
+def score(est: Estimates, data: EvalData, ratings: RatingsConfig, mean_rating: float | None = None) -> dict[str, Any]:
+    """Errors of the estimate and of the baselines, overall and per true-rating bucket.
+
+    Args:
+        mean_rating: The "everyone is average" guess (default: the mean true rating of ``data``).
+    """
+    truth = data.rating
+    mean_rating = float(truth.mean()) if mean_rating is None else mean_rating
+    inside = (est.low <= truth) & (truth <= est.high)
+    opp = np.where(np.isfinite(data.opp_rating), data.opp_rating, mean_rating)
+
+    def block(rows: np.ndarray) -> dict[str, Any]:
+        if not rows.any():
+            return {"players": 0}
+        out = _errors(est.estimate[rows], truth[rows])
+        out["coverage"] = float(inside[rows].mean())
+        out["mean_width"] = float((est.high - est.low)[rows].mean())
+        out["baseline_average"] = _errors(np.full(rows.sum(), mean_rating), truth[rows])
+        out["baseline_opponent"] = _errors(opp[rows], truth[rows])
+        out["mean_moves"] = float(data.moves_per_player()[rows].mean())
+        return out
+
+    labels = ratings.bucket_labels()
+    edges = np.asarray(ratings.bucket_edges)
+    bucket = np.maximum(np.searchsorted(edges, truth, side="right") - 1, 0)
+    return {
+        "interval": est.interval,
+        "mean_rating": mean_rating,
+        "overall": block(np.ones(len(truth), dtype=bool)),
+        "buckets": {label: block(bucket == b) for b, label in enumerate(labels)},
+    }
