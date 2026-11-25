@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Human-like Chess Bot</title>
+  <meta name="description" content="Play a chess bot that moves like human players of the rating you choose. The neural network runs in your browser.">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Human-like chess bot</h1>
+    <p class="tagline">It plays the moves real players of your chosen rating play, as often as they play them,
+      mistakes included. Trained on Lichess blitz games; the network runs right here in your browser.</p>
+  </header>
+
+  <main class="layout">
+    <section class="board-column" aria-label="Board">
+      <div class="player-row"><span class="player-name" id="top-name">Bot</span></div>
+      <div class="board-wrap">
+        <div id="board" class="board" role="grid" aria-label="Chess board"></div>
+        <div id="promotion" class="promotion" hidden></div>
+        <div id="result-banner" class="result-banner" hidden></div>
+      </div>
+      <div class="player-row"><span class="player-name" id="bottom-name">You</span></div>
+      <p id="status" class="status" role="status" aria-live="polite">Loading the model...</p>
+      <p class="hint keys">Click or drag pieces to move. Keys: <kbd>f</kbd> flips the board, <kbd>Esc</kbd> drops the selection.</p>
+    </section>
+
+    <aside class="side-column">
+      <form id="new-game" class="panel" autocomplete="off">
+        <h2>New game</h2>
+        <label class="field">
+          <span>Bot rating <output id="rating-value">1500</output></span>
+          <input id="rating" name="rating" type="range" min="800" max="2400" step="50" value="1500">
+        </label>
+        <fieldset class="field">
+          <legend>Your side</legend>
+          <div class="segmented" role="radiogroup">
+            <label><input type="radio" name="color" value="white" checked><span>White</span></label>
+            <label><input type="radio" name="color" value="random"><span>Random</span></label>
+            <label><input type="radio" name="color" value="black"><span>Black</span></label>
+          </div>
+        </fieldset>
+        <button type="submit" class="primary" id="play" disabled>Play</button>
+      </form>
+
+      <section class="panel" id="game-panel" hidden>
+        <h2>Moves</h2>
+        <ol id="move-list" class="move-list"></ol>
+        <div class="actions">
+          <button type="button" id="flip">Flip board</button>
+          <button type="button" id="takeback">Take back</button>
+          <button type="button" id="resign" class="danger">Resign</button>
+          <button type="button" id="download">Download PGN</button>
+        </div>
+      </section>
+
+      <section class="panel" id="thinking-panel" hidden>
+        <h2>What players at this rating play</h2>
+        <p class="hint" id="thinking-caption"></p>
+        <ul id="candidates" class="candidates"></ul>
+      </section>
+
+      <section class="panel about">
+        <h2>About</h2>
+        <p>A neural network (a small ResNet conditioned on rating and clocks) learned from real Lichess games which
+          move a player of a given rating makes. It predicts the human move 41.7% of the time on games it never saw,
+          more often than Stockfish's best move (37.6%).</p>
+        <p>Game review, hints, the coach, adaptive difficulty and styles need Stockfish and the Python server:
+          <a href="https://github.com/yatharthjag2008/Chess_Engine#setup">run the full app</a> on your computer.</p>
+        <p class="hint" id="model-note"></p>
+      </section>
+    </aside>
+  </main>
+
+  <footer class="site-footer">
+    <a href="https://github.com/yatharthjag2008/Chess_Engine">Source and results on GitHub</a> ·
+    rules of chess by <a href="https://github.com/jhlywa/chess.js">chess.js</a> (BSD-2)
+  </footer>
+
+  <script type="module" src="js/site.js"></script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+/* The public site (GitHub Pages): a few additions to the shared style.css. */
+
+.about p { margin: 0 0 8px; line-height: 1.5; color: var(--ink-2); font-size: 0.92rem; }
+.about a, .site-footer a { color: var(--accent); }
+.site-footer { text-align: center; color: var(--ink-muted); font-size: 0.85rem; padding: 24px 16px 32px; }
+.actions button:disabled { opacity: 0.5; }

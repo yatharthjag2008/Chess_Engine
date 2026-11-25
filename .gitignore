@@ -50,3 +50,6 @@ htmlcov/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Assembled website (scripts/build_site.py); published by .github/workflows/pages.yml
+_site/
