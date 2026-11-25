@@ -112,7 +112,7 @@ class StyleLibrary:
                 out.append(StyleInfo(**self._read(path)["info"]))
             except (StyleError, TypeError):
                 continue
-        return out
+        return sorted(out, key=lambda info: info.name)
 
     def delete(self, name: str) -> None:
         path = self.path(name)

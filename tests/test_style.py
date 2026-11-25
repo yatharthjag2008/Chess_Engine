@@ -200,7 +200,7 @@ def test_library_round_trip(tmp_path) -> None:
     library.save(StyleAdapter.for_model(base), _info("me-2024", kind="ghost", until="2024-06-30"), base)
     assert path.name == "ann.style.pt" and not list((tmp_path / "styles").glob("*.tmp"))
     loaded, info = library.load("ann", base)
-    assert float(loaded.policy_bias[7]) == 3.0 and info.player == "Ann" and info.metrics["styled_top1"] == 0.4
+    assert float(loaded.policy_bias[7].detach()) == 3.0 and info.player == "Ann" and info.metrics["styled_top1"] == 0.4
     assert [i.name for i in library.list()] == ["ann", "me-2024"] and library.info("me-2024").until == "2024-06-30"
     library.delete("me-2024")
     assert [i.name for i in library.list()] == ["ann"]
@@ -282,3 +282,50 @@ def test_a_bot_plays_in_a_style() -> None:
     assert "1400-1599" in bot.describe()
     many = styled.predict_many([chess.Board(), chess.Board()], [1200, 1800])
     assert len(many) == 2 and all(p.moves[0].san == "a3" for p in many)
+
+
+def _cfg(tmp_path, **style):
+    from chess_engine.config import load_config
+
+    cfg = load_config()
+    return cfg.model_copy(update={"paths": cfg.paths.model_copy(update={"data_dir": tmp_path}),
+                                  "style": cfg.style.model_copy(update={"epochs": 3, **style})})
+
+
+def test_build_a_style_and_a_ghost(tmp_path) -> None:
+    import datetime
+
+    from chess_engine.style.build import build_style, library_for
+
+    cfg = _cfg(tmp_path)
+    base = small_predictor().model
+    logs: list[str] = []
+    info = build_style(cfg, base, style_pgn(12), "ann", "Ann", base_model="test.pt", log=logs.append)
+    assert (info.kind, info.player, info.games, info.positions, info.rating) == ("style", "Ann", 12, 36, 1490)   # median of 1500 (White) and 1480 (Black)
+    assert info.until is None and info.base_model == "test.pt" and set(info.metrics) == {
+        "base_loss", "styled_loss", "base_top1", "styled_top1"}
+    assert info.metrics["styled_loss"] <= info.metrics["base_loss"]
+    assert logs[0] == "12 games of Ann (10 to learn from, 2 held out); 30 positions"
+    ghost = build_style(cfg, base, style_pgn(12), "ann-early", "Ann", until=datetime.date(2024, 3, 6))
+    assert ghost.kind == "ghost" and ghost.games == 6 and ghost.until == "2024-03-06"
+    assert [i.name for i in library_for(cfg).list()] == ["ann", "ann-early"]
+    assert (tmp_path / "styles" / "ann.style.pt").is_file()
+
+
+def test_build_refuses_too_few_games(tmp_path) -> None:
+    import datetime
+
+    import pytest
+
+    from chess_engine.style.build import build_style
+
+    cfg = _cfg(tmp_path)
+    base = small_predictor().model
+    with pytest.raises(ValueError, match="2 games of 'Ann' found; a style needs at least 5"):
+        build_style(cfg, base, style_pgn(12), "x", "Ann", until=datetime.date(2024, 3, 2))
+    with pytest.raises(ValueError, match="0 games"):
+        build_style(cfg, base, style_pgn(12), "x", "Nobody")
+    from chess_engine.style.store import StyleError
+
+    with pytest.raises(StyleError, match="style names"):
+        build_style(cfg, base, style_pgn(12), "Bad Name", "Ann")
