@@ -2,6 +2,7 @@
 
     games = parse_pgn_text(pasted_text)                  # list[ImportedGame]
     games[0].white, games[0].speed, games[0].pgn
+    games = fetch_lichess("someone", max_games=20)       # the most recent games, newest first
 
 Every imported game keeps its PGN text plus a summary (players, ratings, result,
 date, time control, speed, a stable id). Only standard chess is kept: the model
@@ -225,3 +226,34 @@ class HttpClient:
             if attempt < self.retries:
                 self.sleep(min(wait, 60.0))
         raise SourceUnavailableError(f"{problem} (gave up after {self.retries + 1} attempts)")
+
+
+# --------------------------------------------------------------------------- Lichess
+
+_LICHESS_PERF = {"ultrabullet": "ultraBullet", "bullet": "bullet", "blitz": "blitz", "rapid": "rapid",
+                 "classical": "classical", "correspondence": "correspondence"}
+
+
+def fetch_lichess(
+    username: str,
+    max_games: int = 20,
+    speeds: list[str] | None = None,
+    rated_only: bool = False,
+    base_url: str = "https://lichess.org",
+    client: HttpClient | None = None,
+) -> list[ImportedGame]:
+    """The player's most recent games on Lichess, newest first (``GET /api/games/user/{name}``, as PGN).
+
+    Raises:
+        InvalidUsernameError, UserNotFoundError, SourceUnavailableError.
+    """
+    name = check_username("lichess", username)
+    params: dict[str, Any] = {"max": max_games, "clocks": "true", "opening": "true", "moves": "true",
+                              "tags": "true", "evals": "false"}
+    if speeds:
+        params["perfType"] = ",".join(_LICHESS_PERF[s] for s in speeds if s in _LICHESS_PERF)
+    if rated_only:
+        params["rated"] = "true"
+    response = (client or HttpClient()).get(f"{base_url.rstrip('/')}/api/games/user/{name}", params,
+                                            accept="application/x-chess-pgn", what="Lichess")
+    return parse_pgn_text(response.text, source="lichess")[:max_games]

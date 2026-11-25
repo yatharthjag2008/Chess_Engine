@@ -139,3 +139,36 @@ def test_http_client_errors() -> None:
     client, _ = _client(retries=0)
     with pytest.raises(SourceUnavailableError, match="cannot reach"):
         client.get("http://127.0.0.1:9/")                       # nothing listens on port 9
+
+
+# --------------------------------------------------------------------------- Lichess
+
+
+def test_fetch_lichess_sends_the_filters_and_parses_the_pgn() -> None:
+    from chess_engine.data.game_import import fetch_lichess
+    from fake_api import FakeApi, Reply
+
+    pgn = FIXTURE.read_text(encoding="utf-8")
+    with FakeApi() as api:
+        api.routes["/api/games/user/SomePlayer"] = Reply(200, pgn, {"Content-Type": "application/x-chess-pgn"})
+        client, _ = _client()
+        games = fetch_lichess(" SomePlayer ", max_games=5, speeds=["blitz", "ultrabullet"], rated_only=True,
+                              base_url=api.url, client=client)
+        assert len(games) == 5 and all(g.source == "lichess" for g in games)
+        path, query, headers = api.requests[0]
+        assert path == "/api/games/user/SomePlayer"
+        assert query["max"] == ["5"] and query["perfType"] == ["blitz,ultraBullet"] and query["rated"] == ["true"]
+        assert query["clocks"] == ["true"] and headers["accept"] == "application/x-chess-pgn"
+
+
+def test_fetch_lichess_errors() -> None:
+    from chess_engine.data.game_import import InvalidUsernameError, UserNotFoundError, fetch_lichess
+    from fake_api import FakeApi
+
+    with FakeApi() as api:
+        client, _ = _client()
+        with pytest.raises(UserNotFoundError, match="Lichess"):
+            fetch_lichess("nobody_here", base_url=api.url, client=client)
+        with pytest.raises(InvalidUsernameError):
+            fetch_lichess("bad/name", base_url=api.url, client=client)
+        assert len(api.requests) == 1          # the invalid name never reached the server
