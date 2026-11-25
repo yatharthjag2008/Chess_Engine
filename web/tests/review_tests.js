@@ -202,6 +202,34 @@ test("the summary shows both players and the key moments", () => {
   equal(app.ui.ply, 6, "jumps to the position after the blunder");
 });
 
+test("the coach comments on your moves", async () => {
+  const coach = await app.ui.coaching;
+  assert(coach, $("coach-panel").textContent);
+  const panel = $("coach-panel");
+  assert(panel.textContent.includes("Coaching Black, rated about 1350 (from the game)"), panel.textContent);
+  assert(panel.textContent.includes("1550-level move"), panel.textContent);
+  const blunderNote = coach.report.notes.find((n) => n.san === "Nf6");
+  assert(blunderNote, JSON.stringify(coach.report.notes));
+  app.goTo(6);
+  equal($("coach-note").textContent, blunderNote.text);
+  app.goTo(1);
+  equal($("coach-note").textContent, "Step to one of your moves for its note.");
+  app.goTo(0);
+  $("next-note").click();
+  equal(app.ui.ply, coach.report.notes[0].ply + 1);
+});
+
+test("coaching at another rating and estimating the rating", async () => {
+  $("coach-rating").value = "1800";
+  const again = await app.loadCoach(1800);
+  equal(again.report.rating, 1800);
+  equal(again.rating_source, "given");
+  assert($("coach-panel").textContent.includes("(as you set it)"), $("coach-panel").textContent);
+  const estimate = await app.estimateRating();
+  assert(estimate, $("estimate").textContent);
+  assert(/look like a \d+ player/.test($("estimate").textContent), $("estimate").textContent);
+});
+
 test("errors are shown", async () => {
   await app.loadGames("lichess", "x");
   assert($("status").textContent.includes("not a valid"), $("status").textContent);

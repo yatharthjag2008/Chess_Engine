@@ -17,6 +17,7 @@ export const ui = {
   review: null,       // the review from the API
   coach: null,        // the coach report from the API
   ply: 0,             // 0 = start position, n = after move n
+  coaching: null,     // the pending coach request (a promise)
   pgn: null,          // the PGN that was reviewed
 };
 
@@ -173,7 +174,9 @@ export async function startReview(pgn = ui.game && ui.game.pgn) {
     return null;
   }
   ui.pgn = pgn;
+  ui.coach = null;
   showReview();
+  ui.coaching = loadCoach();      // in the background: the board is usable meanwhile
   return ui.review;
 }
 
@@ -481,6 +484,119 @@ export function renderMoveList() {
     row.append(cell);
   });
   list.replaceChildren(...items);
+}
+
+// ------------------------------------------------------------------ the coach
+
+const SOURCES = { given: "as you set it", pgn: "from the game", estimated: "estimated from your moves" };
+const pct = (x) => `${Math.round(x * 100)}%`;
+
+/** Ask the coach about your side of the game (``rating``: optional, else from the PGN or estimated). */
+export async function loadCoach(rating = null) {
+  const panel = $("coach-panel");
+  panel.hidden = false;
+  panel.replaceChildren(line("h2", null, "Coach"),
+                        line("p", "coach-stats", "Comparing your moves with players of your level..."));
+  try {
+    ui.coach = await api.coach(ui.pgn, { color: ui.side }, rating);
+  } catch (err) {
+    ui.coach = null;
+    panel.replaceChildren(line("h2", null, "Coach"), line("p", "coach-stats", `The coach is unavailable: ${err.message}`));
+    return null;
+  }
+  renderCoach();
+  return ui.coach;
+}
+
+/** The coach's note on the move that led to ``ply`` (only your moves get notes), or null. */
+export function noteAt(ply) {
+  if (!ui.coach || !ply) return null;
+  const move = ui.review.moves[ply - 1];
+  return ui.coach.report.notes.find((n) => n.ply === move.ply) || null;
+}
+
+/** What the coach says at the current position. */
+export function coachText() {
+  const report = ui.coach.report;
+  const note = noteAt(ui.ply);
+  if (note) return note.text;
+  if (!report.notes.length) return "No mistakes, and nothing stronger players would do clearly better. Well played.";
+  const move = ui.ply ? ui.review.moves[ui.ply - 1] : null;
+  return move && move.color === report.color ? "Nothing to add about this move." : "Step to one of your moves for its note.";
+}
+
+function button(id, text, onClick) {
+  const el = document.createElement("button");
+  el.type = "button";
+  if (id) el.id = id;
+  el.textContent = text;
+  el.addEventListener("click", onClick);
+  return el;
+}
+
+export function renderCoach() {
+  const panel = $("coach-panel");
+  if (!ui.coach) return;
+  const { report, rating_source: source, next_level: next } = ui.coach;
+  const side = report.color === "white" ? "White" : "Black";
+  const noteEl = line("p", "coach-note", coachText());
+  noteEl.id = "coach-note";
+  const children = [
+    line("h2", null, "Coach"),
+    line("p", "coach-stats", `Coaching ${side}, rated about ${report.rating} (${SOURCES[source] || source}).`),
+    line("p", "coach-stats", `You played your level's favourite move ${pct(report.your_level_match)} of the time, ` +
+                             `and the ${next}-level move ${pct(report.next_level_match)}.`),
+    noteEl,
+  ];
+
+  const actions = document.createElement("div");
+  actions.className = "side-choice";
+  if (report.notes.length) actions.append(button("next-note", `Next note (${report.notes.length})`, jumpToNextNote));
+  const ratingBox = document.createElement("input");
+  Object.assign(ratingBox, { type: "number", id: "coach-rating", min: "400", max: "3000", step: "50",
+                             placeholder: String(report.rating) });
+  ratingBox.setAttribute("aria-label", "Your rating");
+  actions.append(ratingBox, button(null, "Coach at this rating", () => {
+    const value = Number(ratingBox.value);
+    if (value) loadCoach(value);
+  }));
+
+  const estimate = document.createElement("div");
+  estimate.className = "side-choice";
+  estimate.id = "estimate";
+  estimate.append(button("estimate-button", "Estimate my rating from this game", estimateRating));
+  panel.replaceChildren(...children, actions, estimate);
+  panel.hidden = false;
+}
+
+// Stepping only changes the note, so the rating box keeps what was typed.
+onStep.push(() => {
+  const el = $("coach-note");
+  if (el && ui.coach) el.textContent = coachText();
+});
+
+/** Go to the position after your next move with a note (wrapping round to the first). */
+export function jumpToNextNote() {
+  const plies = ui.coach.report.notes.map((n) => n.ply + 1);
+  goTo(plies.find((p) => p > ui.ply) || plies[0]);
+}
+
+/** Your rating from this game's moves (the model's estimate, with its range). */
+export async function estimateRating() {
+  const box = $("estimate");
+  box.replaceChildren(line("span", "loading", ""), "Estimating...");
+  try {
+    const result = await api.ratingEstimate(ui.pgn, { color: ui.side });
+    const o = result.overall;
+    box.replaceChildren(line("p", "coach-stats",
+      `Your moves in this game look like a ${Math.round(o.estimate)} player ` +
+      `(likely ${Math.round(o.low)}\u2013${Math.round(o.high)}, from ${o.moves} moves).`));
+    if (result.note) box.append(line("p", "coach-stats", result.note));
+    return result;
+  } catch (err) {
+    box.replaceChildren(line("p", "coach-stats", `No estimate: ${err.message}`));
+    return null;
+  }
 }
 
 export function init() {
