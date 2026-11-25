@@ -92,6 +92,12 @@ def test_default_api_settings(default_config: Config) -> None:
     assert "http://localhost:8000" in a.cors_origins
 
 
+def test_default_elo_validation_settings(default_config: Config) -> None:
+    e = default_config.elo_validation
+    assert e.bot_ratings == sorted(e.bot_ratings) and len(e.bot_ratings) >= 2
+    assert min(e.stockfish_elos) >= 1320 and e.self_play == "adjacent" and e.temperature is None
+
+
 def test_training_limits_can_be_unset(tmp_path: Path) -> None:
     override = _write_yaml(tmp_path / "t.yaml", {"training": {"grad_clip_norm": None, "val_max_positions": None,
                                                             "max_steps": 10, "max_minutes": 1.5}})
@@ -178,6 +184,9 @@ def test_invalid_yaml_is_rejected(tmp_path: Path) -> None:
         ({"evaluation": {"split": "holdout"}}, "split"),
         ({"bot": {"temperature": -0.5}}, "temperature"),
         ({"api": {"port": 70000}}, "port"),
+        ({"elo_validation": {"stockfish_elos": [1000]}}, "1320"),
+        ({"elo_validation": {"bot_ratings": [1500]}}, "bot_ratings"),
+        ({"elo_validation": {"self_play": "some"}}, "self_play"),
         ({"api": {"max_games": 0}}, "max_games"),
         ({"api": {"idle_minutes": 0}}, "idle_minutes"),
         ({"bot": {"top_p": 0}}, "top_p"),

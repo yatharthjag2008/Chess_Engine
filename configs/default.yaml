@@ -140,3 +140,17 @@ api:                             # step 9: FastAPI backend (the bot model and sa
   max_games: 200                 # games kept in memory at once (the oldest idle game is dropped first)
   idle_minutes: 120              # games untouched for this long are dropped
   cors_origins: ["http://localhost:8000", "http://127.0.0.1:8000"]   # web pages allowed to call the API
+
+elo_validation:                  # step 11: does a higher dial rating make the bot play stronger?
+  bot_ratings: [800, 1100, 1400, 1700, 2000, 2300]
+  stockfish_elos: [1320, 1600, 1900]   # Stockfish UCI_Elo levels as fixed opponents (1320 is its minimum)
+  stockfish_move_seconds: 0.05   # thinking time per Stockfish move
+  games_per_pairing: 20          # colours alternate
+  self_play: adjacent            # bots also play each other: none | adjacent (neighbouring ratings) | all
+  temperature: null              # bot sampling temperature (null = bot.temperature)
+  max_plies: 300                 # longer games are decided by the judge's evaluation
+  # The bots never resign, so a judge (Stockfish, fixed nodes) ends games that are clearly decided:
+  adjudicate_cp: 800             # one side ahead by this many centipawns ...
+  adjudicate_plies: 8            # ... for this many plies in a row wins
+  judge_nodes: 20000
+  seed: 0

@@ -293,6 +293,30 @@ class ApiConfig(_StrictModel):
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:8000", "http://127.0.0.1:8000"])
 
 
+class EloValidationConfig(_StrictModel):
+    """Matches that check the rating dial (see ``chess_engine.eval.elo_validation``)."""
+
+    bot_ratings: list[PositiveInt] = Field(default_factory=lambda: [800, 1100, 1400, 1700, 2000, 2300], min_length=2)
+    stockfish_elos: list[int] = Field(default_factory=lambda: [1320, 1600, 1900])
+    stockfish_move_seconds: float = Field(default=0.05, gt=0)
+    games_per_pairing: PositiveInt = 20
+    self_play: Literal["none", "adjacent", "all"] = "adjacent"
+    temperature: float | None = Field(default=None, ge=0)
+    max_plies: PositiveInt = 300
+    adjudicate_cp: PositiveInt = 800
+    adjudicate_plies: PositiveInt = 8
+    judge_nodes: PositiveInt = 20_000
+    seed: int = 0
+
+    @field_validator("stockfish_elos")
+    @classmethod
+    def _check_stockfish_elos(cls, elos: list[int]) -> list[int]:
+        for elo in elos:
+            if not 1320 <= elo <= 3190:
+                raise ValueError(f"Stockfish UCI_Elo must be between 1320 and 3190, got {elo}")
+        return elos
+
+
 class Config(_StrictModel):
     """The full project configuration."""
 
@@ -305,6 +329,7 @@ class Config(_StrictModel):
     evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
     bot: BotConfig = Field(default_factory=BotConfig)
     api: ApiConfig = Field(default_factory=ApiConfig)
+    elo_validation: EloValidationConfig = Field(default_factory=EloValidationConfig)
 
 
 # --------------------------------------------------------------------------- loading
