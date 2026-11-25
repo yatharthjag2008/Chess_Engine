@@ -64,8 +64,11 @@ def _synthetic(n_players: int = 300, moves: int = 40, seed: int = 0) -> EvalData
     centers = np.array([900, 1100, 1300, 1500, 1700, 1900, 2100, 2300], dtype=float)
     rating = rng.uniform(900, 2300, n_players)
     player = np.repeat(np.arange(n_players), moves)
-    # each move favours buckets near the true rating, with noise
-    ll = -0.5 * ((centers[None, :] - rating[player][:, None]) / 500) ** 2 + rng.normal(0, 0.3, (len(player), 8))
+    # Each move favours buckets near the true rating, shifted by a per-player offset shared by all
+    # of that player's moves (one style, one opening): the moves are correlated evidence, as in real games.
+    offset = rng.normal(0, 250, n_players)
+    looks_like = rating[player] + offset[player]
+    ll = -0.5 * ((centers[None, :] - looks_like[:, None]) / 500) ** 2 + rng.normal(0, 0.3, (len(player), 8))
     ll -= np.log(np.exp(ll).sum(1, keepdims=True))
     opp = rating + rng.normal(0, 150, n_players)
     return EvalData(player=player, ply=np.tile(np.arange(moves) * 2, n_players), ll=ll.astype(np.float32),
@@ -88,4 +91,26 @@ def test_estimates_and_scores_on_synthetic_players(default_config: Config) -> No
     assert sum(b["players"] for b in result["buckets"].values()) == 300
     fewer = estimate_all(data, default_config.ratings, cfg, np.zeros(221), max_moves=5)
     assert np.mean(fewer.high - fewer.low) > np.mean(est.high - est.low)  # fewer moves, wider ranges
-    assert result["buckets"]["800-999"]["players"] >= 0
+
+
+def test_fit_temper_reaches_the_target_coverage(default_config: Config) -> None:
+    from chess_engine.config import RatingEstimationConfig
+    from chess_engine.eval.rating_eval import estimate_all, fit_temper
+
+    cfg = RatingEstimationConfig(prior="flat", interval=0.8)
+    prior = np.zeros(221)
+    calibrate, holdout = _synthetic(seed=1), _synthetic(seed=2)
+    raw = estimate_all(calibrate, default_config.ratings, cfg, prior)
+    raw_coverage = ((raw.low <= calibrate.rating) & (calibrate.rating <= raw.high)).mean()
+    assert raw_coverage < 0.8  # the noisy, correlated moves make the raw posterior overconfident
+    fit = fit_temper(calibrate, default_config.ratings, cfg, prior)
+    assert fit["temper"] > 1 and fit["coverage"] >= 0.8
+    coverages = [r["coverage"] for r in fit["candidates"]]
+    assert coverages[-1] >= coverages[0]
+    # the fitted value carries over to other games of the same kind
+    est = estimate_all(holdout, default_config.ratings, cfg, prior, fit["temper"])
+    held = ((est.low <= holdout.rating) & (holdout.rating <= est.high)).mean()
+    assert 0.7 <= held <= 0.92
+    never = fit_temper(calibrate, default_config.ratings, cfg.model_copy(update={"interval": 0.999}), prior,
+                       candidates=np.array([1.0, 1.5]))
+    assert never["temper"] == 1.5  # target not reached: the widest candidate

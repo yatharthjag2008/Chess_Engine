@@ -177,3 +177,27 @@ def score(est: Estimates, data: EvalData, ratings: RatingsConfig, mean_rating: f
         "overall": block(np.ones(len(truth), dtype=bool)),
         "buckets": {label: block(bucket == b) for b, label in enumerate(labels)},
     }
+
+
+# --------------------------------------------------------------------------- tempering
+
+
+def fit_temper(data: EvalData, ratings: RatingsConfig, cfg: RatingEstimationConfig, log_prior: np.ndarray,
+               candidates: np.ndarray | None = None) -> dict[str, Any]:
+    """The ``temper`` whose ranges contain the true rating ``cfg.interval`` of the time on ``data``.
+
+    Coverage grows with ``temper`` (wider posteriors), so the first candidate that reaches the
+    target coverage is taken. Returns the chosen value and the coverage / error at every candidate.
+    """
+    candidates = np.geomspace(1, 64, 49) if candidates is None else np.asarray(candidates, dtype=np.float64)
+    target = cfg.interval
+    rows = []
+    for temper in candidates:
+        est = estimate_all(data, ratings, cfg, log_prior, float(temper))
+        inside = (est.low <= data.rating) & (data.rating <= est.high)
+        rows.append({"temper": float(temper), "coverage": float(inside.mean()),
+                     "mae": float(np.abs(est.estimate - data.rating).mean())})
+    reached = [r for r in rows if r["coverage"] >= target]
+    chosen = reached[0] if reached else rows[-1]
+    return {"temper": chosen["temper"], "target_coverage": target, "coverage": chosen["coverage"],
+            "mae": chosen["mae"], "candidates": rows}
