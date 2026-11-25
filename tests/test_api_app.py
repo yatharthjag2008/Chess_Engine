@@ -259,3 +259,42 @@ def test_rating_estimate_endpoint(client: TestClient) -> None:
                 {"pgn": FIXTURE_PGN, "player": "nobody-at-all"}):
         r = client.post("/api/rating-estimate", json=bad)
         assert r.status_code == 422 and r.json()["error"] == "invalid_request", bad
+
+
+# --------------------------------------------------------------------------- review
+
+
+def test_review_endpoints(default_config: Config, tmp_path) -> None:
+    from test_review_analyzer import PGN, _scripted
+
+    cfg = default_config.model_copy(update={"paths": default_config.paths.model_copy(update={"data_dir": tmp_path})})
+    with TestClient(create_app(cfg, small_predictor(), review_analyzer=_scripted())) as c:
+        body = c.post("/api/review", json={"pgn": PGN}).json()
+        assert [m["san"] for m in body["moves"]][:3] == ["e4", "e5", "Qh5"]
+        assert body["moves"][5]["classification"] == "blunder" and body["summary"]["black"]["counts"]["blunder"] == 1
+        assert body["key_moments"][0]["san"] == "Nf6" and len(body["graph"]) == 8
+        bad = c.post("/api/review", json={"pgn": PGN, "game_index": 3})
+        assert bad.status_code == 422 and bad.json()["error"] == "invalid_request"
+        game = c.post("/api/games", json={"seed": 1}).json()
+        c.post(f"/api/games/{game['id']}/moves", json={"move": "e4"})
+        bot_review = c.get(f"/api/games/{game['id']}/review").json()
+        assert [m["san"] for m in bot_review["moves"]][0] == "e4" and len(bot_review["moves"]) == 2
+        assert c.get("/api/games/nope/review").status_code == 404
+
+
+def test_review_without_stockfish(default_config: Config, tmp_path, monkeypatch) -> None:
+    from chess_engine.stockfish import StockfishError
+    import chess_engine.review.run as run_module
+
+    def missing(path):
+        raise StockfishError("Stockfish was not found\n(install instructions)")
+
+    monkeypatch.setattr(run_module, "find_stockfish", missing)
+    cfg = default_config.model_copy(update={
+        "paths": default_config.paths.model_copy(update={"data_dir": tmp_path}),
+        "review": default_config.review.model_copy(update={"cache": False}),
+    })
+    with TestClient(create_app(cfg, small_predictor())) as c:
+        r = c.post("/api/review", json={"pgn": "1. e4 e5 *"})
+        assert r.status_code == 503 and r.json()["error"] == "stockfish_unavailable"
+        assert "not found" in r.json()["detail"] and "install" not in r.json()["detail"]

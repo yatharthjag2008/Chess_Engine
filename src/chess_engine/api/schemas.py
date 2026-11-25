@@ -240,3 +240,13 @@ class RatingEstimateResponse(BaseModel):
     games: list[GameRatingEstimate]
     temper: float
     note: str | None = None
+
+
+# --------------------------------------------------------------------------- review (step 14)
+
+
+class ReviewRequest(_Body):
+    """A game to review, as PGN (``game_index``: which game of the text, 0 = first)."""
+
+    pgn: str = Field(min_length=1, max_length=5_000_000)
+    game_index: int = Field(default=0, ge=0)

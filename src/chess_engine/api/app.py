@@ -19,6 +19,8 @@ GET      /api/games/{id}/pgn             the game as PGN text
 POST     /api/import/pgn                 import pasted PGN games (summaries + PGN of each)
 GET      /api/import/{site}/{username}   a player's recent games from ``lichess`` or ``chess.com``
 POST     /api/rating-estimate            a player's rating (and likely range) from PGN games
+POST     /api/review                     Stockfish review of a PGN game (classes, accuracy, key moments, graph)
+GET      /api/games/{id}/review          the same for a game played against the bot
 =======  ==============================  ===================================================
 
 The model is loaded once when the app starts (from ``bot.model`` in the config),
@@ -27,7 +29,7 @@ unless a predictor is passed in (tests, or embedding the app elsewhere).
 Every error has the same shape, ``{"error": "<code>", "detail": "<message>"}``:
 404 ``game_not_found``; 409 ``game_over`` / ``not_your_turn`` / ``not_bots_turn`` /
 ``nothing_to_take_back`` / ``timed_game``; 422 ``illegal_move`` / ``invalid_request`` /
-``invalid_username``; 404 ``user_not_found``; 502 ``source_unavailable``.
+``invalid_username``; 404 ``user_not_found``; 502 ``source_unavailable``; 503 ``stockfish_unavailable``.
 Browsers may call the API from the origins in ``api.cors_origins``.
 
 The web UI (``web/``, step 10) is served at ``/`` by the same app, so the page and
@@ -62,6 +64,7 @@ from chess_engine.api.schemas import (
     RatingEstimateRequest,
     RatingEstimateResponse,
     RatingRange,
+    ReviewRequest,
     legal_moves,
 )
 from chess_engine.api.service import GameRuleError, GameService
@@ -83,6 +86,10 @@ from chess_engine.data.dataset_builder import dataset_output_dir
 from chess_engine.eval.evaluate import model_name
 from chess_engine.eval.player_games import player_games_from_pgn
 from chess_engine.eval.rating_estimation import estimate_rating, setup_from_config
+from chess_engine.review.analyzer import review_to_dict
+from chess_engine.review.engine import Analyzer
+from chess_engine.review.run import run_review
+from chess_engine.stockfish import StockfishError
 from chess_engine.model.inference import MovePredictor, load_model
 
 
@@ -90,11 +97,12 @@ WEB_DIR = PROJECT_ROOT / "web"
 
 
 def create_app(cfg: Config | None = None, predictor: MovePredictor | None = None,
-               web_dir: str | Path | None = WEB_DIR) -> FastAPI:
+               web_dir: str | Path | None = WEB_DIR, review_analyzer: Analyzer | None = None) -> FastAPI:
     """The API app for ``cfg`` (default: the project config), using ``predictor`` or the configured model.
 
     Args:
         web_dir: Directory served at ``/`` (the web UI); None serves only the API.
+        review_analyzer: Engine for reviews (tests); default: the configured Stockfish, per review.
     """
     cfg = cfg or load_config()
 
@@ -148,6 +156,11 @@ def create_app(cfg: Config | None = None, predictor: MovePredictor | None = None
         else:
             status, code = 422, "invalid_request"
         return JSONResponse(status_code=status, content={"error": code, "detail": str(exc)})
+
+    @app.exception_handler(StockfishError)
+    async def no_stockfish(request: Request, exc: StockfishError) -> JSONResponse:
+        return JSONResponse(status_code=503, content={"error": "stockfish_unavailable",
+                                                      "detail": "Stockfish is needed for reviews: " + str(exc).split("\n")[0]})
 
     @app.exception_handler(IllegalMoveError)
     async def illegal_move(request: Request, exc: IllegalMoveError) -> JSONResponse:
@@ -244,6 +257,21 @@ def create_app(cfg: Config | None = None, predictor: MovePredictor | None = None
                     for g, est in zip(games, result.per_game)]
         return RatingEstimateResponse(overall=RatingRange(**rng(result.overall)), games=per_game,
                                       temper=temper or 1.0, note=note)
+
+    def reviewed(pgn: str, game_index: int = 0) -> dict:
+        try:
+            review = run_review(cfg, pgn, game_index, analyzer=review_analyzer)
+        except ValueError as exc:
+            raise GameImportError(str(exc)) from exc
+        return review_to_dict(review, cfg.review.key_moments)
+
+    @app.post("/api/review")
+    def review_pgn_endpoint(body: ReviewRequest) -> dict:
+        return reviewed(body.pgn, body.game_index)
+
+    @app.get("/api/games/{game_id}/review")
+    def review_bot_game(game_id: str, request: Request) -> dict:
+        return reviewed(service(request).pgn(session(request, game_id)))
 
     if web is not None and (web / "index.html").is_file():
         # Mounted last, so every /api route and /docs is matched first.
