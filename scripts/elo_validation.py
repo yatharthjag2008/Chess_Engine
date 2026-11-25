@@ -97,7 +97,9 @@ def main(argv: list[str] | None = None, stockfish_command=None) -> int:
     setup = {"model_name": model_name(model_path), "model_path": shown_path(model_path), "temperature": temperature,
              "stockfish_move_seconds": e.stockfish_move_seconds, "judge_nodes": e.judge_nodes,
              "adjudicate_cp": e.adjudicate_cp, "adjudicate_plies": e.adjudicate_plies, "max_plies": e.max_plies,
-             "bootstrap": args.bootstrap, "seconds": time.perf_counter() - start, "self_play": e.self_play,
+             "bootstrap": args.bootstrap, "self_play": e.self_play,
+             # the run time is only known when the games were played in this session
+             "seconds": None if args.analyze_only else time.perf_counter() - start,
              "stockfish_version": "19"}
     plot_dial(analysis, out / CHARTS["dial"])
     plot_scores(analysis, out / CHARTS["scores"])

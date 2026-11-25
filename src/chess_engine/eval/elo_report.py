@@ -137,6 +137,8 @@ def render_report(analysis: dict[str, Any], setup: dict[str, Any]) -> str:
             f"- A judge (full Stockfish, {setup['judge_nodes']:,} nodes) ends a game when one side has been ahead by "
             f"{setup['adjudicate_cp']} centipawns for {setup['adjudicate_plies']} plies in a row; after "
             f"{setup['max_plies']} plies its last evaluation decides.",
-            f"- Intervals: {setup['bootstrap']} bootstrap resamples of the games within each pairing.",
-            f"- Run time: {setup['seconds'] / 60:.0f} minutes.", ""]
+            f"- Intervals: {setup['bootstrap']} bootstrap resamples of the games within each pairing."]
+    if setup.get("seconds"):
+        out.append(f"- Run time: {setup['seconds'] / 60:.0f} minutes.")
+    out.append("")
     return "\n".join(out)

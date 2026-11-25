@@ -1,0 +1,444 @@
+{
+ "setup": {
+  "model_name": "laptop_64x6_best_model",
+  "model_path": "checkpoints/laptop_64x6/best_model.pt",
+  "temperature": 1.0,
+  "stockfish_move_seconds": 0.05,
+  "judge_nodes": 20000,
+  "adjudicate_cp": 800,
+  "adjudicate_plies": 8,
+  "max_plies": 300,
+  "bootstrap": 200,
+  "self_play": "adjacent",
+  "seconds": null,
+  "stockfish_version": "19"
+ },
+ "games": 460,
+ "pairings": [
+  {
+   "pairing": "bot:800 vs sf:1320",
+   "a": "bot:800",
+   "b": "sf:1320",
+   "games": 20,
+   "wins": 0,
+   "draws": 0,
+   "losses": 20,
+   "adjudicated": 17,
+   "score": 0.0,
+   "average_plies": 47.2
+  },
+  {
+   "pairing": "bot:800 vs sf:1600",
+   "a": "bot:800",
+   "b": "sf:1600",
+   "games": 20,
+   "wins": 0,
+   "draws": 0,
+   "losses": 20,
+   "adjudicated": 18,
+   "score": 0.0,
+   "average_plies": 47.6
+  },
+  {
+   "pairing": "bot:800 vs sf:1900",
+   "a": "bot:800",
+   "b": "sf:1900",
+   "games": 20,
+   "wins": 0,
+   "draws": 0,
+   "losses": 20,
+   "adjudicated": 16,
+   "score": 0.0,
+   "average_plies": 35.0
+  },
+  {
+   "pairing": "bot:1100 vs sf:1320",
+   "a": "bot:1100",
+   "b": "sf:1320",
+   "games": 20,
+   "wins": 0,
+   "draws": 0,
+   "losses": 20,
+   "adjudicated": 13,
+   "score": 0.0,
+   "average_plies": 57.4
+  },
+  {
+   "pairing": "bot:1100 vs sf:1600",
+   "a": "bot:1100",
+   "b": "sf:1600",
+   "games": 20,
+   "wins": 0,
+   "draws": 0,
+   "losses": 20,
+   "adjudicated": 18,
+   "score": 0.0,
+   "average_plies": 48.25
+  },
+  {
+   "pairing": "bot:1100 vs sf:1900",
+   "a": "bot:1100",
+   "b": "sf:1900",
+   "games": 20,
+   "wins": 0,
+   "draws": 0,
+   "losses": 20,
+   "adjudicated": 18,
+   "score": 0.0,
+   "average_plies": 34.95
+  },
+  {
+   "pairing": "bot:1400 vs sf:1320",
+   "a": "bot:1400",
+   "b": "sf:1320",
+   "games": 20,
+   "wins": 0,
+   "draws": 0,
+   "losses": 20,
+   "adjudicated": 16,
+   "score": 0.0,
+   "average_plies": 62.25
+  },
+  {
+   "pairing": "bot:1400 vs sf:1600",
+   "a": "bot:1400",
+   "b": "sf:1600",
+   "games": 20,
+   "wins": 0,
+   "draws": 0,
+   "losses": 20,
+   "adjudicated": 15,
+   "score": 0.0,
+   "average_plies": 52.2
+  },
+  {
+   "pairing": "bot:1400 vs sf:1900",
+   "a": "bot:1400",
+   "b": "sf:1900",
+   "games": 20,
+   "wins": 0,
+   "draws": 0,
+   "losses": 20,
+   "adjudicated": 15,
+   "score": 0.0,
+   "average_plies": 47.45
+  },
+  {
+   "pairing": "bot:1700 vs sf:1320",
+   "a": "bot:1700",
+   "b": "sf:1320",
+   "games": 20,
+   "wins": 2,
+   "draws": 0,
+   "losses": 18,
+   "adjudicated": 18,
+   "score": 0.1,
+   "average_plies": 53.5
+  },
+  {
+   "pairing": "bot:1700 vs sf:1600",
+   "a": "bot:1700",
+   "b": "sf:1600",
+   "games": 20,
+   "wins": 0,
+   "draws": 0,
+   "losses": 20,
+   "adjudicated": 17,
+   "score": 0.0,
+   "average_plies": 48.8
+  },
+  {
+   "pairing": "bot:1700 vs sf:1900",
+   "a": "bot:1700",
+   "b": "sf:1900",
+   "games": 20,
+   "wins": 0,
+   "draws": 0,
+   "losses": 20,
+   "adjudicated": 18,
+   "score": 0.0,
+   "average_plies": 47.9
+  },
+  {
+   "pairing": "bot:2000 vs sf:1320",
+   "a": "bot:2000",
+   "b": "sf:1320",
+   "games": 20,
+   "wins": 1,
+   "draws": 0,
+   "losses": 19,
+   "adjudicated": 14,
+   "score": 0.05,
+   "average_plies": 68.75
+  },
+  {
+   "pairing": "bot:2000 vs sf:1600",
+   "a": "bot:2000",
+   "b": "sf:1600",
+   "games": 20,
+   "wins": 0,
+   "draws": 0,
+   "losses": 20,
+   "adjudicated": 15,
+   "score": 0.0,
+   "average_plies": 44.6
+  },
+  {
+   "pairing": "bot:2000 vs sf:1900",
+   "a": "bot:2000",
+   "b": "sf:1900",
+   "games": 20,
+   "wins": 0,
+   "draws": 0,
+   "losses": 20,
+   "adjudicated": 17,
+   "score": 0.0,
+   "average_plies": 48.45
+  },
+  {
+   "pairing": "bot:2300 vs sf:1320",
+   "a": "bot:2300",
+   "b": "sf:1320",
+   "games": 20,
+   "wins": 2,
+   "draws": 0,
+   "losses": 18,
+   "adjudicated": 17,
+   "score": 0.1,
+   "average_plies": 53.15
+  },
+  {
+   "pairing": "bot:2300 vs sf:1600",
+   "a": "bot:2300",
+   "b": "sf:1600",
+   "games": 20,
+   "wins": 1,
+   "draws": 0,
+   "losses": 19,
+   "adjudicated": 18,
+   "score": 0.05,
+   "average_plies": 49.45
+  },
+  {
+   "pairing": "bot:2300 vs sf:1900",
+   "a": "bot:2300",
+   "b": "sf:1900",
+   "games": 20,
+   "wins": 0,
+   "draws": 0,
+   "losses": 20,
+   "adjudicated": 18,
+   "score": 0.0,
+   "average_plies": 47.5
+  },
+  {
+   "pairing": "bot:800 vs bot:1100",
+   "a": "bot:800",
+   "b": "bot:1100",
+   "games": 20,
+   "wins": 9,
+   "draws": 1,
+   "losses": 10,
+   "adjudicated": 17,
+   "score": 0.475,
+   "average_plies": 47.7
+  },
+  {
+   "pairing": "bot:1100 vs bot:1400",
+   "a": "bot:1100",
+   "b": "bot:1400",
+   "games": 20,
+   "wins": 2,
+   "draws": 0,
+   "losses": 18,
+   "adjudicated": 19,
+   "score": 0.1,
+   "average_plies": 56.35
+  },
+  {
+   "pairing": "bot:1400 vs bot:1700",
+   "a": "bot:1400",
+   "b": "bot:1700",
+   "games": 20,
+   "wins": 3,
+   "draws": 1,
+   "losses": 16,
+   "adjudicated": 18,
+   "score": 0.175,
+   "average_plies": 57.35
+  },
+  {
+   "pairing": "bot:1700 vs bot:2000",
+   "a": "bot:1700",
+   "b": "bot:2000",
+   "games": 20,
+   "wins": 12,
+   "draws": 0,
+   "losses": 8,
+   "adjudicated": 20,
+   "score": 0.6,
+   "average_plies": 61.85
+  },
+  {
+   "pairing": "bot:2000 vs bot:2300",
+   "a": "bot:2000",
+   "b": "bot:2300",
+   "games": 20,
+   "wins": 5,
+   "draws": 2,
+   "losses": 13,
+   "adjudicated": 18,
+   "score": 0.3,
+   "average_plies": 64.95
+  }
+ ],
+ "bots": [
+  {
+   "key": "bot:800",
+   "dial": 800,
+   "measured": 311.18228591185783,
+   "interval": [
+    -49.25715481783191,
+    496.1073193894698
+   ],
+   "scores": {
+    "sf:1320": 0.0,
+    "sf:1600": 0.0,
+    "sf:1900": 0.0,
+    "bot:1100": 0.475
+   }
+  },
+  {
+   "key": "bot:1100",
+   "dial": 1100,
+   "measured": 319.4457956184488,
+   "interval": [
+    12.887968389825872,
+    494.6934250351078
+   ],
+   "scores": {
+    "sf:1320": 0.0,
+    "sf:1600": 0.0,
+    "sf:1900": 0.0,
+    "bot:800": 0.525,
+    "bot:1400": 0.1
+   }
+  },
+  {
+   "key": "bot:1400",
+   "dial": 1400,
+   "measured": 656.0155564338776,
+   "interval": [
+    430.9810337549391,
+    792.9437035195499
+   ],
+   "scores": {
+    "sf:1320": 0.0,
+    "sf:1600": 0.0,
+    "sf:1900": 0.0,
+    "bot:1100": 0.9,
+    "bot:1700": 0.175
+   }
+  },
+  {
+   "key": "bot:1700",
+   "dial": 1700,
+   "measured": 911.8554218472547,
+   "interval": [
+    726.4253693896187,
+    1042.5797123319012
+   ],
+   "scores": {
+    "sf:1320": 0.1,
+    "sf:1600": 0.0,
+    "sf:1900": 0.0,
+    "bot:1400": 0.825,
+    "bot:2000": 0.6
+   }
+  },
+  {
+   "key": "bot:2000",
+   "dial": 2000,
+   "measured": 833.4019004614997,
+   "interval": [
+    659.9146036227719,
+    938.0975021810609
+   ],
+   "scores": {
+    "sf:1320": 0.05,
+    "sf:1600": 0.0,
+    "sf:1900": 0.0,
+    "bot:1700": 0.4,
+    "bot:2300": 0.3
+   }
+  },
+  {
+   "key": "bot:2300",
+   "dial": 2300,
+   "measured": 981.1245672186429,
+   "interval": [
+    820.8024535027478,
+    1115.7462905818197
+   ],
+   "scores": {
+    "sf:1320": 0.1,
+    "sf:1600": 0.05,
+    "sf:1900": 0.0,
+    "bot:2000": 0.7
+   }
+  }
+ ],
+ "stockfish": [
+  1320.0,
+  1600.0,
+  1900.0
+ ],
+ "anchored": true,
+ "dial": {
+  "spearman": 0.942857142857143,
+  "slope": 0.4902304368072818,
+  "steps": [
+   {
+    "from": "bot:800",
+    "to": "bot:1100",
+    "dial_gap": 300,
+    "measured_gap": 8.26350970659098,
+    "prob_stronger": 0.585
+   },
+   {
+    "from": "bot:1100",
+    "to": "bot:1400",
+    "dial_gap": 300,
+    "measured_gap": 336.56976081542876,
+    "prob_stronger": 1.0
+   },
+   {
+    "from": "bot:1400",
+    "to": "bot:1700",
+    "dial_gap": 300,
+    "measured_gap": 255.83986541337708,
+    "prob_stronger": 1.0
+   },
+   {
+    "from": "bot:1700",
+    "to": "bot:2000",
+    "dial_gap": 300,
+    "measured_gap": -78.45352138575493,
+    "prob_stronger": 0.09
+   },
+   {
+    "from": "bot:2000",
+    "to": "bot:2300",
+    "dial_gap": 300,
+    "measured_gap": 147.7226667571432,
+    "prob_stronger": 0.99
+   }
+  ]
+ },
+ "terminations": {
+  "adjudicated (decisive advantage)": 390,
+  "checkmate": 66,
+  "insufficient material": 4
+ },
+ "adjudicated_share": 0.8478260869565217
+}

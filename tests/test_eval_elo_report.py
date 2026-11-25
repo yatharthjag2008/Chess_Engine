@@ -31,3 +31,4 @@ def test_report() -> None:
         assert part in text, part
     for chart in CHARTS.values():
         assert f"]({chart})" in text
+    assert "Run time" not in render_report(analysis, {**SETUP, "seconds": None})
