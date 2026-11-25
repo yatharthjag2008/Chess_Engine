@@ -70,6 +70,14 @@ def test_optional_parts_can_be_skipped(tmp_path: Path, tiny_dataset: Path, model
     assert "skipped (turned off)" in out.report_path.read_text(encoding="utf-8")
 
 
+def test_shown_paths_are_relative_inside_the_project(tmp_path: Path) -> None:
+    from chess_engine.config import PROJECT_ROOT
+    from chess_engine.eval.evaluate import shown_path
+
+    assert shown_path(PROJECT_ROOT / "checkpoints" / "run" / "best_model.pt") == "checkpoints/run/best_model.pt"
+    assert shown_path(tmp_path / "x.pt") == str(tmp_path / "x.pt")
+
+
 def test_errors_and_names(tmp_path: Path, model_file: Path) -> None:
     with pytest.raises(EvaluationError, match="no dataset"):
         evaluate_model(_cfg(tmp_path), model_file, tmp_path / "none", log=lambda _: None)

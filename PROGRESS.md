@@ -10,7 +10,7 @@ See [PLAN.md](PLAN.md) for details on each step.
 - [x] 4. Dataset builder
 - [x] 5. Model
 - [x] 6. Training pipeline
-- [ ] 7. Evaluation + baselines
+- [x] 7. Evaluation + baselines
 - [ ] 8. Bot move selection + CLI
 - [ ] 9. Backend API
 - [ ] 10. Web UI for playing
@@ -421,3 +421,87 @@ For comparison: 48 channels × 4 blocks trains at ~780 positions/s and 32 × 4 a
   fp16 on CPU is slower than fp32.
 - **Tests train real (tiny) models on real (tiny) datasets**, with 2 torch threads and no worker processes, so
   the ~100 training tests take about 2 minutes.
+
+## Step 7: Evaluation + baselines (done 2026-11-24)
+
+**Built** (`chess_engine.eval`)
+- `positions`: a 64-bit key per position (pieces, side to move, castling, legal en passant; move counters
+  ignored) and boards rebuilt from stored samples.
+- `predictions`: one pass of a model over a split -> a per-position `PredictionTable` (rank and probability of
+  the human move, top-5 moves, entropy, win/draw/loss), saved as `.npz`; also accumulates a reliability
+  histogram over every legal move. It can tell the model any rating instead of the real one.
+- `move_matching`: top-1/3/5, log-likelihood and perplexity per rating bucket; breakdowns by game phase, the
+  mover's clock and the number of legal moves.
+- `bootstrap`: confidence intervals that resample whole games (also for paired differences).
+- `baselines`: most common move in that position in the training games (overall, or at the same rating), with a
+  random legal move where the position is new; random legal move (exact `1/legal moves`).
+- `stockfish_baseline`: Stockfish's best move on a seeded sample of test positions, cached by depth + FEN.
+- `cross_rating`: accuracy of the model told rating *m* on players of real rating *p*, and the best single rating
+  for everyone (fixed-rating baseline).
+- `calibration`: reliability tables and expected calibration error for every legal move, for the top move, and
+  for the value head's expected score.
+- `plots`, `report`, `evaluate` (the whole pipeline), `compare` (models on the same positions, paired intervals).
+- Scripts: `scripts/evaluate.py`, `scripts/compare_models.py`. Config: the `evaluation:` section.
+- Stockfish 19 installed (`winget install --id Stockfish.Stockfish`); the step-1 detection found it with no setup.
+- Tests (about 60 new): every module against hand-computed values and direct recomputation, a fake UCI engine
+  that plays the first legal move, a real-Stockfish mate-in-one, and the full pipeline end to end.
+
+**Results** (`python scripts/evaluate.py laptop_64x6`: the step-6 model on the 172,086 positions of the 2,444
+test games, 8.7 minutes; full report: [reports/eval/laptop_64x6_best_model/report.md](reports/eval/laptop_64x6_best_model/report.md))
+
+![Top-1 accuracy by rating](reports/eval/laptop_64x6_best_model/accuracy_by_rating.png)
+
+| Predictor | Top-1 (all test positions) |
+|---|---|
+| **model** | **41.7%** (95% CI 41.4-42.0); top-3 68.6%, top-5 79.6%, perplexity 6.8 of 29.7 legal moves |
+| model told one rating for everyone (best: 1600-1799) | 42.0% (on 40,000 positions, where the model told the real rating also scores 42.0%) |
+| Stockfish 19, depth 10 | 37.6% on 10,000 sampled positions (the model: 42.3% on the same ones) |
+| most common move in the training games (opening book) | 12.6% (knows 14.4% of positions: 47.6% there vs. the model's 47.9%) |
+| random legal move | 6.3% |
+
+| Rating | 800-999 | 1000-1199 | 1200-1399 | 1400-1599 | 1600-1799 | 1800-1999 | 2000-2199 | 2200+ |
+|---|---|---|---|---|---|---|---|---|
+| model | 41.2% | 41.9% | 41.9% | 41.6% | 42.2% | 41.9% | 40.9% | 40.2% |
+| model, Stockfish's sample | 41.3% | 42.6% | 42.9% | 42.1% | 42.4% | 43.0% | 41.9% | 39.3% |
+| Stockfish (356-2,093 positions) | 32.6% | 32.1% | 36.0% | 36.7% | 38.6% | 38.6% | 41.6% | 42.2% |
+
+- **The model predicts human moves better than Stockfish, by the most where players are weakest:** 9-10 points
+  at 800-1199, even at 2000-2199, and Stockfish ahead at 2200+ (42.2% vs. 39.3% on 517 positions, about +-4 points
+  of noise). Stockfish's match rate climbs steadily with rating, as expected: strong players play the engine
+  move more often. This is the gap a human-like model exists to fill.
+- **Rating conditioning barely works yet.** Telling the model each player's real rating is no better than one
+  rating for everyone (42.0% vs. 42.0%). The cross-rating matrix is nearly flat: the only clear effect is for
+  2200+ players, predicted at 41.7% when the model is told "2200+" and 38.3% when told "800-999"; for players
+  under 1800 the rating the model is told moves accuracy by under 1 point. The rating is used (2200+ shows it),
+  but weakly. Likely causes: training stopped at 80% of one epoch of 50k games (validation loss was still
+  falling), the FiLM layers start at zero so the rating has to earn its influence, and imitating *this* rating
+  rather than "a typical human" is a small extra signal that needs much more data per bucket. This is the main
+  thing to fix before the Elo dial (step 11) can work: train longer on more games (GPU), and check the matrix again.
+- **Probabilities are well calibrated** (expected calibration error 0.0007 over all 5.1M legal-move predictions,
+  0.010 for the top move), which matters because the bot will sample from them.
+- **The model has learned the openings:** on the 14% of test positions that also occur in training games it matches
+  the human move as often as the book of those games does (47.9% vs. 47.6%). Accuracy is highest in the opening
+  (45.6% for moves 1-10), lowest in the middlegame (38.8% for moves 26-40), and drops as the number of legal
+  moves grows (63% with up to 10, 35% with over 40). Time pressure changes little (41.0% under 15 s vs. 42.3% over 2 min).
+- The value head guesses the game result from a position 61.3% of the time (draws are 5% of results) with a
+  well calibrated expected score (calibration error 0.008).
+
+**Decisions**
+- **Held-out test split only.** Model selection used the validation split, so the test games were never looked at
+  before this evaluation.
+- **Confidence intervals resample whole games**, not positions: positions of one game share a player and an
+  opening, so treating them as independent would make intervals too narrow (a test shows game-correlated data gets
+  a 4x wider interval). Model-vs-baseline differences use paired intervals on the same positions.
+- **The most-common-move baseline falls back to a random legal move** for positions not in the training games, and
+  its coverage is reported, because an opening book is only meaningful where it has an entry.
+- **Stockfish at depth 10 on a 10,000-position seeded sample** (3.5 minutes): depth 10 is far stronger than any
+  human here, and the first run with 2,000 positions gave only 90-415 positions per rating, too few for a per-rating
+  trend. Answers are cached by depth + FEN in `data/cache/`, so other models reuse them.
+- **The fixed-rating baseline is the same network** told one rating for everyone, so the comparison isolates what
+  rating conditioning adds; the cross-rating matrix shows the same thing per rating group.
+- **Calibration over every legal move** is accumulated during the prediction pass as a histogram: 5.1M
+  move probabilities would be too many to store.
+- **Reports are committed** (`reports/eval/<run>_<model>/`: `report.md`, `results.json`, four charts) with paths
+  relative to the project; the 10 MB `predictions.npz` next to them is git-ignored and can be regenerated.
+- **Charts use one fixed colour per predictor** (the model is always blue) and a light-to-dark ramp for rating
+  buckets, from `chess_engine.plotting`.

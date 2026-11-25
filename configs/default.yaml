@@ -118,6 +118,6 @@ evaluation:                      # step 7: move-match accuracy, baselines, calib
   confidence: 0.95
   calibration_bins: 10
   cross_rating_positions: 40000  # positions re-scored at every rating bucket (8 forward passes each)
-  stockfish_positions: 2000      # test positions given to Stockfish for its baseline (0 = skip)
+  stockfish_positions: 10000     # test positions given to Stockfish (0 = skip); ~1,000-4,000 per bucket
   stockfish_depth: 10
   seed: 0

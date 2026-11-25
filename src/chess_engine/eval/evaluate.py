@@ -27,7 +27,7 @@ from typing import Any
 
 import numpy as np
 
-from chess_engine.config import Config
+from chess_engine.config import PROJECT_ROOT, Config
 from chess_engine.data.dataset import PositionDataset
 from chess_engine.data.dataset_builder import dataset_output_dir
 from chess_engine.eval import plots
@@ -68,6 +68,15 @@ def model_name(model_path: str | Path) -> str:
     """``<run directory>_<file stem>``, e.g. ``laptop_64x6_best_model``."""
     path = Path(model_path)
     return f"{path.parent.name}_{path.stem}" if path.parent.name else path.stem
+
+
+def shown_path(path: str | Path) -> str:
+    """``path`` relative to the project root when it is inside it (reports are committed), else as given."""
+    path = Path(path)
+    try:
+        return path.resolve().relative_to(PROJECT_ROOT).as_posix()
+    except ValueError:
+        return str(path)
 
 
 def _ci_lists(ci: Any) -> dict[str, Any]:
@@ -173,8 +182,8 @@ def evaluate_model(
     results["calibration"] = move_calibration(table)
     results["value_head"] = value_calibration(table, e.calibration_bins)
     results["setup"] = {
-        "model_name": model_name(model_path), "model_path": str(model_path), "model_step": loaded.extra.get("step"),
-        "dataset": str(dataset_dir), "split": e.split, "positions": len(table),
+        "model_name": model_name(model_path), "model_path": shown_path(model_path), "model_step": loaded.extra.get("step"),
+        "dataset": shown_path(dataset_dir), "split": e.split, "positions": len(table),
         "games": int(len(np.unique(games))), "confidence": e.confidence, "bootstrap_samples": e.bootstrap_samples,
         "stockfish": stockfish_note, "seconds": round(time.perf_counter() - start, 1),
     }

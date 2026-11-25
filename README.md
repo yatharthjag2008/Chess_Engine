@@ -206,6 +206,37 @@ from chess_engine.model import load_model
 predictor = load_model("checkpoints/laptop_64x6/best_model.pt").predictor()
 ```
 
+## Evaluation
+
+How often does the model predict the move a human actually played, at each rating, on games it never saw?
+
+```bash
+python scripts/evaluate.py laptop_64x6                  # the run's best model on the test split (~9 min on a laptop)
+python scripts/evaluate.py laptop_64x6 --no-stockfish --max-positions 20000   # quick look
+python scripts/compare_models.py checkpoints/laptop_64x6/best_model.pt checkpoints/laptop_64x6/final_model.pt
+```
+
+The evaluation writes `reports/eval/<run>_<model>/`: a Markdown `report.md`, `results.json` and four charts.
+It reports top-1/3/5 move match and log-likelihood per rating bucket with 95% confidence intervals (bootstrap
+over whole games), and compares against these baselines:
+
+- **most common move**: the move played most often in that exact position in the training games, overall or
+  at the same rating, with a random legal move where the position never occurred;
+- **Stockfish's best move** (depth 10, on a 10,000-position sample; skipped if Stockfish is not installed);
+- **the same model told one fixed rating for everyone**, to measure what rating conditioning adds;
+- **a random legal move**.
+
+It also shows a cross-rating matrix (which rating best predicts each group of players), accuracy by game
+phase and clock, and calibration of the move probabilities and of the win/draw/loss head.
+
+**Current results** (the 64x6 model after ~2 hours of CPU training on 2.56M positions; [full report](reports/eval/laptop_64x6_best_model/report.md)):
+41.7% top-1 / 79.6% top-5 on 172k held-out positions, vs. 37.6% for Stockfish's best move, 12.6% for the most
+common move in the training games and 6.3% for a random legal move. The model beats Stockfish by 9-10 points at
+800-1199 and ties it around 2000. Rating conditioning is still weak: telling the model a player's real rating
+does not yet beat telling it one rating for everyone (both 42.0%). See [PROGRESS.md](PROGRESS.md).
+
+![Top-1 accuracy by rating](reports/eval/laptop_64x6_best_model/accuracy_by_rating.png)
+
 ## Project structure
 
 ```

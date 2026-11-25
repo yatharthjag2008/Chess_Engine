@@ -12,6 +12,7 @@ Step 7 modules:
     plots               evaluation charts (PNG)
     report              Markdown report
     evaluate            evaluate_model: everything above for one model file
+    compare             several models on the same positions, paired confidence intervals
 
 Planned:
     elo_validation     (step 11) check bot strength increases with the rating dial

@@ -266,7 +266,7 @@ class EvaluationConfig(_StrictModel):
     confidence: float = Field(default=0.95, gt=0, lt=1)
     calibration_bins: PositiveInt = 10
     cross_rating_positions: int = Field(default=40_000, ge=0)
-    stockfish_positions: int = Field(default=2000, ge=0)
+    stockfish_positions: int = Field(default=10_000, ge=0)
     stockfish_depth: PositiveInt = 10
     seed: int = 0
 
