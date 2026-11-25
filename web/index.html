@@ -30,7 +30,7 @@
         <span class="clock" id="bottom-clock" hidden>0:00</span>
       </div>
       <p id="status" class="status" role="status" aria-live="polite">Start a game to play.</p>
-      <p class="hint keys">Click or drag pieces to move. Keys: <kbd>f</kbd> flips the board, <kbd>Esc</kbd> drops the selection.</p>
+      <p class="hint keys">Click or drag pieces to move. Keys: <kbd>f</kbd> flips the board, <kbd>h</kbd> asks for a hint, <kbd>Esc</kbd> drops the selection.</p>
     </section>
 
     <aside class="side-column">
@@ -74,13 +74,20 @@
       </form>
 
       <section class="panel" id="game-panel" hidden>
-        <h2>Moves</h2>
+        <h2>Moves <span id="unrated" class="badge" hidden title="Hints were used, so this game does not count">Unrated</span></h2>
         <ol id="move-list" class="move-list"></ol>
         <div class="actions">
+          <button type="button" id="hint" hidden>Hint</button>
           <button type="button" id="flip">Flip board</button>
           <button type="button" id="takeback">Take back</button>
           <button type="button" id="resign" class="danger">Resign</button>
         </div>
+      </section>
+
+      <section class="panel" id="hint-panel" hidden aria-live="polite">
+        <h2>Hint <span id="hint-tier" class="hint"></span></h2>
+        <p id="hint-text" class="hint-text"></p>
+        <div class="actions"><button type="button" id="hint-more" hidden>More</button></div>
       </section>
 
       <section class="panel" id="thinking-panel" hidden>

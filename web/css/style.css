@@ -109,6 +109,10 @@ body {
 }
 .square.last-move::before { background: var(--last-move); }
 .square.selected::before { background: var(--selected); }
+.square.hint-from::after, .square.hint-to::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 4px var(--accent);
+}
+.square.hint-to::after { background: color-mix(in srgb, var(--accent) 25%, transparent); }
 .square.in-check::before { background: var(--check); }
 .square.target::after {
   content: ""; position: absolute; width: 30%; height: 30%; border-radius: 50%;
@@ -223,3 +227,8 @@ button.danger[data-confirm="yes"] { background: var(--danger); color: #ffffff; b
 .candidate .track { display: block; height: 10px; background: var(--line); border-radius: 0 4px 4px 0; }
 .candidate .fill { display: block; height: 100%; background: var(--bar); border-radius: 0 4px 4px 0; min-width: 2px; }
 .candidate .pct { text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+/* Hints (step 17) */
+.badge { font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; margin-left: 6px;
+  border: 1px solid var(--line); color: var(--ink-2); vertical-align: 2px; }
+.hint-text { margin: 4px 0 8px; line-height: 1.5; }

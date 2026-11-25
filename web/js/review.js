@@ -375,13 +375,11 @@ function toggleBest(move, button) {
 }
 
 export function markBestSquares(uci) {
-  ui.board.squareEl(uci.slice(0, 2)).classList.add("best-from");
-  ui.board.squareEl(uci.slice(2, 4)).classList.add("best-to");
+  ui.board.setMarks({ [uci.slice(0, 2)]: "best-from", [uci.slice(2, 4)]: "best-to" });
 }
 
 export function clearBestSquares() {
-  if (!ui.board) return;
-  for (const el of ui.board.el.querySelectorAll(".best-from, .best-to")) el.classList.remove("best-from", "best-to");
+  if (ui.board && Object.keys(ui.board.marks).length) ui.board.setMarks({});
 }
 
 onStep.push(renderDetail);

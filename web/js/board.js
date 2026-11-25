@@ -84,6 +84,7 @@ export class Board {
     this.selected = null;     // square of the selected piece
     this.drag = null;         // { from, startX, startY, ghost, moved }
     this.suppressClick = false;
+    this.marks = {};          // { square: "class names" } kept across renders (hints, better moves)
     this.el.addEventListener("click", (event) => this.handleClick(event));
     this.el.addEventListener("pointerdown", (event) => this.dragStart(event));
     this.render();
@@ -250,6 +251,12 @@ export class Board {
     this.render();
   }
 
+  /** Extra classes on squares, e.g. { e2: "hint-from" }; {} clears them. */
+  setMarks(marks) {
+    this.marks = marks || {};
+    this.render();
+  }
+
   squareEl(square) {
     return this.el.querySelector(`[data-square="${square}"]`);
   }
@@ -271,6 +278,7 @@ export class Board {
       if (this.check && piece && piece.type === "k" && piece.color === turn) cell.classList.add("in-check");
       if (square === this.selected) cell.classList.add("selected");
       if (targets.has(square)) cell.classList.add("target");
+      if (this.marks[square]) cell.classList.add(...this.marks[square].split(" "));
       if (index % 8 === 0) cell.append(coordinate("rank", square[1]));
       if (index >= 56) cell.append(coordinate("file", square[0]));
       if (piece) {

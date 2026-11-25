@@ -15,6 +15,7 @@ export const ui = {
   board: null,
   clock: null,       // { white, black, running, at }: the server's clock and when it was received
   flagCheck: false,  // a state refresh after a flag fall is in flight
+  hint: null,        // { fen, data }: the latest hint, shown while that position is on the board
 };
 
 const LOW_TIME = 20; // seconds: the clock turns red below this
@@ -140,6 +141,13 @@ function humanMoves(state) {
 
 function renderButtons(state) {
   const over = state.status === "over";
+  const hint = $("hint");
+  const hints = state.hints || { limit: 0, left: 0, rated: true };
+  const shownHere = Boolean(currentHint(state));
+  hint.hidden = hints.limit === 0;
+  hint.disabled = over || ui.busy || state.turn !== state.human_color || (hints.left === 0 && !shownHere);
+  hint.textContent = `Hint (${hints.left} left)`;
+  $("unrated").hidden = hints.rated;
   const resign = $("resign");
   resign.disabled = over || ui.busy;
   if (over) resetResign();
@@ -151,6 +159,58 @@ function resetResign() {
   const resign = $("resign");
   resign.dataset.confirm = "";
   resign.textContent = "Resign";
+}
+
+// ------------------------------------------------------------------ hints
+
+const TIER_NAMES = { nudge: "1 of 3: a nudge", point: "2 of 3: the piece", show: "3 of 3: the move" };
+const MORE_LABELS = { point: "Which piece?", show: "Show the move" };
+
+/** The hint for the position on the board (hints belong to one position), or null. */
+function currentHint(state) {
+  return ui.hint && state && ui.hint.fen === state.fen && state.status === "ongoing" ? ui.hint.data : null;
+}
+
+function hintMarks(state) {
+  const hint = currentHint(state);
+  const marks = {};
+  if (hint && hint.from_square) marks[hint.from_square] = "hint-from";
+  if (hint && hint.to_square) marks[hint.to_square] = "hint-to";
+  return marks;
+}
+
+export function renderHint(state) {
+  const panel = $("hint-panel");
+  const hint = currentHint(state);
+  panel.hidden = !hint;
+  if (!hint) return;
+  $("hint-tier").textContent = TIER_NAMES[hint.tier];
+  $("hint-text").textContent = hint.text;
+  const more = $("hint-more");
+  more.hidden = !hint.next_tier;
+  if (hint.next_tier) more.textContent = MORE_LABELS[hint.next_tier];
+}
+
+/** Ask for a hint (the next tier for this position, or ``tier``); it is drawn on the board and in the panel. */
+export async function askHint(tier = null) {
+  const game = ui.game;
+  if (!game || ui.busy || game.status !== "ongoing" || game.turn !== game.human_color) return null;
+  $("hint").disabled = true;
+  try {
+    const data = await api.hint(game.id, tier);
+    ui.hint = { fen: game.fen, data };
+    if (ui.game === game) {
+      ui.game = { ...game, hints: data.hints };
+      ui.board.setMarks(hintMarks(ui.game));
+      renderButtons(ui.game);
+      renderHint(ui.game);
+    }
+    return data;
+  } catch (err) {
+    showError(err);
+    renderButtons(ui.game);
+    return null;
+  }
 }
 
 /** The result banner over the board when the game has ended. */
@@ -213,6 +273,7 @@ export function render(state) {
                               at: performance.now() } : null;
   const board = ui.board;
   const humanToMove = state.status === "ongoing" && state.turn === state.human_color;
+  board.marks = hintMarks(state);
   board.setPosition(state.fen, { lastMove: state.last_move, check: state.check });
   board.setLegalMoves(humanToMove && !ui.busy ? state.legal_moves : [], humanToMove && !ui.busy ? state.turn : null);
   const bottomIsHuman = board.orientation === state.human_color;
@@ -225,6 +286,7 @@ export function render(state) {
   renderThinking(state);
   updateClocks();
   renderButtons(state);
+  renderHint(state);
   renderResult(state);
   if (location.hash !== `#game=${state.id}`) history.replaceState(null, "", `#game=${state.id}`);
   if (state.status === "over") {
@@ -375,11 +437,14 @@ export function init() {
     const typing = event.target instanceof Element && event.target.closest("input, select, textarea, button");
     if (typing || event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.key === "f") $("flip").click();
+    if (event.key === "h" && !$("hint").hidden && !$("hint").disabled) askHint();
     if (event.key === "Escape") ui.board.select(null);
   });
   setInterval(updateClocks, 100);
   $("resign").addEventListener("click", resign);
   $("takeback").addEventListener("click", takeback);
+  $("hint").addEventListener("click", () => askHint());
+  $("hint-more").addEventListener("click", () => askHint());
   $("flip").addEventListener("click", () => {
     ui.board.flip();
     if (ui.game) render(ui.game);
