@@ -203,3 +203,24 @@ hints:                           # step 17: tiered hints (nudge -> point -> show
   easy_find_rate: 0.35           # at least this: usually found, so the nudge only says what kind of move to look for
   hard_find_rate: 0.10           # below this: rarely found, so the nudge also names the piece type
   only_move_gap: 15              # the best move keeps this many win-% points more than the next: "only move"
+
+adaptive:                        # step 18: adaptive difficulty
+  mode: "off"                    # default for new games: "off", "between" (after each rated game) or "live"
+  start_rating: 1200             # your rating before your first game, when you do not give one
+  # Between games: your rating is updated like Elo after every rated game (no hints), and the next bot plays at it.
+  k_factor: 40                   # rating change for a full point above / below expectation
+  k_new: 80                      # ... during your first games, so the bot finds your level quickly
+  new_games: 5
+  min_rating: 800                # the bot's range
+  max_rating: 2400
+  round_to: 50
+  # Live: during a game, the bot's own estimate of its winning chances (the model's value head, averaged over
+  # its last few moves) moves its rating a step at a time, never further than live_cap from where it started.
+  live_step: 50
+  live_cap: 200
+  live_window: 3
+  live_every: 4                  # bot moves between changes
+  live_after: 6                  # no changes during the first bot moves (the opening)
+  live_low: 0.35                 # the bot expects less than this: it plays stronger
+  live_high: 0.65                # more than this: it plays weaker
+  profile_file: adaptive.json    # your rating and recent games, in data_dir

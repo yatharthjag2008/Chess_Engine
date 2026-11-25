@@ -404,6 +404,37 @@ class HintsConfig(_StrictModel):
         return self
 
 
+class AdaptiveConfig(_StrictModel):
+    """Adaptive difficulty (see ``chess_engine.bot.adaptive``)."""
+
+    mode: Literal["off", "between", "live"] = "off"     # default for new games
+    start_rating: int = Field(default=1200, ge=400, le=3000)   # your rating before any game, if not given
+    k_factor: float = Field(default=40, gt=0)          # Elo K after the first games
+    k_new: float = Field(default=80, gt=0)            # bigger steps while the rating is new
+    new_games: int = Field(default=5, ge=0)           # how many games count as "new"
+    min_rating: int = Field(default=800, ge=400, le=3000)
+    max_rating: int = Field(default=2400, ge=400, le=3000)
+    round_to: PositiveInt = 50                        # the bot's rating is rounded to this
+    live_step: PositiveInt = 50                       # live: rating change per adjustment
+    live_cap: PositiveInt = 200                       # live: at most this far from the game's starting rating
+    live_window: PositiveInt = 3                      # live: bot moves averaged to judge the position
+    live_every: PositiveInt = 4                       # live: bot moves between adjustments
+    live_after: int = Field(default=6, ge=0)          # live: no change in the first N bot moves (the opening)
+    live_low: float = Field(default=0.35, gt=0, lt=1)   # bot's expected score below this: it gets stronger
+    live_high: float = Field(default=0.65, gt=0, lt=1)  # above this: it gets weaker
+    profile_file: str = "adaptive.json"               # in data_dir: your rating and game history
+
+    @model_validator(mode="after")
+    def _check(self) -> AdaptiveConfig:
+        if not self.min_rating < self.max_rating:
+            raise ValueError("min_rating must be below max_rating")
+        if not self.min_rating <= self.start_rating <= self.max_rating:
+            raise ValueError("start_rating must be within min_rating..max_rating")
+        if not self.live_low < 0.5 < self.live_high:
+            raise ValueError("live_low < 0.5 < live_high is required")
+        return self
+
+
 class Config(_StrictModel):
     """The full project configuration."""
 
@@ -422,6 +453,7 @@ class Config(_StrictModel):
     review: ReviewConfig = Field(default_factory=ReviewConfig)
     coach: CoachConfig = Field(default_factory=CoachConfig)
     hints: HintsConfig = Field(default_factory=HintsConfig)
+    adaptive: AdaptiveConfig = Field(default_factory=AdaptiveConfig)
 
 
 # --------------------------------------------------------------------------- loading

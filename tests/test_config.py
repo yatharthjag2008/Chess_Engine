@@ -127,6 +127,12 @@ def test_default_hint_settings(default_config: Config) -> None:
     assert 0 < h.hard_find_rate < h.easy_find_rate < 1 and h.only_move_gap > 0
 
 
+def test_default_adaptive_settings(default_config: Config) -> None:
+    a = default_config.adaptive
+    assert a.mode == "off" and a.min_rating <= a.start_rating <= a.max_rating and a.k_new >= a.k_factor
+    assert a.live_low < 0.5 < a.live_high and a.live_cap >= a.live_step and a.profile_file.endswith(".json")
+
+
 def test_training_limits_can_be_unset(tmp_path: Path) -> None:
     override = _write_yaml(tmp_path / "t.yaml", {"training": {"grad_clip_norm": None, "val_max_positions": None,
                                                             "max_steps": 10, "max_minutes": 1.5}})
@@ -225,6 +231,10 @@ def test_invalid_yaml_is_rejected(tmp_path: Path) -> None:
         ({"hints": {"easy_find_rate": 0.05}}, "hard_find_rate"),
         ({"hints": {"limit": 30}}, "max_limit"),
         ({"hints": {"limit": -1}}, "limit"),
+        ({"adaptive": {"mode": "sometimes"}}, "mode"),
+        ({"adaptive": {"min_rating": 2000, "max_rating": 1000}}, "min_rating"),
+        ({"adaptive": {"start_rating": 600}}, "start_rating"),
+        ({"adaptive": {"live_low": 0.6}}, "live_low"),
         ({"rating_estimation": {"prior": "uniform"}}, "prior"),
         ({"elo_validation": {"bot_ratings": [1500]}}, "bot_ratings"),
         ({"elo_validation": {"self_play": "some"}}, "self_play"),
