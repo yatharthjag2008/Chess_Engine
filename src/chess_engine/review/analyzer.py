@@ -15,7 +15,8 @@ Centipawn loss is the same comparison in centipawns, each side capped at 1000.
 from __future__ import annotations
 
 import io
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from typing import Any
 
 import chess
 import chess.pgn
@@ -211,3 +212,43 @@ def key_moments(review: GameReview, count: int = 5) -> list[KeyMoment]:
     worst = sorted(errors, key=lambda m: -m.win_lost)[:count]
     return [KeyMoment(m.ply, m.move_number, m.color, m.san, m.classification, m.win_before, m.win_after,
                       m.best_san, describe_moment(m)) for m in sorted(worst, key=lambda m: m.ply)]
+
+
+# --------------------------------------------------------------------------- graph and JSON
+
+
+def eval_graph(review: GameReview) -> list[dict[str, float]]:
+    """Per ply (0 = the start position): White's win % and evaluation in centipawns (capped at +-1000)."""
+    if not review.moves:
+        return []
+    points = [{"ply": m.ply, "white_win": win_percent(m.eval_before), "eval": float(_cap(m.eval_before))}
+              for m in review.moves]
+    last = review.moves[-1]
+    points.append({"ply": last.ply + 1, "white_win": win_percent(last.eval_after), "eval": float(_cap(last.eval_after))})
+    return points
+
+
+def review_to_dict(review: GameReview, key_moment_count: int = 5) -> dict[str, Any]:
+    """Everything about a review as plain JSON-ready data (moves, summary, key moments, graph)."""
+    return {
+        "headers": review.headers,
+        "start_fen": review.start_fen,
+        "depth": review.depth,
+        "moves": [{**asdict(m), "classification": m.classification.value, "move_number": m.move_number}
+                  for m in review.moves],
+        "summary": {color: asdict(side) for color, side in review.summary().items()},
+        "key_moments": [{**asdict(k), "classification": k.classification.value}
+                        for k in key_moments(review, key_moment_count)],
+        "graph": eval_graph(review),
+    }
+
+
+def review_from_dict(data: dict[str, Any]) -> GameReview:
+    """Rebuild a :class:`GameReview` from :func:`review_to_dict`'s output."""
+    moves = []
+    for m in data["moves"]:
+        fields = {k: v for k, v in m.items() if k != "move_number"}
+        fields["classification"] = MoveClass(fields["classification"])
+        fields["alternatives"] = [Alternative(**a) for a in fields.get("alternatives", [])]
+        moves.append(MoveReview(**fields))
+    return GameReview(dict(data["headers"]), data["start_fen"], moves, data.get("depth"))

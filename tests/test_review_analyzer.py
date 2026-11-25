@@ -108,3 +108,23 @@ def test_key_moments() -> None:
     a6 = next(m for m in moments if m.san == "a6")
     assert a6.move_number == "3..." and "Better was Qh4" in a6.text
     assert key_moments(review_pgn(PGN, ScriptedAnalyzer(), CFG)) == []      # no evaluations, no errors
+
+
+def test_graph_and_json_round_trip() -> None:
+    import json
+
+    from chess_engine.review.analyzer import eval_graph, review_from_dict, review_to_dict
+
+    review = review_pgn(PGN, _scripted(), CFG, depth=9)
+    graph = eval_graph(review)
+    assert [p["ply"] for p in graph] == list(range(8)) and graph[-1]["white_win"] == 100
+    assert all(-1000 <= p["eval"] <= 1000 for p in graph)
+    data = json.loads(json.dumps(review_to_dict(review, key_moment_count=3)))   # JSON-safe
+    assert data["depth"] == 9 and data["moves"][5]["classification"] == "blunder"
+    assert data["moves"][5]["move_number"] == "3..." and data["summary"]["black"]["counts"]["blunder"] == 1
+    assert data["key_moments"][0]["san"] == "Nf6" and len(data["graph"]) == 8
+    again = review_from_dict(data)
+    assert [m.san for m in again.moves] == [m.san for m in review.moves]
+    assert again.moves[5].classification is MoveClass.BLUNDER and again.moves[0].alternatives[0].san == "e4"
+    assert review_to_dict(again) == review_to_dict(review)
+    assert eval_graph(review_pgn('[Result "*"]\n\n1. e4 *\n', ScriptedAnalyzer(), CFG))[0]["ply"] == 0
