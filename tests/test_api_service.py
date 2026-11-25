@@ -70,3 +70,38 @@ def test_game_over_is_reported(service: GameService) -> None:
     with pytest.raises(GameRuleError) as error:
         service.play(session, "Kf7")
     assert error.value.code == "game_over"
+
+
+class FakeTime:
+    def __init__(self) -> None:
+        self.t = 0.0
+
+    def __call__(self) -> float:
+        return self.t
+
+
+def test_timed_game_clocks_and_flag(default_config: Config) -> None:
+    now = FakeTime()
+    service = GameService(small_predictor(), default_config, now=now)
+    session = service.create(NewGameRequest(time_control="1+2", seed=4))
+    state = service.state(session)
+    assert state.clock.white == 60 and state.clock.black == 60 and state.clock.running is None
+    assert state.clock.base_seconds == 60 and state.clock.increment == 2
+    service.play(session, "e4")             # first moves are free; then White's clock runs
+    assert service.state(session).clock.running == "white"
+    now.t += 20
+    response = service.play(session, "d4")
+    assert response.state.clock.white == pytest.approx(42)  # 60 - 20 + 2
+    with pytest.raises(GameRuleError) as error:
+        service.takeback(session)
+    assert error.value.code == "timed_game"
+    now.t += 100                            # White's clock runs out while thinking
+    state = service.state(session)
+    assert state.status == "over" and state.outcome.termination == "time forfeit"
+    assert state.outcome.winner == "black" and state.clock.running is None and state.clock.white == 0
+    with pytest.raises(GameRuleError):
+        service.play(session, "Nf3")
+
+
+def test_untimed_game_has_no_clock(service: GameService) -> None:
+    assert service.state(service.create(NewGameRequest())).clock is None

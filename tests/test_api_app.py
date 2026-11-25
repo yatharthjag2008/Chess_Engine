@@ -145,3 +145,10 @@ def test_takeback_never_undoes_the_bots_opening(client: TestClient) -> None:
     client.post(f"{base}/moves", json={"move": game["legal_moves"][0]["uci"]})
     state = client.post(f"{base}/takeback").json()
     assert len(state["moves_san"]) == 1 and state["turn"] == "black"
+
+
+def test_timed_game_over_http(client: TestClient) -> None:
+    game = _new(client, time_control="3+2")
+    assert game["clock"] == {"white": 180, "black": 180, "running": None, "base_seconds": 180, "increment": 2}
+    state = client.post(f"/api/games/{game['id']}/moves", json={"move": "e4"}).json()["state"]
+    assert state["clock"]["running"] == "white" and 179 < state["clock"]["white"] <= 180

@@ -7,15 +7,22 @@
 
 One model is loaded for the whole server; every game gets its own :class:`BotPlayer`
 (its own rating, sampling settings and random generator) on top of it.
+
+Timed games keep their clocks on the server: a flag fall is detected on every
+request (the game ends by time forfeit), the bot is told both players' time, and
+takebacks are not allowed (they would need the clocks rewound).
 """
 
 from __future__ import annotations
 
 import random
+import time
+from collections.abc import Callable
 
 import chess
 
 from chess_engine.api.schemas import (
+    ClockState,
     GameState,
     MoveResponse,
     NewGameRequest,
@@ -25,6 +32,7 @@ from chess_engine.api.schemas import (
     outcome_info,
 )
 from chess_engine.api.store import GameStore, Session
+from chess_engine.bot.clock import ChessClock, TimeControl
 from chess_engine.bot.game import Game, IllegalMoveError
 from chess_engine.bot.player import BotPlayer, sampling_from_config
 from chess_engine.bot.sampling import SamplingSettings
@@ -54,10 +62,12 @@ def _mover(game: Game, ply: int) -> chess.Color:
 class GameService:
     """Creates and runs games against the bot, stored in a :class:`GameStore`."""
 
-    def __init__(self, predictor: MovePredictor, cfg: Config, store: GameStore | None = None) -> None:
+    def __init__(self, predictor: MovePredictor, cfg: Config, store: GameStore | None = None,
+                 now: Callable[[], float] = time.monotonic) -> None:
         self.predictor = predictor
         self.cfg = cfg
         self.store = store or GameStore(cfg.api.max_games, cfg.api.idle_minutes * 60)
+        self._now = now
 
     # ------------------------------------------------------------------ creating
 
@@ -81,18 +91,46 @@ class GameService:
         white_elo, black_elo = ((request.your_rating, bot.rating) if human == chess.WHITE
                                 else (bot.rating, request.your_rating))
         game = Game(white, black, white_elo, black_elo, fen=request.fen, event="Game vs. human-like bot")
-        session = self.store.add(Session(GameStore.new_id(), game, bot, human, request.your_rating))
+        clock = ChessClock(TimeControl.parse(request.time_control), self._now) if request.time_control else None
+        session = self.store.add(Session(GameStore.new_id(), game, bot, human, request.your_rating, clock))
         if game.turn != human:
             self._bot_plays(session)
         return session
 
     # ------------------------------------------------------------------ moves
 
+    def _clock_args(self, session: Session) -> dict:
+        clock = session.clock
+        if clock is None:
+            return {}
+        bot = not session.human_color
+        return {"clock": max(0.0, clock.remaining(bot)), "opp_clock": max(0.0, clock.remaining(session.human_color)),
+                "base_seconds": clock.control.base_seconds, "increment": clock.control.increment}
+
     def _bot_plays(self, session: Session) -> None:
         game = session.game
-        choice = session.bot.choose_move(game.board, opp_rating=session.your_rating or session.bot.rating)
+        choice = session.bot.choose_move(game.board, opp_rating=session.your_rating or session.bot.rating,
+                                         **self._clock_args(session))
         game.push(choice.move)
         session.last_bot_move = choice
+        self._after_move(session, not session.human_color)
+
+    def _after_move(self, session: Session, mover: chess.Color) -> None:
+        """Press the mover's clock (a flag fall before the move is caught by :meth:`_check_time`)."""
+        if session.clock is not None:
+            session.clock.press(mover)
+            if session.game.is_over:
+                session.clock.stop()
+
+    def _check_time(self, session: Session) -> None:
+        """End the game by time forfeit if a clock has run out."""
+        clock = session.clock
+        if clock is None or session.game.is_over:
+            return
+        flagged = clock.flagged()
+        if flagged is not None:
+            session.game.forfeit_on_time(flagged)
+            clock.stop()
 
     def play(self, session: Session, move: str, reply: bool = True) -> MoveResponse:
         """Play your move; with ``reply`` the bot answers in the same call.
@@ -103,9 +141,11 @@ class GameService:
         """
         with session.lock:
             game = session.game
+            self._check_time(session)
             _require(not game.is_over, "game_over", "the game is over")
             _require(game.turn == session.human_color, "not_your_turn", "it is the bot's turn")
             san = game.push(move)
+            self._after_move(session, session.human_color)
             bot_reply = None
             if reply and not game.is_over:
                 self._bot_plays(session)
@@ -116,6 +156,7 @@ class GameService:
         """Let the bot play its move (when you played with ``reply: false``)."""
         with session.lock:
             game = session.game
+            self._check_time(session)
             _require(not game.is_over, "game_over", "the game is over")
             _require(game.turn != session.human_color, "not_bots_turn", "it is your turn")
             self._bot_plays(session)
@@ -125,8 +166,11 @@ class GameService:
     def resign(self, session: Session) -> GameState:
         """You resign."""
         with session.lock:
+            self._check_time(session)
             _require(not session.game.is_over, "game_over", "the game is over")
             session.game.resign(session.human_color)
+            if session.clock is not None:
+                session.clock.stop()
             return self._state(session)
 
     def takeback(self, session: Session) -> GameState:
@@ -136,6 +180,7 @@ class GameService:
         """
         with session.lock:
             game = session.game
+            _require(session.clock is None, "timed_game", "takebacks are not allowed in timed games")
             _require(not game.is_over, "game_over", "the game is over")
             yours = sum(1 for ply in range(len(game.sans)) if _mover(game, ply) == session.human_color)
             _require(yours > 0, "nothing_to_take_back", "you have not moved yet")
@@ -151,6 +196,7 @@ class GameService:
 
     def state(self, session: Session) -> GameState:
         with session.lock:
+            self._check_time(session)
             return self._state(session)
 
     def _state(self, session: Session) -> GameState:
@@ -172,9 +218,20 @@ class GameService:
             move_list=game.move_list(),
             last_move=board.peek().uci() if board.move_stack else None,
             legal_moves=[] if outcome else legal_moves(board),
-            clock=None,
+            clock=self._clock_state(session),
             last_bot_move=bot_move_info(session.last_bot_move) if session.last_bot_move else None,
         )
+
+
+    @staticmethod
+    def _clock_state(session: Session) -> ClockState | None:
+        clock = session.clock
+        if clock is None:
+            return None
+        return ClockState(white=round(max(0.0, clock.remaining(chess.WHITE)), 2),
+                          black=round(max(0.0, clock.remaining(chess.BLACK)), 2),
+                          running=color_name(clock.running), base_seconds=clock.control.base_seconds,
+                          increment=clock.control.increment)
 
 
 __all__ = ["GameRuleError", "GameService", "IllegalMoveError"]
