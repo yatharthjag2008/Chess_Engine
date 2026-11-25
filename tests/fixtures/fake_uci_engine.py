@@ -31,10 +31,10 @@ def main() -> None:
         elif command.startswith("position") and first_legal:
             board = _parse_position(command)
         elif command.startswith("go"):
-            if score is not None:
-                print(f"info depth 1 score cp {score} nodes 1 pv {best_move}")
             if first_legal:
                 best_move = min(move.uci() for move in board.legal_moves)
+            if score is not None:
+                print(f"info depth 1 score cp {score} nodes 1 pv {best_move}")
             print(f"bestmove {best_move}")
         elif command == "quit":
             break
