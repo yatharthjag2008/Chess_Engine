@@ -71,3 +71,17 @@ def test_real_review_finds_the_scholars_mate_blunder(stockfish) -> None:
     assert nf6.classification is MoveClass.BLUNDER and nf6.best_san in {"g6", "Qe7", "Qf6", "Nh6"}
     assert review.moves[6].classification is MoveClass.BEST
     assert review.moves[0].classification in (MoveClass.BEST, MoveClass.GOOD)
+
+
+def test_summary_per_side() -> None:
+    review = review_pgn(PGN, _scripted(), CFG)
+    curve = review.white_win_curve()
+    assert len(curve) == len(review.moves) + 1 and curve[-1] == 100.0
+    summary = review.summary()
+    white, black = summary["white"], summary["black"]
+    assert white.moves == 4 and black.moves == 3
+    assert white.counts["best"] + white.counts["good"] == 4 and black.counts["blunder"] == 1
+    assert sum(black.counts.values()) == 3
+    assert white.accuracy > black.accuracy and 0 <= black.accuracy <= 100
+    assert black.average_cp_loss == pytest.approx(sum(m.cp_loss for m in review.for_color("black")) / 3)
+    assert "1 blunder" in black.describe() and "no errors" in white.describe()

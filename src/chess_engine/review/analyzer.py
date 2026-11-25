@@ -21,9 +21,9 @@ import chess
 import chess.pgn
 
 from chess_engine.config import ReviewConfig
-from chess_engine.review.classify import MoveClass, classify
+from chess_engine.review.classify import ORDER, MoveClass, classify
 from chess_engine.review.engine import Analyzer
-from chess_engine.review.scoring import CP_CAP, move_accuracy, win_percent
+from chess_engine.review.scoring import CP_CAP, game_accuracy, move_accuracy, win_percent
 
 
 @dataclass
@@ -71,6 +71,45 @@ class GameReview:
 
     def for_color(self, color: str) -> list[MoveReview]:
         return [m for m in self.moves if m.color == color]
+
+    def white_win_curve(self) -> list[float]:
+        """White's win % before every move (best play) and after the last one."""
+        if not self.moves:
+            return []
+        curve = [win_percent(m.eval_before) for m in self.moves]
+        curve.append(win_percent(self.moves[-1].eval_after))
+        return curve
+
+    def summary(self) -> dict[str, SideSummary]:
+        """Accuracy, average centipawn loss and move classes for each side."""
+        curve = self.white_win_curve()
+        out = {}
+        for color in ("white", "black"):
+            moves = self.for_color(color)
+            counts = {c.value: sum(m.classification is c for m in moves) for c in ORDER}
+            accuracy = game_accuracy([m.accuracy for m in moves], curve, [m.ply for m in moves]) if moves else None
+            acpl = sum(m.cp_loss for m in moves) / len(moves) if moves else None
+            out[color] = SideSummary(color, len(moves), accuracy, acpl, counts)
+        return out
+
+
+@dataclass
+class SideSummary:
+    """One player's numbers for a reviewed game."""
+
+    color: str
+    moves: int
+    accuracy: float | None             # 0-100 (Lichess's method)
+    average_cp_loss: float | None
+    counts: dict[str, int]             # moves per class: best, good, inaccuracy, mistake, blunder
+
+    def describe(self) -> str:
+        if not self.moves:
+            return f"{self.color}: no moves"
+        errors = ", ".join(f"{self.counts[k]} {k}{'s' if self.counts[k] != 1 else ''}"
+                           for k in ("inaccuracy", "mistake", "blunder") if self.counts[k])
+        return (f"{self.color.capitalize()}: accuracy {self.accuracy:.0f}%, average loss {self.average_cp_loss:.0f} cp"
+                + (f", {errors}" if errors else ", no errors"))
 
 
 def _cap(cp: int) -> int:
