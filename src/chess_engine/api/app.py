@@ -16,6 +16,8 @@ POST     /api/games/{id}/bot-move        the bot plays (after a move sent with `
 POST     /api/games/{id}/resign          you resign
 POST     /api/games/{id}/takeback        undo your last move (and the bot's reply)
 GET      /api/games/{id}/pgn             the game as PGN text
+POST     /api/import/pgn                 import pasted PGN games (summaries + PGN of each)
+GET      /api/import/{site}/{username}   a player's recent games from ``lichess`` or ``chess.com``
 =======  ==============================  ===================================================
 
 The model is loaded once when the app starts (from ``bot.model`` in the config),
@@ -23,7 +25,8 @@ unless a predictor is passed in (tests, or embedding the app elsewhere).
 
 Every error has the same shape, ``{"error": "<code>", "detail": "<message>"}``:
 404 ``game_not_found``; 409 ``game_over`` / ``not_your_turn`` / ``not_bots_turn`` /
-``nothing_to_take_back`` / ``timed_game``; 422 ``illegal_move`` / ``invalid_request``.
+``nothing_to_take_back`` / ``timed_game``; 422 ``illegal_move`` / ``invalid_request`` /
+``invalid_username``; 404 ``user_not_found``; 502 ``source_unavailable``.
 Browsers may call the API from the origins in ``api.cors_origins``.
 
 The web UI (``web/``, step 10) is served at ``/`` by the same app, so the page and
@@ -36,16 +39,37 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from dataclasses import asdict
+
+from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from chess_engine.api.schemas import GameState, Health, LegalMove, MoveRequest, MoveResponse, NewGameRequest, legal_moves
+from chess_engine.api.schemas import (
+    GameState,
+    Health,
+    ImportedGameInfo,
+    ImportPgnRequest,
+    ImportResponse,
+    LegalMove,
+    MoveRequest,
+    MoveResponse,
+    NewGameRequest,
+    legal_moves,
+)
 from chess_engine.api.service import GameRuleError, GameService
 from chess_engine.api.store import GameNotFoundError, Session
 from chess_engine.bot.game import IllegalMoveError
+from chess_engine.data.game_import import (
+    GameImportError,
+    ImportCache,
+    ImportResult,
+    InvalidUsernameError,
+    UserNotFoundError,
+    import_games,
+)
 from chess_engine.config import PROJECT_ROOT, Config, load_config
 from chess_engine.model.inference import MovePredictor, load_model
 
@@ -101,6 +125,16 @@ def create_app(cfg: Config | None = None, predictor: MovePredictor | None = None
     async def rule_error(request: Request, exc: GameRuleError) -> JSONResponse:
         return JSONResponse(status_code=409, content={"error": exc.code, "detail": str(exc)})
 
+    @app.exception_handler(GameImportError)
+    async def import_error(request: Request, exc: GameImportError) -> JSONResponse:
+        if isinstance(exc, InvalidUsernameError):
+            status, code = 422, "invalid_username"
+        elif isinstance(exc, UserNotFoundError):
+            status, code = 404, "user_not_found"
+        else:
+            status, code = 502, "source_unavailable"
+        return JSONResponse(status_code=status, content={"error": code, "detail": str(exc)})
+
     @app.exception_handler(IllegalMoveError)
     async def illegal_move(request: Request, exc: IllegalMoveError) -> JSONResponse:
         return JSONResponse(status_code=422, content={"error": "illegal_move", "detail": str(exc)})
@@ -148,6 +182,23 @@ def create_app(cfg: Config | None = None, predictor: MovePredictor | None = None
     @app.get("/api/games/{game_id}/pgn", response_class=PlainTextResponse)
     def pgn(game_id: str, request: Request) -> str:
         return service(request).pgn(session(request, game_id))
+
+    import_cache = ImportCache(cfg.paths.data_dir / "imports", cfg.game_import.cache_minutes)
+
+    def import_response(result: ImportResult) -> ImportResponse:
+        return ImportResponse(source=result.source, username=result.username, count=len(result.games),
+                              games=[ImportedGameInfo(**asdict(g)) for g in result.games])
+
+    @app.post("/api/import/pgn", response_model=ImportResponse)
+    def import_pgn(body: ImportPgnRequest) -> ImportResponse:
+        return import_response(import_games(cfg.game_import, "pgn", text=body.pgn, max_games=body.max_games,
+                                            speeds=[], rated_only=False))
+
+    @app.get("/api/import/{site}/{username}", response_model=ImportResponse)
+    def import_user(site: str, username: str, max_games: int | None = Query(default=None, ge=1, le=200),
+                    speed: list[str] | None = Query(default=None), rated: bool = False) -> ImportResponse:
+        return import_response(import_games(cfg.game_import, site, username=username, max_games=max_games,
+                                            speeds=speed, rated_only=rated or None, cache=import_cache))
 
     if web is not None and (web / "index.html").is_file():
         # Mounted last, so every /api route and /docs is matched first.

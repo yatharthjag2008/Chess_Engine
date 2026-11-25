@@ -194,3 +194,46 @@ def test_stylesheet_is_served(client: TestClient) -> None:
     css = client.get("/css/style.css")
     assert css.status_code == 200 and css.headers["content-type"].startswith("text/css")
     assert "--square-light" in css.text and "prefers-color-scheme: dark" in css.text
+
+
+# --------------------------------------------------------------------------- game import
+
+
+FIXTURE_PGN = (__import__("pathlib").Path(__file__).parent / "fixtures" / "lichess_real.pgn").read_text(encoding="utf-8")
+
+
+def test_import_pasted_pgn(client: TestClient) -> None:
+    response = client.post("/api/import/pgn", json={"pgn": FIXTURE_PGN, "max_games": 5})
+    body = response.json()
+    assert response.status_code == 200 and body["source"] == "pgn" and body["count"] == 5
+    game = body["games"][0]
+    assert {"white", "black", "speed", "plies", "pgn", "id"} <= set(game) and game["pgn"].startswith("[Event")
+    assert client.post("/api/import/pgn", json={"pgn": "nothing here"}).json()["count"] == 0
+    assert client.post("/api/import/pgn", json={"pgn": ""}).status_code == 422
+
+
+def test_import_by_username(default_config: Config, tmp_path) -> None:
+    from fake_api import FakeApi, Reply
+
+    with FakeApi() as api:
+        api.routes["/api/games/user/someone"] = Reply(200, FIXTURE_PGN)
+        api.routes["/api/games/user/broken"] = Reply(503)
+        cfg = default_config.model_copy(update={
+            "game_import": default_config.game_import.model_copy(update={"lichess_url": api.url, "retries": 0}),
+            "paths": default_config.paths.model_copy(update={"data_dir": tmp_path}),
+        })
+        with TestClient(create_app(cfg, small_predictor())) as c:
+            body = c.get("/api/import/lichess/someone", params={"max_games": 4, "speed": ["blitz"]}).json()
+            assert body["username"] == "someone" and body["count"] <= 4
+            assert all(g["speed"] == "blitz" for g in body["games"])
+            assert api.requests[0][1]["perfType"] == ["blitz"]
+            again = c.get("/api/import/lichess/someone", params={"max_games": 4, "speed": ["blitz"]})
+            assert again.json() == body and len(api.requests) == 1   # served from the cache
+            missing = c.get("/api/import/lichess/nobody")
+            assert missing.status_code == 404 and missing.json()["error"] == "user_not_found"
+            bad = c.get("/api/import/lichess/bad..name")
+            assert bad.status_code == 422 and bad.json()["error"] == "invalid_username"
+            site = c.get("/api/import/fics/someone")
+            assert site.status_code == 422 and site.json()["error"] == "invalid_username"
+            down = c.get("/api/import/lichess/broken")
+            assert down.status_code == 502 and down.json()["error"] == "source_unavailable"

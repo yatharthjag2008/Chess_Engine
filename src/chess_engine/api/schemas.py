@@ -171,3 +171,37 @@ def outcome_info(outcome: Outcome | None) -> OutcomeInfo | None:
         return None
     return OutcomeInfo(result=outcome.result, termination=outcome.termination, winner=color_name(outcome.winner),
                        description=outcome.describe())
+
+
+# --------------------------------------------------------------------------- game import (step 13)
+
+
+class ImportPgnRequest(_Body):
+    """Games pasted as PGN text."""
+
+    pgn: str = Field(min_length=1, max_length=5_000_000)
+    max_games: int | None = Field(default=None, ge=1, le=500)
+
+
+class ImportedGameInfo(BaseModel):
+    source: str
+    id: str
+    white: str
+    black: str
+    white_elo: int | None
+    black_elo: int | None
+    result: str
+    date: str | None
+    time_control: str | None
+    speed: str | None
+    rated: bool | None
+    url: str | None
+    plies: int
+    pgn: str
+
+
+class ImportResponse(BaseModel):
+    source: str
+    username: str | None
+    count: int
+    games: list[ImportedGameInfo]
