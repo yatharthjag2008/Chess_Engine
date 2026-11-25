@@ -13,7 +13,7 @@ See [PLAN.md](PLAN.md) for details on each step.
 - [x] 7. Evaluation + baselines
 - [x] 8. Bot move selection + CLI
 - [x] 9. Backend API
-- [ ] 10. Web UI for playing
+- [x] 10. Web UI for playing
 - [ ] 11. Elo dial validation
 - [ ] 12. Rating estimation
 - [ ] 13. Game import
@@ -615,3 +615,45 @@ the clocks run (the bot spends ~0.05 s per move), and the bot's candidates come 
 - **Local by default** (`127.0.0.1`) with CORS limited to the local origins the web UI (step 10) will use.
 - **`httpx` for the test client.** Starlette 1.10 prints a deprecation warning suggesting a package named `httpx2`
   instead; that package was not installed (it is new and was not vetted), so API tests show one harmless warning.
+
+## Step 10: Web UI for playing (done 2026-11-24)
+
+**Built** (`web/`, served by the step-9 app at `/`)
+- `index.html` + `css/style.css`: the play page: board with both players' names and clocks, a new-game form (bot
+  rating 800-2400, side, time control), the move list, Flip / Take back / Resign, and a panel showing what players
+  of the bot's rating chose in the position before its last move (with the probability bars). Colour tokens with a
+  dark mode; the board keeps classic wood colours in both; it fits a phone (checked at 375 px) and a desktop.
+- `js/board.js`: a dependency-free chessboard: renders a FEN in either orientation with coordinates, last-move and
+  check highlights; moves by click (piece, then target) or drag (mouse, pen, touch); shows legal targets; asks
+  which piece to promote to. It does not know the rules: the legal moves come from the server.
+- `js/api.js`: the API calls, with server errors turned into readable messages.
+- `js/app.js`: the page logic: start a game (your move shows at once, then the bot's reply), clocks counted down
+  locally from the server's time (red under 20 s; at zero the page asks the server, which ends the game), result
+  banner with Download / Copy PGN and New game, resign with a confirming second click, takeback (untimed games),
+  the game id in the URL (`#game=<id>`) so a reload continues the game, remembered settings, `f` / `Esc` keys.
+- `tests/`: the page's own tests, run by pytest in headless Chrome / Edge (`tests/test_web_js.py`, skipped
+  without a browser): 12 board unit tests, and 19 end-to-end tests that load the real page against the real
+  FastAPI app (small model) on a local port: starting games as White and Black, clicking and dragging moves,
+  the bot's replies, clocks, flag checks, resign, takeback, checkmate, resume from the URL, errors.
+
+![The play page](reports/web/play_page.png)
+
+**Checked by looking at it** (headless-Chrome screenshots of real games on the step-6 model), which found and fixed
+three bugs the first tests missed: the promotion overlay's dark backdrop always covered the board (a `display`
+rule overrode the `hidden` attribute), the candidate-move bars were empty (inline spans ignore `width`), and the
+keyboard handler failed on key events aimed at the page itself. Each now has a regression test. The tests also
+caught square colours being swapped (a1 must be dark).
+
+**Decisions**
+- **Plain HTML, CSS and JavaScript modules, no build step and no libraries.** The page is about 1,000 lines in total; a
+  chessboard library would bring a licence to check, a CDN or vendored files, and code that duplicates what
+  the server already knows (legal moves). The board renders Unicode chess symbols, so there are no image files.
+- **The server is the single source of truth.** The page never decides legality, results or time: it shows the
+  last state from the API and sends what the player does. Clocks tick locally only for display.
+- **Your move is shown before the bot answers** (`reply: false`, then `/bot-move`), so the board responds
+  instantly even if the bot takes a moment.
+- **Served by the API app at `/`**, so page and API share one origin (no CORS needed) and one command
+  (`python scripts/serve.py`) runs everything.
+- **Testing in a real browser without Node.js:** pytest serves the page and the API and reads the results from
+  headless Chrome's DOM; screenshots were used to look at the result (headless Chrome will not go below a 504 px
+  viewport, so phone width was checked inside a 375 px iframe).

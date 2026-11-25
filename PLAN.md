@@ -66,4 +66,4 @@ tracked in [PROGRESS.md](PROGRESS.md).
 | 8, 17, 18, 19 | `src/chess_engine/bot/`, `scripts/play.py`, `scripts/bot_match.py` |
 | 14, 15 | `src/chess_engine/review/` |
 | 9 | `src/chess_engine/api/` (`schemas`, `store`, `service`, `app`), `scripts/serve.py` |
-| 10, 16 | `web/` |
+| 10, 16 | `web/` (`index.html`, `css/`, `js/board.js`, `js/api.js`, `js/app.js`, `tests/`), `tests/test_web_js.py` |

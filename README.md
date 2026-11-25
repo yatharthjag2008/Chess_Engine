@@ -264,11 +264,21 @@ bot = load_bot(load_config(), rating=1400)
 choice = bot.choose_move(board)          # choice.move, choice.san, choice.prob, choice.candidates
 ```
 
-## API server
+## Play in the browser
 
 ```bash
-python scripts/serve.py                       # http://127.0.0.1:8000, interactive docs at /docs
+python scripts/serve.py          # then open http://127.0.0.1:8000
 ```
+
+Pick the bot's rating, your side and a time control, then click or drag pieces. After each bot move the side
+panel shows what players of that rating usually choose in that position. Games can be resigned, taken back
+(untimed games) and downloaded as PGN; reloading the page continues the game.
+
+![The play page](reports/web/play_page.png)
+
+## API server
+
+The same server also exposes the JSON API (interactive docs at `/docs`):
 
 A small FastAPI backend for playing the bot from other programs (and the web UI): start a game with a rating,
 colour and optional time control, send moves, and get the bot's reply, legal moves, clocks and result back as JSON.
@@ -297,7 +307,7 @@ src/chess_engine/
   bot/                move sampling, games + clocks, terminal play, self-play (later: hints, adaptive, styles)
   review/             Stockfish game review, level comparison
   api/                FastAPI backend (schemas, game store, service, app)
-web/                  frontend
+web/                  browser play page (plain HTML/CSS/JS, no build step)
 scripts/              command-line entry points
 tests/                pytest suite
 reports/              generated plots and result tables
