@@ -364,9 +364,10 @@ choice = bot.choose_move(board)          # choice.move, choice.san, choice.prob,
 python scripts/serve.py          # then open http://127.0.0.1:8000
 ```
 
-Pick the bot's rating, your side and a time control, then click or drag pieces. After each bot move the side
-panel shows what players of that rating usually choose in that position. Games can be resigned, taken back
-(untimed games) and downloaded as PGN; reloading the page continues the game.
+Pick the difficulty (a fixed rating, your level, or live), your side, a time control and how many hints you want,
+then click or drag pieces. After each bot move the side panel shows what players of that rating usually choose
+in that position. Games can be resigned, taken back (untimed games), downloaded as PGN and reviewed; reloading
+the page continues the game. The screenshot shows a hint's first tier and the Unrated badge it brings.
 
 ![The play page](reports/web/play_page.png)
 
