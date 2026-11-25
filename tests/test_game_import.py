@@ -221,3 +221,45 @@ def test_fetch_chesscom_unknown_user() -> None:
         client, _ = _client()
         with pytest.raises(UserNotFoundError, match="Chess.com"):
             fetch_chesscom("nobody", base_url=api.url, client=client)
+
+
+# --------------------------------------------------------------------------- entry point
+
+
+def test_filter_games() -> None:
+    from chess_engine.data.game_import import filter_games
+
+    games = parse_pgn_text(FIXTURE.read_text(encoding="utf-8"), source="lichess")
+    blitz = filter_games(games, ["blitz"])
+    assert blitz and all(g.speed == "blitz" for g in blitz)
+    assert all(g.rated for g in filter_games(games, rated_only=True))
+    assert len(filter_games(games, max_games=3)) == 3 and filter_games(games) == games
+
+
+def test_import_games_from_every_source(default_config) -> None:
+    import json
+
+    from chess_engine.data.game_import import GameImportError, InvalidUsernameError, import_games
+    from fake_api import FakeApi, Reply
+
+    pasted = import_games(default_config.game_import, "pgn", text=FIXTURE.read_text(encoding="utf-8"),
+                          speeds=["blitz"], max_games=2)
+    assert pasted.source == "pgn" and pasted.username is None and len(pasted.games) == 2
+    assert all(g.speed == "blitz" for g in pasted.games)
+    with pytest.raises(GameImportError, match="paste"):
+        import_games(default_config.game_import, "pgn")
+    with pytest.raises(GameImportError, match="username"):
+        import_games(default_config.game_import, "lichess")
+    with pytest.raises(InvalidUsernameError, match="unknown source"):
+        import_games(default_config.game_import, "fics", username="someone")
+
+    with FakeApi() as api:
+        cfg = default_config.game_import.model_copy(update={"lichess_url": api.url, "chesscom_url": api.url,
+                                                           "max_games": 4})
+        api.routes["/api/games/user/someone"] = Reply(200, FIXTURE.read_text(encoding="utf-8"))
+        api.routes["/pub/player/someone/games/archives"] = Reply(200, json.dumps({"archives": []}))
+        client, _ = _client()
+        lichess = import_games(cfg, "lichess", username="someone", client=client)
+        assert lichess.source == "lichess" and lichess.username == "someone" and len(lichess.games) == 4
+        assert api.requests[0][1]["max"] == ["4"]              # the config's limit reached the API
+        assert import_games(cfg, "chess.com", username="someone", client=client).games == []

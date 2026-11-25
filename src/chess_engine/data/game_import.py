@@ -4,6 +4,7 @@
     games[0].white, games[0].speed, games[0].pgn
     games = fetch_lichess("someone", max_games=20)       # the most recent games, newest first
     games = fetch_chesscom("someone", max_games=20)
+    result = import_games(cfg.game_import, "lichess", username="someone")   # one entry point, config defaults
 
 Every imported game keeps its PGN text plus a summary (players, ratings, result,
 date, time control, speed, a stable id). Only standard chess is kept: the model
@@ -23,6 +24,7 @@ from typing import Any
 import chess.pgn
 import requests
 
+from chess_engine.config import GameImportConfig
 from chess_engine.data.pgn_stream import game_id_from_site, speed_from_seconds
 
 #: Sent with every request. Deliberately generic: it identifies the software, never the person using it.
@@ -311,3 +313,56 @@ def fetch_chesscom(
             if len(games) >= max_games:
                 return dedupe(games)
     return dedupe(games)
+
+
+# --------------------------------------------------------------------------- one entry point
+
+
+@dataclass(frozen=True)
+class ImportResult:
+    """Games from one import, newest first for the online sources."""
+
+    source: str                 # "pgn", "lichess" or "chess.com"
+    username: str | None
+    games: list[ImportedGame]
+    fetched_at: float           # time.time() of the fetch
+
+
+def filter_games(games: list[ImportedGame], speeds: list[str] | None = None, rated_only: bool = False,
+                 max_games: int | None = None) -> list[ImportedGame]:
+    """Keep the games of the given speeds (all if empty), rated only if asked, at most ``max_games``."""
+    kept = [g for g in games if (not speeds or g.speed in speeds) and (not rated_only or g.rated)]
+    return kept[:max_games] if max_games is not None else kept
+
+
+def import_games(
+    cfg: GameImportConfig,
+    source: str,
+    username: str | None = None,
+    text: str | None = None,
+    max_games: int | None = None,
+    speeds: list[str] | None = None,
+    rated_only: bool | None = None,
+    client: HttpClient | None = None,
+) -> ImportResult:
+    """Import from ``source``: ``"pgn"`` (needs ``text``), ``"lichess"`` or ``"chess.com"`` (need ``username``).
+
+    Unset limits and filters come from ``cfg``.
+    """
+    max_games = max_games or cfg.max_games
+    speeds = cfg.speeds if speeds is None else speeds
+    rated_only = cfg.rated_only if rated_only is None else rated_only
+    if source == "pgn":
+        if text is None:
+            raise GameImportError("paste some PGN to import")
+        return ImportResult("pgn", None, filter_games(parse_pgn_text(text), speeds, rated_only, max_games), time.time())
+    if not username:
+        raise GameImportError(f"a {source} username is needed")
+    client = client or HttpClient(cfg.timeout_seconds, cfg.retries)
+    if source == "lichess":
+        games = fetch_lichess(username, max_games, speeds, rated_only, cfg.lichess_url, client)
+    elif source == "chess.com":
+        games = fetch_chesscom(username, max_games, speeds, rated_only, cfg.chesscom_url, client)
+    else:
+        raise InvalidUsernameError(f"unknown source {source!r} (use pgn, lichess or chess.com)")
+    return ImportResult(source, username.strip(), filter_games(games, speeds, rated_only, max_games), time.time())
