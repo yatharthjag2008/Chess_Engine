@@ -128,3 +128,79 @@ def challenge_decision(challenge: dict, policy: ChallengePolicy, active_games: i
     if active_games >= policy.max_games:
         return "later"
     return None
+
+
+# --------------------------------------------------------------------------- one game
+
+
+@dataclass
+class GameSettings:
+    """The bot's rating in a game: fixed, or the opponent's Lichess rating (plus ``offset``), kept in range."""
+
+    rating: int = 1500
+    match_opponent: bool = False
+    offset: int = 0
+    min_rating: int = 800
+    max_rating: int = 2400
+
+    def rating_for(self, opponent: int | None) -> int:
+        if not self.match_opponent or opponent is None:
+            return self.rating
+        return min(max(opponent + self.offset, self.min_rating), self.max_rating)
+
+
+BotFactory = Callable[[int], Any]       # rating -> a BotPlayer (anything with ``choose_move`` and ``rating``)
+
+
+def _position(initial_fen: str, moves: str) -> chess.Board:
+    board = chess.Board() if initial_fen in ("", "startpos") else chess.Board(initial_fen)
+    for uci in moves.split():
+        board.push_uci(uci)
+    return board
+
+
+def play_game(client: LichessClient, game_id: str, username: str, make_bot: BotFactory,
+              settings: GameSettings | None = None, log: Callable[[str], None] = lambda _: None) -> str:
+    """Play one game to its end; returns Lichess's final status (``mate``, ``resign``, ``outoftime``, ...)."""
+    settings = settings or GameSettings()
+    events = client.stream_game(game_id)
+    full = next(events, None)
+    if full is None or full.get("type") != "gameFull":
+        raise LichessError(f"game {game_id}: the stream did not start with the game")
+    white, black = full.get("white", {}), full.get("black", {})
+    color = chess.WHITE if str(white.get("id", "")).lower() == username.lower() else chess.BLACK
+    opponent = black if color == chess.WHITE else white
+    bot = make_bot(settings.rating_for(opponent.get("rating")))
+    clock = full.get("clock") or {}
+    base = int(clock.get("initial", 180_000) / 1000)
+    increment = int(clock.get("increment", 0) / 1000)
+    log(f"game {game_id}: playing {'White' if color == chess.WHITE else 'Black'} against "
+        f"{opponent.get('name', '?')} ({opponent.get('rating', '?')}) at {bot.rating}")
+    initial = full.get("initialFen", "startpos")
+    mine, theirs = ("wtime", "btime") if color == chess.WHITE else ("btime", "wtime")
+
+    def handle(state: dict) -> str | None:
+        status = state.get("status", "started")
+        if status not in ("created", "started"):
+            return status
+        board = _position(initial, state.get("moves", ""))
+        if board.turn != color or board.is_game_over():
+            return None
+        choice = bot.choose_move(board, opp_rating=opponent.get("rating"),
+                                 clock=state.get(mine, base * 1000) / 1000,
+                                 opp_clock=state.get(theirs, base * 1000) / 1000,
+                                 base_seconds=base, increment=increment)
+        try:
+            client.move(game_id, choice.move.uci())
+        except LichessError as exc:     # e.g. the opponent resigned meanwhile: the next state says so
+            log(f"game {game_id}: move {choice.move.uci()} refused ({exc})")
+        return None
+
+    result = handle(full.get("state", {}))
+    if result is None:
+        for event in events:
+            if event.get("type") == "gameState" and (result := handle(event)) is not None:
+                break
+    result = result or "aborted"
+    log(f"game {game_id}: over ({result})")
+    return result
