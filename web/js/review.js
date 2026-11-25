@@ -162,6 +162,33 @@ export function renderSideChoice() {
 
 // ------------------------------------------------------------------ the review
 
+/** Review a game played against the bot on the play page: your side is the side you played. */
+export async function reviewBotGame(id) {
+  setStatus("Loading your game...", false, true);
+  let state, pgn;
+  try {
+    [state, pgn] = await Promise.all([api.state(id), api.pgn(id)]);
+  } catch (err) {
+    showError(err.status === 404 ? new Error("That game is no longer on the server (it expired, or the server restarted).") : err);
+    return null;
+  }
+  if (!state.moves_san.length) {
+    setStatus("That game has no moves to review yet.", true);
+    return null;
+  }
+  ui.side = state.human_color;
+  ui.games = [];
+  ui.username = null;
+  renderGameList();
+  return startReview(pgn);
+}
+
+/** The bot game named in the URL (``#game=<id>``, as the play page links it), or null. */
+export function gameFromUrl() {
+  const match = location.hash.match(/^#game=([\w-]+)$/);
+  return match ? match[1] : null;
+}
+
 export const SYMBOLS = { inaccuracy: "?!", mistake: "?", blunder: "??" };
 
 /** Review the chosen game (or ``pgn``) and show it from the start. */
@@ -616,6 +643,8 @@ export function init() {
     if (cell) goTo(Number(cell.dataset.ply));
   });
   document.addEventListener("keydown", onKey);
+  const id = gameFromUrl();
+  if (id) reviewBotGame(id);
   $("source-form").addEventListener("submit", (event) => {
     event.preventDefault();
     const form = event.target;

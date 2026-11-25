@@ -140,6 +140,8 @@ test("resign needs a second click, then the result banner offers the PGN", async
   assert(link.href.endsWith(`/api/games/${app.ui.game.id}/pgn`), link.href);
   const pgn = await (await fetch(link.href)).text();
   assert(pgn.includes('[Termination "resignation"]'), pgn);
+  const review = $("result-banner").querySelector("a.review-link");
+  assert(review && review.getAttribute("href") === `review.html#game=${app.ui.game.id}`, review && review.href);
   assert($("resign").disabled && $("takeback").disabled, "buttons disabled after the game");
   equal(app.ui.board.mover, null);
 });

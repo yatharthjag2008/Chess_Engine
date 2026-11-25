@@ -177,8 +177,12 @@ export function renderResult(state) {
   download.textContent = "Download PGN";
   download.className = "button-link";
   const copy = button("Copy PGN", () => copyPgn(state.id, copy));
+  const review = document.createElement("a");
+  review.href = `review.html#game=${encodeURIComponent(state.id)}`;
+  review.textContent = "Review this game";
+  review.className = "button-link review-link";
   const close = button("Close", () => { banner.hidden = true; });
-  actions.append(again, download, copy, close);
+  actions.append(again, download, review, copy, close);
   banner.replaceChildren(heading, text, actions);
   banner.hidden = false;
 }

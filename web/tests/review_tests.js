@@ -230,6 +230,31 @@ test("coaching at another rating and estimating the rating", async () => {
   assert(/look like a \d+ player/.test($("estimate").textContent), $("estimate").textContent);
 });
 
+test("a game against the bot opens from its id, from the side you played", async () => {
+  const post = (path, body) => fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
+                                              body: JSON.stringify(body) }).then((r) => r.json());
+  const game = await post("/api/games", { rating: 1500, color: "black", seed: 4 });
+  if (!game.moves_san.length) await post(`/api/games/${game.id}/bot-move`);
+  const after = (await post(`/api/games/${game.id}/moves`, { move: "g8f6", reply: true })).state;
+  assert(after.moves_san.length >= 2, JSON.stringify(after.moves_san));
+  const review = await app.reviewBotGame(game.id);
+  assert(review, $("status").textContent);
+  equal(review.moves.length, after.moves_san.length);
+  equal(app.ui.side, "black");
+  equal(app.ui.board.orientation, "black");
+  await app.ui.coaching;
+  assert($("coach-panel").textContent.includes("Coaching Black"), $("coach-panel").textContent);
+  history.replaceState(null, "", `#game=${game.id}`);
+  equal(app.gameFromUrl(), game.id);
+  history.replaceState(null, "", location.pathname);
+  equal(app.gameFromUrl(), null);
+});
+
+test("an unknown bot game says so", async () => {
+  equal(await app.reviewBotGame("no-such-game"), null);
+  assert($("status").textContent.includes("no longer on the server"), $("status").textContent);
+});
+
 test("errors are shown", async () => {
   await app.loadGames("lichess", "x");
   assert($("status").textContent.includes("not a valid"), $("status").textContent);
