@@ -14,13 +14,16 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from enum import Enum, IntEnum
+from collections import OrderedDict
 from typing import Any
 
 import chess
 
 from chess_engine.config import HintsConfig
 from chess_engine.model.inference import MovePredictor
+from chess_engine.review.scoring import win_percent
 
+from chess_engine.review.engine import Analyzer
 from chess_engine.review.features import (
     PIECE_VALUES,
     after,
@@ -228,3 +231,57 @@ def make_hint(board: chess.Board, move: chess.Move, tier: Tier, rate: float, cfg
         text = show_text(board, move, themes)
         frm, to, san = chess.square_name(move.from_square), chess.square_name(move.to_square), board.san(move)
     return Hint(tier, text, frm, to, san, [t.value for t in themes], rate, detail, only_move)
+
+
+# --------------------------------------------------------------------------- the engine
+
+
+class HintError(ValueError):
+    """No hint is possible (the game is over, or the engine found no move)."""
+
+
+@dataclass(frozen=True)
+class BestMove:
+    """What a hint is about: Stockfish's best move, how often your level finds it, and whether it is the only one."""
+
+    move: chess.Move
+    find_rate: float
+    only_move: bool
+
+
+class HintEngine:
+    """Hints from Stockfish (the best move) and the model (how often your level finds it).
+
+    The analysis of a position is kept (a small LRU cache), so asking for the next tier is instant.
+    """
+
+    def __init__(self, predictor: MovePredictor, analyzer: Analyzer, cfg: HintsConfig, cache_size: int = 256) -> None:
+        self.predictor = predictor
+        self.analyzer = analyzer
+        self.cfg = cfg
+        self.cache_size = cache_size
+        self._cache: OrderedDict[tuple[str, int], BestMove] = OrderedDict()
+
+    def best(self, board: chess.Board, rating: int, opp_rating: int | None = None, **clock: Any) -> BestMove:
+        key = (board.fen(), rating)
+        if key in self._cache:
+            self._cache.move_to_end(key)
+            return self._cache[key]
+        if board.is_game_over():
+            raise HintError("the game is over")
+        analysis = self.analyzer.analyse(board)
+        if not analysis.lines:
+            raise HintError("the engine found no move")
+        top = analysis.lines[0]
+        only = (len(analysis.lines) > 1
+                and win_percent(top.cp) - win_percent(analysis.lines[1].cp) >= self.cfg.only_move_gap)
+        found = BestMove(top.move, find_rate(self.predictor, board, top.move, rating, opp_rating, **clock), only)
+        self._cache[key] = found
+        if len(self._cache) > self.cache_size:
+            self._cache.popitem(last=False)
+        return found
+
+    def hint(self, board: chess.Board, tier: Tier, rating: int, opp_rating: int | None = None, **clock: Any) -> Hint:
+        """The hint of ``tier`` for the side to move in ``board``, a player rated ``rating``."""
+        best = self.best(board, rating, opp_rating, **clock)
+        return make_hint(board, best.move, tier, best.find_rate, self.cfg, best.only_move)

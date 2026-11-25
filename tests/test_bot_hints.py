@@ -7,6 +7,8 @@ import pytest
 
 from chess_engine.bot.hints import (
     Detail,
+    HintEngine,
+    HintError,
     Theme,
     Tier,
     detail_for,
@@ -17,6 +19,7 @@ from chess_engine.bot.hints import (
     threatened_piece,
 )
 from chess_engine.config import HintsConfig
+from review_helpers import ScriptedAnalyzer, position_key
 
 
 def legal(fen: str, uci: str) -> tuple[chess.Board, chess.Move]:
@@ -133,3 +136,47 @@ def test_show_names_up_to_two_reasons() -> None:
     assert make_hint(board, move, Tier.SHOW, 0.5, HintsConfig()).text == "Play bxa8=Q+: a check, and it wins material."
     board, move = legal(chess.STARTING_FEN, "e2e4")
     assert make_hint(board, move, Tier.SHOW, 0.5, HintsConfig()).text == "Play e4."
+
+
+KNIGHT_WINS_ROOK = "4k3/8/8/3r4/8/4N3/8/4K3 w - - 0 1"
+
+
+def test_engine_hints_about_stockfishs_move_at_your_level() -> None:
+    board = chess.Board(KNIGHT_WINS_ROOK)
+    analyzer = ScriptedAnalyzer({ScriptedAnalyzer.key(board): ("e3d5", 500, {"e1d2": 0})})
+    predictor = FixedPredictor({"e3d5": 0.05})
+    engine = HintEngine(predictor, analyzer, HintsConfig())
+    nudge = engine.hint(board, Tier.NUDGE, 1200, opp_rating=1400)
+    assert nudge.detail is Detail.PIECE and nudge.text.startswith("One of your opponent's pieces can be won. It's a knight")
+    assert nudge.only_move, "500 cp against 0 is far more than 15 win-% points"
+    show = engine.hint(board, Tier.SHOW, 1200, opp_rating=1400)
+    assert show.san == "Nxd5"
+    assert analyzer.calls == 1 and len(predictor.calls) == 1, "the next tier reuses the analysis"
+    assert predictor.calls[0][1:] == (1200, 1400)
+    engine.hint(board, Tier.NUDGE, 1800)
+    assert analyzer.calls == 2, "another rating is another question"
+
+
+def test_engine_easy_move_and_no_only_move() -> None:
+    board = chess.Board()
+    analyzer = ScriptedAnalyzer({position_key(): ("e2e4", 30, {"d2d4": 25})})
+    engine = HintEngine(FixedPredictor({"e2e4": 0.6}), analyzer, HintsConfig())
+    hint = engine.hint(board, Tier.NUDGE, 1500)
+    assert hint.detail is Detail.VAGUE and not hint.only_move and hint.find_rate == 0.6
+
+
+def test_engine_cache_is_bounded() -> None:
+    engine = HintEngine(FixedPredictor({}), ScriptedAnalyzer(), HintsConfig(), cache_size=2)
+    board = chess.Board()
+    for uci in ["e2e4", "e7e5", "g1f3"]:
+        engine.best(board, 1500)
+        board.push_uci(uci)
+    assert len(engine._cache) == 2
+
+
+def test_no_hint_when_the_game_is_over() -> None:
+    board = chess.Board("6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1")
+    board.push_uci("a1a8")
+    engine = HintEngine(FixedPredictor({}), ScriptedAnalyzer(), HintsConfig())
+    with pytest.raises(HintError, match="over"):
+        engine.hint(board, Tier.NUDGE, 1500)
