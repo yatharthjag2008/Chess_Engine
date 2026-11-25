@@ -44,6 +44,8 @@ class NewGameRequest(_Body):
     fen: str | None = Field(default=None, description="start from this position instead of the start position")
     hint_limit: int | None = Field(default=None, ge=0, le=99,
                                    description="hints allowed in this game (0 = none); default from the config")
+    style: str | None = Field(default=None, max_length=40,
+                              description="play in a trained style or ghost (see GET /api/styles)")
     adaptive: Literal["off", "between", "live"] | None = Field(
         default=None, description="off: the bot plays at `rating`; between: at your rating from earlier games; "
                                   "live: starts at `rating` and adjusts during the game. Default from the config")
@@ -147,6 +149,18 @@ class AdaptiveState(BaseModel):
     result: AdaptiveResult | None = Field(description="set once the finished game was counted")
 
 
+class StyleSummary(BaseModel):
+    name: str
+    kind: Literal["style", "ghost"]
+    player: str
+    games: int
+    rating: int = Field(description="the player's typical rating in those games")
+    until: str | None = Field(description="ghost: the last date included")
+    weight: float = Field(description="how much the style counts next to the rating model (1 = fully)")
+    styled_top1: float | None = Field(default=None, description="held-out move match with the style")
+    base_top1: float | None = Field(default=None, description="held-out move match of the rating model alone")
+
+
 class GameState(BaseModel):
     id: str
     fen: str
@@ -167,6 +181,7 @@ class GameState(BaseModel):
     last_bot_move: BotMoveInfo | None
     hints: HintsState
     adaptive: AdaptiveState
+    style: StyleSummary | None = None
 
 
 class HintRequest(_Body):

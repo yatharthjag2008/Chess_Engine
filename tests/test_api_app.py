@@ -398,3 +398,27 @@ def test_adaptive_endpoints(default_config: Config, tmp_path) -> None:
         assert c.post("/api/adaptive/reset").json()["rating"] == 1200
         assert c.post("/api/adaptive/reset", json={"rating": 5}).status_code == 422
         assert c.post("/api/games", json={"adaptive": "sometimes"}).status_code == 422
+
+
+def test_styles_endpoint_and_playing_in_a_style(default_config: Config, tmp_path) -> None:
+    from test_style import _biased_adapter, _info
+
+    from chess_engine.style.store import StyleLibrary
+
+    cfg = default_config.model_copy(update={"paths": default_config.paths.model_copy(update={"data_dir": tmp_path})})
+    predictor = small_predictor()
+    with TestClient(create_app(cfg, predictor)) as c:
+        assert c.get("/api/styles").json() == []
+        library = StyleLibrary(tmp_path / cfg.style.directory)
+        library.save(_biased_adapter(predictor.model), _info("ann", games=200), predictor.model)
+        styles = c.get("/api/styles").json()
+        assert [s["name"] for s in styles] == ["ann"] and styles[0]["weight"] == 1.0
+        assert styles[0]["styled_top1"] == 0.4 and styles[0]["kind"] == "style"
+        game = c.post("/api/games", json={"color": "black", "style": "ann", "temperature": 0}).json()
+        assert game["moves_san"] == ["a3"], "the style's favourite first move"
+        assert game["style"]["name"] == "ann" and game["style"]["player"] == "Ann"
+        assert '[White "Bot 1500 (Ann style)"]' in c.get(f"/api/games/{game['id']}/pgn").text
+        plain = c.post("/api/games", json={"color": "black", "temperature": 0}).json()
+        assert plain["style"] is None and plain["moves_san"] != ["a3"]
+        missing = c.post("/api/games", json={"style": "nobody"})
+        assert missing.status_code == 404 and missing.json()["error"] == "style_not_found"

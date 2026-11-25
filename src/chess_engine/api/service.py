@@ -30,6 +30,7 @@ from chess_engine.api.schemas import (
     HintsState,
     MoveResponse,
     RatingChangeInfo,
+    StyleSummary,
     NewGameRequest,
     bot_move_info,
     color_name,
@@ -45,6 +46,8 @@ from chess_engine.bot.player import BotPlayer, sampling_from_config
 from chess_engine.bot.sampling import SamplingSettings
 from chess_engine.config import Config
 from chess_engine.model.inference import MovePredictor
+from chess_engine.style.predictor import StylePredictor
+from chess_engine.style.store import StyleError, StyleInfo, StyleLibrary, blend_weight
 
 
 class GameRuleError(Exception):
@@ -73,10 +76,35 @@ class GameService:
                  now: Callable[[], float] = time.monotonic, profiles: ProfileStore | None = None) -> None:
         self.predictor = predictor
         self.cfg = cfg
-        # Your adaptive-difficulty rating (read when a game starts, written when a rated game ends).
-        self.profiles = profiles or ProfileStore(cfg.paths.data_dir / cfg.adaptive.profile_file, cfg.adaptive)
         self.store = store or GameStore(cfg.api.max_games, cfg.api.idle_minutes * 60)
         self._now = now
+        # Your adaptive-difficulty rating (read when a game starts, written when a rated game ends).
+        self.profiles = profiles or ProfileStore(cfg.paths.data_dir / cfg.adaptive.profile_file, cfg.adaptive)
+        # Trained styles and ghosts (step 19), loaded once each.
+        self.styles = StyleLibrary(cfg.paths.data_dir / cfg.style.directory)
+        self._style_predictors: dict[str, tuple[StylePredictor, StyleSummary]] = {}
+
+    # ------------------------------------------------------------------ styles
+
+    def style_summary(self, info: StyleInfo) -> StyleSummary:
+        m = info.metrics
+        return StyleSummary(name=info.name, kind=info.kind, player=info.player, games=info.games, rating=info.rating,
+                            until=info.until, weight=round(blend_weight(info.games, self.cfg.style), 3),
+                            styled_top1=m.get("styled_top1"), base_top1=m.get("base_top1"))
+
+    def list_styles(self) -> list[StyleSummary]:
+        return [self.style_summary(info) for info in self.styles.list()]
+
+    def style_predictor(self, name: str) -> tuple[StylePredictor, StyleSummary]:
+        """The predictor playing in style ``name`` (cached)."""
+        if name not in self._style_predictors:
+            try:
+                adapter, info = self.styles.load(name, self.predictor.model)
+            except StyleError as exc:
+                raise GameRuleError("style_not_found", str(exc)) from exc
+            summary = self.style_summary(info)
+            self._style_predictors[name] = (StylePredictor(self.predictor, adapter, summary.weight, info), summary)
+        return self._style_predictors[name]
 
     # ------------------------------------------------------------------ creating
 
@@ -102,8 +130,11 @@ class GameService:
             if mode == "between":
                 rating = bot_rating_for(profile.rating, self.cfg.adaptive)
         request = request.model_copy(update={"your_rating": your_rating})
-        bot = BotPlayer(self.predictor, rating, self._sampling(request), request.seed)
-        bot_name = f"Bot {bot.rating}"
+        predictor, style = self.predictor, None
+        if request.style:
+            predictor, style = self.style_predictor(request.style)
+        bot = BotPlayer(predictor, rating, self._sampling(request), request.seed)
+        bot_name = f"Bot {bot.rating}" + (f" ({style.player} {style.kind})" if style else "")
         white, black = ("You", bot_name) if human == chess.WHITE else (bot_name, "You")
         white_elo, black_elo = ((request.your_rating, bot.rating) if human == chess.WHITE
                                 else (bot.rating, request.your_rating))
@@ -113,7 +144,7 @@ class GameService:
         _require(limit <= self.cfg.hints.max_limit, "too_many_hints",
                  f"at most {self.cfg.hints.max_limit} hints per game")
         session = Session(GameStore.new_id(), game, bot, human, request.your_rating, clock, hints=HintBudget(limit),
-                          adaptive=AdaptiveGame(mode, bot.rating, self.cfg.adaptive))
+                          adaptive=AdaptiveGame(mode, bot.rating, self.cfg.adaptive), style=style)
         session = self.store.add(session)
         if game.turn != human:
             self._bot_plays(session)
@@ -297,6 +328,7 @@ class GameService:
             last_bot_move=bot_move_info(session.last_bot_move) if session.last_bot_move else None,
             hints=self._hints_state(session),
             adaptive=self._adaptive_state(session),
+            style=session.style,
         )
 
     def _adaptive_state(self, session: Session) -> AdaptiveState:

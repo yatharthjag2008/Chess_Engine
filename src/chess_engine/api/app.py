@@ -24,6 +24,7 @@ GET      /api/games/{id}/review          the same for a game played against the 
 POST     /api/coach                      coach one player: mistakes and "your level vs. next level"
 POST     /api/games/{id}/hint            a hint for your move: nudge -> point -> show (uses the game's hints)
 GET      /api/adaptive                   your adaptive-difficulty rating and latest rated games
+GET      /api/styles                     trained styles and ghosts the bot can play in
 POST     /api/adaptive/reset             start your adaptive rating again
 =======  ==============================  ===================================================
 
@@ -57,6 +58,7 @@ from fastapi.staticfiles import StaticFiles
 from chess_engine.api.schemas import (
     AdaptiveProfile,
     AdaptiveResetRequest,
+    StyleSummary,
     GameState,
     Health,
     ImportedGameInfo,
@@ -158,7 +160,8 @@ def create_app(cfg: Config | None = None, predictor: MovePredictor | None = None
 
     @app.exception_handler(GameRuleError)
     async def rule_error(request: Request, exc: GameRuleError) -> JSONResponse:
-        return JSONResponse(status_code=409, content={"error": exc.code, "detail": str(exc)})
+        status = 404 if exc.code == "style_not_found" else 409
+        return JSONResponse(status_code=status, content={"error": exc.code, "detail": str(exc)})
 
     @app.exception_handler(GameImportError)
     async def import_error(request: Request, exc: GameImportError) -> JSONResponse:
@@ -292,6 +295,10 @@ def create_app(cfg: Config | None = None, predictor: MovePredictor | None = None
         return AdaptiveProfile(rating=round(profile.rating, 1), games=profile.games,
                                next_bot_rating=profile.bot_rating(cfg.adaptive), default_mode=cfg.adaptive.mode,
                                history=[asdict(g) for g in profile.history[-10:]])
+
+    @app.get("/api/styles", response_model=list[StyleSummary])
+    def styles(request: Request) -> list[StyleSummary]:
+        return service(request).list_styles()
 
     @app.get("/api/adaptive", response_model=AdaptiveProfile)
     def adaptive_profile(request: Request) -> AdaptiveProfile:

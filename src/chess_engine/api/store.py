@@ -43,6 +43,7 @@ class Session:
     last_bot_move: BotMove | None = None
     hints: HintBudget = field(default_factory=lambda: HintBudget(0))
     adaptive: AdaptiveGame | None = None
+    style: object | None = None          # the StyleSummary the bot plays in, if any
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     last_used: float = 0.0
 
