@@ -20,6 +20,11 @@ GET      /api/games/{id}/pgn             the game as PGN text
 
 The model is loaded once when the app starts (from ``bot.model`` in the config),
 unless a predictor is passed in (tests, or embedding the app elsewhere).
+
+Every error has the same shape, ``{"error": "<code>", "detail": "<message>"}``:
+404 ``game_not_found``; 409 ``game_over`` / ``not_your_turn`` / ``not_bots_turn`` /
+``nothing_to_take_back`` / ``timed_game``; 422 ``illegal_move`` / ``invalid_request``.
+Browsers may call the API from the origins in ``api.cors_origins``.
 """
 
 from __future__ import annotations
@@ -28,7 +33,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 
 from chess_engine.api.schemas import GameState, Health, LegalMove, MoveRequest, MoveResponse, NewGameRequest, legal_moves
 from chess_engine.api.service import GameRuleError, GameService
@@ -55,6 +62,8 @@ def create_app(cfg: Config | None = None, predictor: MovePredictor | None = None
     if predictor is not None:
         app.state.service = GameService(predictor, cfg)
         app.state.model_name = "in-memory model"
+    app.add_middleware(CORSMiddleware, allow_origins=list(cfg.api.cors_origins), allow_methods=["GET", "POST"],
+                       allow_headers=["Content-Type"])
 
     def service(request: Request) -> GameService:
         return request.app.state.service
@@ -67,6 +76,14 @@ def create_app(cfg: Config | None = None, predictor: MovePredictor | None = None
         return JSONResponse(status_code=404, content={"error": "game_not_found",
                                                       "detail": "no such game (unknown id, or it expired)"})
 
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(request: Request, exc: RequestValidationError) -> JSONResponse:
+        problems = []
+        for error in exc.errors():
+            where = ".".join(str(part) for part in error.get("loc", ()) if part != "body")
+            problems.append(f"{where}: {error.get('msg')}" if where else str(error.get("msg")))
+        return JSONResponse(status_code=422, content={"error": "invalid_request", "detail": "; ".join(problems)})
+
     @app.exception_handler(GameRuleError)
     async def rule_error(request: Request, exc: GameRuleError) -> JSONResponse:
         return JSONResponse(status_code=409, content={"error": exc.code, "detail": str(exc)})
@@ -74,6 +91,10 @@ def create_app(cfg: Config | None = None, predictor: MovePredictor | None = None
     @app.exception_handler(IllegalMoveError)
     async def illegal_move(request: Request, exc: IllegalMoveError) -> JSONResponse:
         return JSONResponse(status_code=422, content={"error": "illegal_move", "detail": str(exc)})
+
+    @app.get("/", include_in_schema=False)
+    def root() -> RedirectResponse:
+        return RedirectResponse("/docs")
 
     @app.get("/api/health", response_model=Health)
     def health(request: Request) -> Health:

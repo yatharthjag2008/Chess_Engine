@@ -314,3 +314,16 @@ def test_bot_match_script(tmp_path: Path, capsys: pytest.CaptureFixture[str]) ->
     assert out.count(" vs ") == 3 and "endings:" in out and "2 games per pairing" in out
     with pytest.raises(SystemExit):
         script.main(["--ratings", "1500"])
+
+
+def test_serve_script(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    script = _load("serve")
+    model = _small_model_file(tmp_path)
+    calls = []
+    assert script.main(["--model", str(model), "--port", "9123"],
+                       run=lambda app, host, port: calls.append((app, host, port))) == 0
+    app, host, port = calls[0]
+    assert host == "127.0.0.1" and port == 9123 and "bot.pt" in capsys.readouterr().out
+    assert any(route.path == "/api/games" for route in app.routes)
+    assert script.main(["--model", str(tmp_path / "missing.pt")], run=lambda *a, **k: None) == 1
+    assert "not found" in capsys.readouterr().err

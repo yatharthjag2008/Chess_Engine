@@ -152,3 +152,25 @@ def test_timed_game_over_http(client: TestClient) -> None:
     assert game["clock"] == {"white": 180, "black": 180, "running": None, "base_seconds": 180, "increment": 2}
     state = client.post(f"/api/games/{game['id']}/moves", json={"move": "e4"}).json()["state"]
     assert state["clock"]["running"] == "white" and 179 < state["clock"]["white"] <= 180
+
+
+def test_validation_errors_have_the_common_shape(client: TestClient) -> None:
+    response = client.post("/api/games", json={"rating": 50, "color": "green"})
+    body = response.json()
+    assert response.status_code == 422 and body["error"] == "invalid_request"
+    assert "rating" in body["detail"] and "color" in body["detail"]
+    broken = client.post("/api/games", content="{not json", headers={"Content-Type": "application/json"})
+    assert broken.status_code == 422 and broken.json()["error"] == "invalid_request"
+
+
+def test_cors_and_root(client: TestClient) -> None:
+    allowed = client.options("/api/games", headers={"Origin": "http://localhost:8000",
+                                                    "Access-Control-Request-Method": "POST"})
+    assert allowed.headers.get("access-control-allow-origin") == "http://localhost:8000"
+    other = client.get("/api/health", headers={"Origin": "http://evil.example"})
+    assert "access-control-allow-origin" not in other.headers
+    root = client.get("/", follow_redirects=False)
+    assert root.status_code == 307 and root.headers["location"] == "/docs"
+    assert client.get("/docs").status_code == 200
+    paths = client.get("/openapi.json").json()["paths"]
+    assert {"/api/games", "/api/games/{game_id}/moves", "/api/games/{game_id}/takeback"} <= set(paths)
