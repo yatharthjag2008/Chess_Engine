@@ -425,3 +425,28 @@ def test_import_games_script(tmp_path: Path, capsys: pytest.CaptureFixture[str])
     assert "games from" in capsys.readouterr().out and out_file.is_file()
     assert script.main(["--pgn", str(FIXTURE), "--estimate", "--out", str(tmp_path / "x.pgn")]) == 1
     assert script.main(["--lichess", "bad/name"]) == 1
+
+
+def test_review_game_script(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch) -> None:
+    import chess_engine.review.run as run_module
+    from test_review_analyzer import PGN, _scripted
+
+    script = _load("review_game")
+    real_run = run_module.run_review
+    monkeypatch.setattr(script, "run_review", lambda cfg, text, game_index=0: real_run(
+        cfg, text, game_index, analyzer=_scripted(), cache=None))
+    game = tmp_path / "game.pgn"
+    game.write_text(PGN, encoding="utf-8")
+    annotated, review_json = tmp_path / "a.pgn", tmp_path / "r.json"
+    assert script.main([str(game), "--annotated", str(annotated), "--json", str(review_json), "--depth", "9"]) == 0
+    out = capsys.readouterr().out
+    assert "depth 9" in out and "W - B" in out and "Black: accuracy" in out and "1 blunder" in out
+    assert "Key moments:" in out and "3... Nf6?? dropped Black's chances" in out
+    assert "Nf6?? (+100.0)" in out or "Nf6??" in out
+    assert annotated.read_text(encoding="utf-8").count("[%eval") == 7 and review_json.is_file()
+    assert script.main([str(game), "--index", "2"]) == 1
+    assert "no reviewable game number 2" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        script.main([])
+    with pytest.raises(SystemExit):
+        script.main([str(game), "--lichess", "someone"])
