@@ -121,3 +121,15 @@ evaluation:                      # step 7: move-match accuracy, baselines, calib
   stockfish_positions: 10000     # test positions given to Stockfish (0 = skip); ~1,000-4,000 per bucket
   stockfish_depth: 10
   seed: 0
+
+bot:                             # step 8: playing against the model
+  model: checkpoints/laptop_64x6/best_model.pt   # trained model file (relative to the project root)
+  rating: 1500                   # the rating the bot plays like
+  # How moves are picked from the model's probabilities. temperature 1 plays each move as often as
+  # humans at that rating do (including their mistakes); below 1 favours their most common moves,
+  # 0 always plays the single most likely move.
+  temperature: 1.0
+  top_k: null                    # only consider the k likeliest moves (null = all)
+  top_p: 1.0                     # only the smallest set of likeliest moves covering this probability
+  min_prob: 0.0                  # never play a move the model gives less than this probability
+  seed: null                     # fixed seed for reproducible games (null = random)

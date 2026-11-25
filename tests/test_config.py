@@ -79,6 +79,13 @@ def test_default_evaluation_settings(default_config: Config) -> None:
     assert e.bootstrap_samples > 0 and 0 < e.confidence < 1 and e.stockfish_positions > 0
 
 
+def test_default_bot_settings(default_config: Config) -> None:
+    b = default_config.bot
+    assert b.temperature == 1.0 and b.top_k is None and b.top_p == 1.0 and b.min_prob == 0.0
+    assert b.model.is_absolute() and b.model.is_relative_to(PROJECT_ROOT)
+    assert b.model.name == "best_model.pt"
+
+
 def test_training_limits_can_be_unset(tmp_path: Path) -> None:
     override = _write_yaml(tmp_path / "t.yaml", {"training": {"grad_clip_norm": None, "val_max_positions": None,
                                                             "max_steps": 10, "max_minutes": 1.5}})
@@ -163,6 +170,10 @@ def test_invalid_yaml_is_rejected(tmp_path: Path) -> None:
         ({"training": {"grad_clip_norm": 0}}, "grad_clip_norm"),
         ({"training": {"prefetch_batches": -1}}, "prefetch_batches"),
         ({"evaluation": {"split": "holdout"}}, "split"),
+        ({"bot": {"temperature": -0.5}}, "temperature"),
+        ({"bot": {"top_p": 0}}, "top_p"),
+        ({"bot": {"min_prob": 1.0}}, "min_prob"),
+        ({"bot": {"rating": 0}}, "rating"),
         ({"evaluation": {"confidence": 1.0}}, "confidence"),
         ({"evaluation": {"stockfish_positions": -1}}, "stockfish_positions"),
     ],

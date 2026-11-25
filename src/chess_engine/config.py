@@ -271,6 +271,18 @@ class EvaluationConfig(_StrictModel):
     seed: int = 0
 
 
+class BotConfig(_StrictModel):
+    """How the bot picks its moves (see ``chess_engine.bot``)."""
+
+    model: Path = Path("checkpoints/laptop_64x6/best_model.pt")
+    rating: PositiveInt = 1500
+    temperature: float = Field(default=1.0, ge=0)
+    top_k: PositiveInt | None = None
+    top_p: float = Field(default=1.0, gt=0, le=1)
+    min_prob: float = Field(default=0.0, ge=0, lt=1)
+    seed: int | None = None
+
+
 class Config(_StrictModel):
     """The full project configuration."""
 
@@ -281,6 +293,7 @@ class Config(_StrictModel):
     model: ModelConfig
     training: TrainingConfig
     evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
+    bot: BotConfig = Field(default_factory=BotConfig)
 
 
 # --------------------------------------------------------------------------- loading
@@ -351,6 +364,7 @@ def load_config(path: str | Path | None = None, root: Path = PROJECT_ROOT) -> Co
             "stockfish": config.stockfish.model_copy(
                 update={"path": _resolve(stockfish_path, root) if stockfish_path else None}
             ),
+            "bot": config.bot.model_copy(update={"model": _resolve(config.bot.model, root)}),
         }
     )
 
