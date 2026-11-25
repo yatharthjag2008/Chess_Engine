@@ -350,6 +350,24 @@ class GameImportConfig(_StrictModel):
     cache_minutes: float = Field(default=30, ge=0)
 
 
+class ReviewConfig(_StrictModel):
+    """Stockfish game review (see ``chess_engine.review``)."""
+
+    multipv: PositiveInt = 3
+    inaccuracy_drop: float = Field(default=10, gt=0, le=100)
+    mistake_drop: float = Field(default=20, gt=0, le=100)
+    blunder_drop: float = Field(default=30, gt=0, le=100)
+    good_drop: float = Field(default=2, ge=0, le=100)
+    key_moments: PositiveInt = 5
+    cache: bool = True
+
+    @model_validator(mode="after")
+    def _check_order(self) -> ReviewConfig:
+        if not self.good_drop < self.inaccuracy_drop < self.mistake_drop < self.blunder_drop:
+            raise ValueError("thresholds must increase: good_drop < inaccuracy_drop < mistake_drop < blunder_drop")
+        return self
+
+
 class Config(_StrictModel):
     """The full project configuration."""
 
@@ -365,6 +383,7 @@ class Config(_StrictModel):
     elo_validation: EloValidationConfig = Field(default_factory=EloValidationConfig)
     rating_estimation: RatingEstimationConfig = Field(default_factory=RatingEstimationConfig)
     game_import: GameImportConfig = Field(default_factory=GameImportConfig)
+    review: ReviewConfig = Field(default_factory=ReviewConfig)
 
 
 # --------------------------------------------------------------------------- loading

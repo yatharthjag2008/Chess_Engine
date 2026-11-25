@@ -175,3 +175,13 @@ game_import:                     # step 13: import games from pasted PGN or by u
   timeout_seconds: 30
   retries: 3                     # on network errors, HTTP 429 (rate limit) and 5xx
   cache_minutes: 30              # reuse a fetched list of games for this long (0 = never cache)
+
+review:                          # step 14: Stockfish game review (depth comes from stockfish.analysis_depth)
+  multipv: 3                     # engine lines kept per position (the best move and alternatives)
+  # A move is judged by how much it lowers the mover's chance of winning (win %, from Stockfish's eval).
+  inaccuracy_drop: 10            # win-% points lost: inaccuracy (?!)
+  mistake_drop: 20               # mistake (?)
+  blunder_drop: 30               # blunder (??)
+  good_drop: 2                   # up to this many points lost (and not the engine's move) counts as "good"
+  key_moments: 5                 # how many turning points to highlight
+  cache: true                    # keep finished reviews on disk (data/reviews/) to show them again instantly
