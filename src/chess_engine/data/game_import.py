@@ -3,6 +3,7 @@
     games = parse_pgn_text(pasted_text)                  # list[ImportedGame]
     games[0].white, games[0].speed, games[0].pgn
     games = fetch_lichess("someone", max_games=20)       # the most recent games, newest first
+    games = fetch_chesscom("someone", max_games=20)
 
 Every imported game keeps its PGN text plus a summary (players, ratings, result,
 date, time control, speed, a stable id). Only standard chess is kept: the model
@@ -257,3 +258,56 @@ def fetch_lichess(
     response = (client or HttpClient()).get(f"{base_url.rstrip('/')}/api/games/user/{name}", params,
                                             accept="application/x-chess-pgn", what="Lichess")
     return parse_pgn_text(response.text, source="lichess")[:max_games]
+
+
+# --------------------------------------------------------------------------- Chess.com
+
+_CHESSCOM_SPEED = {"bullet": "bullet", "blitz": "blitz", "rapid": "rapid", "daily": "correspondence"}
+
+
+def fetch_chesscom(
+    username: str,
+    max_games: int = 20,
+    speeds: list[str] | None = None,
+    rated_only: bool = False,
+    base_url: str = "https://api.chess.com",
+    client: HttpClient | None = None,
+    max_archives: int = 12,
+) -> list[ImportedGame]:
+    """The player's most recent standard-chess games on Chess.com, newest first.
+
+    Chess.com publishes games in monthly archives: the list is read
+    (``/pub/player/{name}/games/archives``), then archives from the newest month back
+    (at most ``max_archives``) until ``max_games`` games pass the filters. Only archive
+    links on ``base_url`` are followed.
+
+    Raises:
+        InvalidUsernameError, UserNotFoundError, SourceUnavailableError.
+    """
+    name = check_username("chess.com", username).lower()
+    client = client or HttpClient()
+    base = base_url.rstrip("/")
+    archives = client.get(f"{base}/pub/player/{name}/games/archives", what="Chess.com").json().get("archives", [])
+    games: list[ImportedGame] = []
+    for url in reversed(archives[-max_archives:]):
+        if not url.startswith(base + "/"):
+            continue  # never follow a link to another host
+        month = client.get(url, what="Chess.com").json().get("games", [])
+        for entry in reversed(month):  # newest first
+            if entry.get("rules", "chess") != "chess" or not entry.get("pgn"):
+                continue
+            speed = _CHESSCOM_SPEED.get(entry.get("time_class", ""))
+            if speeds and speed not in speeds:
+                continue
+            if rated_only and not entry.get("rated", False):
+                continue
+            parsed = parse_pgn_text(entry["pgn"], source="chess.com")
+            if not parsed:
+                continue
+            game = parsed[0]
+            games.append(ImportedGame(**{**game.__dict__, "rated": bool(entry.get("rated")) if "rated" in entry
+                                         else None, "url": entry.get("url") or game.url,
+                                         "speed": speed or game.speed}))
+            if len(games) >= max_games:
+                return dedupe(games)
+    return dedupe(games)

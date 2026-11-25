@@ -172,3 +172,52 @@ def test_fetch_lichess_errors() -> None:
         with pytest.raises(InvalidUsernameError):
             fetch_lichess("bad/name", base_url=api.url, client=client)
         assert len(api.requests) == 1          # the invalid name never reached the server
+
+
+# --------------------------------------------------------------------------- Chess.com
+
+
+def _chesscom_game(i: int, time_class: str = "rapid", rated: bool = True, rules: str = "chess") -> dict:
+    pgn = CHESSCOM_PGN.replace("123456789", str(1000 + i)).replace('[Date "2026.11.20"]', f'[Date "2026.11.{i:02d}"]')
+    return {"url": f"https://www.chess.com/game/live/{1000 + i}", "pgn": pgn, "time_class": time_class,
+            "rated": rated, "rules": rules, "white": {"username": "PlayerOne"}, "black": {"username": "PlayerTwo"}}
+
+
+def test_fetch_chesscom_walks_archives_newest_first() -> None:
+    import json
+
+    from chess_engine.data.game_import import fetch_chesscom
+    from fake_api import FakeApi, Reply
+
+    with FakeApi() as api:
+        base = api.url
+        api.routes["/pub/player/playerone/games/archives"] = Reply(200, json.dumps({"archives": [
+            f"{base}/pub/player/playerone/games/2026/10", f"{base}/pub/player/playerone/games/2026/11",
+            "https://evil.example/pub/player/playerone/games/2026/12"]}))
+        api.routes["/pub/player/playerone/games/2026/11"] = Reply(200, json.dumps({"games": [
+            _chesscom_game(1), _chesscom_game(2, rules="chess960"), _chesscom_game(3, time_class="bullet"),
+            _chesscom_game(4, rated=False), _chesscom_game(5)]}))
+        api.routes["/pub/player/playerone/games/2026/10"] = Reply(200, json.dumps({"games": [
+            _chesscom_game(6), _chesscom_game(7)]}))
+        client, _ = _client()
+        games = fetch_chesscom("PlayerOne", max_games=3, speeds=["rapid"], rated_only=True, base_url=base,
+                               client=client)
+        assert [g.id for g in games] == ["1005", "1001", "1007"]       # newest first, filters applied
+        assert all(g.source == "chess.com" and g.rated and g.speed == "rapid" for g in games)
+        assert games[0].url == "https://www.chess.com/game/live/1005"
+        assert [path for path, _, _ in api.requests] == [               # the foreign link was not followed
+            "/pub/player/playerone/games/archives", "/pub/player/playerone/games/2026/11",
+            "/pub/player/playerone/games/2026/10"]
+        everything = fetch_chesscom("playerone", max_games=50, base_url=base, client=client)
+        assert len(everything) == 6                                     # only the Chess960 game is left out
+        assert {g.speed for g in everything} == {"rapid", "bullet"}
+
+
+def test_fetch_chesscom_unknown_user() -> None:
+    from chess_engine.data.game_import import UserNotFoundError, fetch_chesscom
+    from fake_api import FakeApi
+
+    with FakeApi() as api:
+        client, _ = _client()
+        with pytest.raises(UserNotFoundError, match="Chess.com"):
+            fetch_chesscom("nobody", base_url=api.url, client=client)
