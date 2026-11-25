@@ -131,4 +131,4 @@ def test_play_page_end_to_end(api_server: str, tmp_path: Path) -> None:
 
 def test_review_page_end_to_end(api_server: str, tmp_path: Path) -> None:
     dom = dump_dom(browser_or_skip(), f"{api_server}/tests/review.html", tmp_path / "profile", budget_ms=20000)
-    check_results(dom, 8)
+    check_results(dom, 10)

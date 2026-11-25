@@ -127,6 +127,44 @@ test("arrow keys typed into a text box do not step", () => {
   equal(app.ui.ply, 2);
 });
 
+test("evaluations are formatted for people", () => {
+  equal(app.formatEval(125), "+1.25");
+  equal(app.formatEval(-40), "-0.40");
+  equal(app.formatEval(0), "0.00");
+  equal(app.formatEval(9997), "#3");
+  equal(app.formatEval(-9998), "#-2");
+  equal(app.formatEval(10000), "1-0");
+  equal(app.formatEval(-10000), "0-1");
+});
+
+test("the detail panel explains the move and shows the better one", () => {
+  app.goTo(0);
+  assert($("detail-panel").hidden, "nothing to describe at the start");
+  app.goTo(6);
+  const panel = $("detail-panel");
+  assert(!panel.hidden, "shown");
+  const verdict = panel.querySelector(".verdict");
+  assert(verdict.classList.contains("blunder"), verdict.className);
+  equal(verdict.textContent, "3... Nf6??: Blunder");
+  assert(panel.textContent.includes("Best was g6"), panel.textContent);
+  assert(panel.querySelector(".detail-evals").textContent.includes("0.00 \u2192 +9.00"),
+         panel.querySelector(".detail-evals").textContent);
+  const show = $("show-best");
+  show.click();
+  assert(app.ui.board.squareEl("g7").classList.contains("best-from"), "from square marked");
+  assert(app.ui.board.squareEl("g6").classList.contains("best-to"), "to square marked");
+  assert(app.ui.board.squareEl("g8").querySelector(".piece"), "position before the move: knight still on g8");
+  equal(show.getAttribute("aria-pressed"), "true");
+  show.click();
+  equal(app.ui.board.el.querySelectorAll(".best-from, .best-to").length, 0);
+  assert(app.ui.board.squareEl("f6").querySelector(".piece"), "back after the move");
+  show.click();
+  app.step(1);
+  equal(app.ui.board.el.querySelectorAll(".best-from, .best-to").length, 0, "stepping clears the marks");
+  const mate = $("detail-panel").querySelector(".verdict");
+  assert(mate.textContent.startsWith("4. Qxf7#"), mate.textContent);
+});
+
 test("errors are shown", async () => {
   await app.loadGames("lichess", "x");
   assert($("status").textContent.includes("not a valid"), $("status").textContent);

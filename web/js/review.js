@@ -222,6 +222,100 @@ export function goTo(ply) {
 /** Called after every step with (ply, move or null); the panels register here. */
 export const onStep = [];
 
+// ------------------------------------------------------------------ the move's detail
+
+const MATE_CP = 10000;
+export const CLASS_NAMES = { best: "Best", good: "Good", inaccuracy: "Inaccuracy", mistake: "Mistake", blunder: "Blunder" };
+
+/** An evaluation in centipawns as text: "+1.25", "-0.40", "#3" / "#-2" for mates, "0.00" level. */
+export function formatEval(cp) {
+  if (Math.abs(cp) >= MATE_CP - 1000) {
+    const n = MATE_CP - Math.abs(cp);
+    return n === 0 ? (cp > 0 ? "1-0" : "0-1") : `#${cp > 0 ? "" : "-"}${n}`;
+  }
+  const pawns = cp / 100;
+  return `${pawns > 0 ? "+" : pawns < 0 ? "-" : ""}${Math.abs(pawns).toFixed(2)}`;
+}
+
+/** A centipawn value from the mover's view, turned to White's view. */
+const whiteView = (cp, color) => (color === "white" ? cp : -cp);
+
+function line(tag, className, text) {
+  const el = document.createElement(tag);
+  if (className) el.className = className;
+  el.textContent = text;
+  return el;
+}
+
+/** The panel describing the move just played: verdict, evaluations, the better move and other options. */
+export function renderDetail(ply, move) {
+  const panel = $("detail-panel");
+  clearBestSquares();
+  if (!move) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  const verdict = line("p", `verdict ${move.classification}`,
+    `${move.move_number} ${move.san}${SYMBOLS[move.classification] || ""}: ${CLASS_NAMES[move.classification]}`);
+  const evals = line("p", "detail-evals",
+    `Eval ${formatEval(move.eval_before)} \u2192 ${formatEval(move.eval_after)} · ` +
+    `win chance ${Math.round(move.win_before)}% \u2192 ${Math.round(move.win_after)}%` +
+    (move.win_lost >= 1 ? ` (\u2212${Math.round(move.win_lost)}%)` : ""));
+  const children = [line("h2", null, "This move"), verdict, evals];
+  const betterExists = move.best_uci && move.best_uci !== move.uci;
+  if (betterExists) {
+    const best = document.createElement("p");
+    best.append(`Best was ${move.best_san} (${formatEval(whiteView(move.best_cp, move.color))}). `);
+    const show = document.createElement("button");
+    show.type = "button";
+    show.id = "show-best";
+    show.textContent = "Show on board";
+    show.setAttribute("aria-pressed", "false");
+    show.addEventListener("click", () => toggleBest(move, show));
+    best.append(show);
+    children.push(best);
+  } else if (move.best_uci) {
+    children.push(line("p", null, "This was Stockfish's choice."));
+  }
+  const others = (move.alternatives || []).filter((a) => a.uci !== move.uci);
+  if (others.length) {
+    const list = document.createElement("ul");
+    list.className = "alternatives";
+    for (const alt of others) list.append(line("li", null, `${alt.san} ${formatEval(whiteView(alt.cp, move.color))}`));
+    children.push(line("p", "coach-stats", "Stockfish's top moves:"), list);
+  }
+  panel.replaceChildren(...children);
+}
+
+/** Show the position before the move with the better move's squares marked, or go back. */
+function toggleBest(move, button) {
+  const showing = button.getAttribute("aria-pressed") === "true";
+  if (showing) {
+    clearBestSquares();
+    ui.board.setPosition(fenAt(ui.ply), { lastMove: move.uci, check: /[+#]$/.test(move.san) });
+    button.textContent = "Show on board";
+    button.setAttribute("aria-pressed", "false");
+    return;
+  }
+  ui.board.setPosition(move.fen_before);
+  markBestSquares(move.best_uci);
+  button.textContent = "Back to the game";
+  button.setAttribute("aria-pressed", "true");
+}
+
+export function markBestSquares(uci) {
+  ui.board.squareEl(uci.slice(0, 2)).classList.add("best-from");
+  ui.board.squareEl(uci.slice(2, 4)).classList.add("best-to");
+}
+
+export function clearBestSquares() {
+  if (!ui.board) return;
+  for (const el of ui.board.el.querySelectorAll(".best-from, .best-to")) el.classList.remove("best-from", "best-to");
+}
+
+onStep.push(renderDetail);
+
 export function step(delta) { goTo(ui.ply + delta); }
 
 function onKey(event) {
