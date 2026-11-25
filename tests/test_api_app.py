@@ -188,3 +188,9 @@ def test_without_a_web_directory_the_root_redirects_to_the_docs(default_config: 
         with TestClient(create_app(default_config, small_predictor(), web_dir=web_dir)) as c:
             root = c.get("/", follow_redirects=False)
             assert root.status_code == 307 and root.headers["location"] == "/docs"
+
+
+def test_stylesheet_is_served(client: TestClient) -> None:
+    css = client.get("/css/style.css")
+    assert css.status_code == 200 and css.headers["content-type"].startswith("text/css")
+    assert "--square-light" in css.text and "prefers-color-scheme: dark" in css.text
