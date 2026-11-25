@@ -1,6 +1,36 @@
 # Progress
 
-See [PLAN.md](PLAN.md) for details on each step.
+See [PLAN.md](PLAN.md) for details on each step. Below the checklist, each step has its own section: what was
+built, what was measured (with real runs), and the decisions behind it.
+
+## Overview: what each step built
+
+| Step | What it gives you | Headline result |
+|---|---|---|
+| 1. Project setup | Config files with validation, Stockfish detection, `check_setup.py` | one command checks the whole setup |
+| 2. Data | Streaming Lichess download and parser, filters, Parquet game store | 50,000 blitz games (3.54M positions) kept from the first 36 MB of a month |
+| 3. Encoding | Board → 20 planes, 1,858-move vocabulary, legal-move masks | round-trips every legal move |
+| 4. Dataset | Game-level splits, compact shards with rating, clocks and outcome | 3.2M training positions, 164 MB on disk |
+| 5. Model | ResNet whose every block is modulated by rating and clocks (FiLM), with a win/draw/loss head | 64×6 laptop model, 0.6M parameters |
+| 6. Training | Training loop, balancing across ratings, checkpoints, resumable runs, charts | ~2 hours on a laptop CPU |
+| 7. Evaluation | Move match by rating with confidence intervals, baselines, calibration | 41.7% top-1 vs. 37.6% for Stockfish |
+| 8. Bot + terminal | Sampling from the model, games with clocks, `play.py`, bot matches | plays like humans, mistakes included |
+| 9. API | FastAPI backend for games, moves, takebacks, PGN | one process, games in memory |
+| 10. Web play | Board, clocks, what players of that rating play, result banner | plain HTML/JS, no build step |
+| 11. Elo dial | Bots vs. Stockfish levels and each other, fitted Elo | strength rises with the dial, in steps |
+| 12. Rating estimation | Rating with a range from a player's moves | weak: 253 Elo error from one game |
+| 13. Game import | Pasted PGN, Lichess and Chess.com by username, cached | Chess.com's live API returned 404 here (open) |
+| 14. Review engine | Stockfish per move, best / good / inaccuracy / mistake / blunder, accuracy, key moments | a blitz game in about a minute, cached |
+| 15. Coach | Your level vs. +200 / +400, mistake explanations from board facts | levels rarely disagree yet (weak rating sense) |
+| 16. Review page | Step through a game: coloured moves, eval graph, summary, coach | from the play page in one click |
+| 17. Hints | Nudge → piece → move, vaguer when your level usually finds it; hinted games unrated | found moves: median find rate 54% vs. 6.5% missed |
+| 18. Adaptive difficulty | Your level between games (Elo) or live within a game (capped) | settles where results are even |
+| 19. Styles and ghosts | A small adapter per player, or yourself up to a date | better for 8 of 10 real players on unseen games |
+| 20. Polish | README results, deployment guide, Lichess BOT account, coverage pass | 97% statement coverage |
+
+**One finding runs through steps 7, 11, 12, 15, 17 and 18:** the laptop model plays like a human but barely
+changes with the rating it is told. Everything built on that rating sense works and is tested, and gets better as
+soon as a stronger model is trained (`configs/full.yaml`).
 
 ## Checklist
 
