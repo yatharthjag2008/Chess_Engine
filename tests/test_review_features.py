@@ -43,8 +43,10 @@ def test_newly_hanging_after_a_move() -> None:
     moved = newly_hanging(board, chess.Move.from_uci("c1g5"))
     assert moved == []                                                   # g5 is not attacked
     board = chess.Board("4k3/8/4p3/8/8/8/8/2B1K3 w - - 0 1")
+    assert chess.Move.from_uci("c1f4") in board.legal_moves
     moved = newly_hanging(board, chess.Move.from_uci("c1f4"))
     assert moved == []
-    board = chess.Board("4k3/8/8/4p3/8/8/8/2B1K3 w - - 0 1")
-    moved = newly_hanging(board, chess.Move.from_uci("c1d4"))
+    board = chess.Board("4k3/8/8/4p3/8/4B3/8/4K3 w - - 0 1")
+    assert chess.Move.from_uci("e3d4") in board.legal_moves
+    moved = newly_hanging(board, chess.Move.from_uci("e3d4"))
     assert [h.describe() for h in moved] == ["bishop on d4"]           # put en prise by the e5 pawn
