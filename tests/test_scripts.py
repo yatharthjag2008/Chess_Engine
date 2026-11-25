@@ -327,3 +327,27 @@ def test_serve_script(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Non
     assert any(route.path == "/api/games" for route in app.routes)
     assert script.main(["--model", str(tmp_path / "missing.pt")], run=lambda *a, **k: None) == 1
     assert "not found" in capsys.readouterr().err
+
+
+def test_elo_validation_script(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    import sys as _sys
+
+    script = _load("elo_validation")
+    model = _small_model_file(tmp_path)
+    fake = [_sys.executable, str(Path(__file__).parent / "fixtures" / "fake_uci_engine.py"), "--first-legal",
+            "--score-cp=0"]
+    out = tmp_path / "elo"
+    args = ["--model", str(model), "--ratings", "900", "1700", "--stockfish-elos", "1320", "--games", "2",
+            "--out", str(out), "--bootstrap", "10"]
+    override = tmp_path / "short.yaml"
+    override.write_text(yaml.safe_dump({"elo_validation": {"max_plies": 16}}), encoding="utf-8")
+    assert script.main(args + ["--config", str(override)], stockfish_command=fake) == 0
+    printed = capsys.readouterr().out
+    assert "6 games planned, 0 already played" in printed and "dial   900" in printed and "report:" in printed
+    for name in ("games.jsonl", "report.md", "results.json", "dial_vs_measured.png", "score_matrix.png"):
+        assert (out / name).is_file(), name
+    assert script.main(args + ["--config", str(override)], stockfish_command=fake) == 0
+    assert "6 already played" in capsys.readouterr().out            # resumed: nothing replayed
+    assert script.main(["--analyze-only", "--out", str(out), "--bootstrap", "5"]) == 0
+    assert script.main(["--analyze-only", "--out", str(tmp_path / "empty")]) == 1
+    assert "no games" in capsys.readouterr().err
