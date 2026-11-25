@@ -351,3 +351,20 @@ def test_elo_validation_script(tmp_path: Path, capsys: pytest.CaptureFixture[str
     assert script.main(["--analyze-only", "--out", str(out), "--bootstrap", "5"]) == 0
     assert script.main(["--analyze-only", "--out", str(tmp_path / "empty")]) == 1
     assert "no games" in capsys.readouterr().err
+
+
+def test_evaluate_rating_estimation_script(tmp_path: Path, tiny_dataset: Path,
+                                           capsys: pytest.CaptureFixture[str]) -> None:
+    script = _load("evaluate_rating_estimation")
+    model = _small_model_file(tmp_path)
+    out = tmp_path / "rating"
+    args = ["--model", str(model), "--dataset", str(tiny_dataset), "--out", str(out)]
+    assert script.main(args) == 0
+    printed = capsys.readouterr().out
+    assert "val: bucket 8/8" in printed and "one game: error" in printed and "temper" in printed
+    for name in ("val_ll.npz", "test_ll.npz", "report.md", "results.json", "estimated_vs_true.png",
+                 "error_by_rating.png", "convergence.png"):
+        assert (out / name).is_file(), name
+    assert script.main(args) == 0
+    assert "using cached" in capsys.readouterr().out          # the second run reuses the scored games
+    assert script.main(["--model", str(tmp_path / "none.pt"), "--out", str(out)]) == 1
