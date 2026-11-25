@@ -251,6 +251,20 @@ Stockfish's weakest setting. [Report](reports/elo/laptop_64x6_best_model/report.
 
 ![Dial vs. measured strength](reports/elo/laptop_64x6_best_model/dial_vs_measured.png)
 
+## Import your games
+
+```bash
+python scripts/import_games.py --lichess YourName                  # your recent games, saved as one PGN
+python scripts/import_games.py --chesscom YourName --speed blitz --rated --max 50
+python scripts/import_games.py --pgn games.pgn                      # or a PGN file
+python scripts/import_games.py --lichess YourName --estimate        # plus a rating estimate from your moves
+```
+
+Games come from the public Lichess and Chess.com APIs (no login needed; only standard chess; cached for 30
+minutes). The API server offers the same: `POST /api/import/pgn`, `GET /api/import/lichess/{name}`,
+`GET /api/import/chess.com/{name}`, and `POST /api/rating-estimate`. Note: in a live check Chess.com refused
+the request (see [PROGRESS.md](PROGRESS.md)); Lichess works.
+
 ## Estimate a rating from games
 
 ```bash

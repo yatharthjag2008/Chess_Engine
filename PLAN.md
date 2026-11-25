@@ -59,7 +59,7 @@ tracked in [PROGRESS.md](PROGRESS.md).
 | 2 | `src/chess_engine/data/pgn_stream.py`, `sources.py`, `game_store.py`, `scripts/prepare_games.py`, `scripts/download_lichess.py` |
 | 3 | `src/chess_engine/encoding/board.py`, `moves.py`, `scripts/benchmark_encoding.py` |
 | 4 | `src/chess_engine/data/splits.py`, `samples.py`, `shards.py`, `dataset_builder.py`, `dataset.py`, `src/chess_engine/encoding/compact.py`, `scripts/build_dataset.py`, `scripts/inspect_dataset.py` |
-| 13 | `src/chess_engine/data/game_import.py` |
+| 13 | `src/chess_engine/data/game_import.py`, `scripts/import_games.py`, import + rating-estimate endpoints in `src/chess_engine/api/app.py` |
 | 5 | `src/chess_engine/model/` (`features.py`, `layers.py`, `policy_map.py`, `heads.py`, `network.py`, `masking.py`, `inference.py`), `scripts/model_summary.py` |
 | 6 | `src/chess_engine/training/`, `src/chess_engine/plotting.py`, `scripts/train.py`, `scripts/plot_training.py`, `configs/laptop.yaml` |
 | 7, 11, 12 | `src/chess_engine/eval/`, `scripts/evaluate.py`, `scripts/compare_models.py`, `scripts/elo_validation.py`, `scripts/estimate_rating.py`, `scripts/evaluate_rating_estimation.py`, `reports/eval/`, `reports/elo/`, `reports/rating/` |

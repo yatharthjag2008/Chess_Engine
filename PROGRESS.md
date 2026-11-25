@@ -16,7 +16,7 @@ See [PLAN.md](PLAN.md) for details on each step.
 - [x] 10. Web UI for playing
 - [x] 11. Elo dial validation
 - [x] 12. Rating estimation
-- [ ] 13. Game import
+- [x] 13. Game import
 - [ ] 14. Game review engine
 - [ ] 15. "Your level vs. next level" + mistake coach
 - [ ] 16. Review UI
@@ -778,3 +778,43 @@ cached afterwards; full report: [reports/rating/laptop_64x6_best_model/report.md
 - **What would fix it:** the same as for the dial: a model whose predictions depend more on the rating (more training
   data and steps, possibly a stronger rating signal in the architecture), then re-running
   `scripts/evaluate_rating_estimation.py`.
+
+## Step 13: Game import (done 2026-11-24)
+
+**Built** (`chess_engine.data.game_import`)
+- Pasted PGN -> `ImportedGame`s: players, ratings, result, date, time control, speed (Chess.com's `600` and daily
+  `1/86400` included), rated flag, link, a stable id (Lichess game id, Chess.com game number, or a hash), the PGN
+  with its `[%clk]` clocks. Non-standard variants (Chess960, ...) and duplicates are dropped.
+- `fetch_lichess`: `GET /api/games/user/{name}` as PGN with clocks; speed and rated filters passed to the API.
+- `fetch_chesscom`: the monthly archives (`/pub/player/{name}/games/archives`) from newest to oldest until enough
+  games pass the filters; standard chess only; only archive links on the Chess.com API host are followed.
+- `HttpClient`: retries on network errors, HTTP 429 and 5xx with exponential backoff, honours `Retry-After`,
+  turns 404 into "no such player"; a generic `User-Agent` that names the software, never the user.
+- Username validation per site, which also guarantees a name can never change the URL it is put into.
+- `import_games` (one entry point, config defaults, the same filters for every source), `ImportCache` (identical
+  online imports reused for `cache_minutes`, on disk under `data/imports/`), `player_side`, `pgn_text`.
+- Script: `scripts/import_games.py` (listing + saved PGN; `--estimate` runs the step-12 rating estimate on the
+  player's own moves). API: `POST /api/import/pgn`, `GET /api/import/{lichess|chess.com}/{username}`,
+  `POST /api/rating-estimate` (PGN + player name or colour -> estimate and range, per game too).
+- Tests (about 40 new): a local fake API server (`tests/fake_api.py`) stands in for both sites: query parameters,
+  headers, retries, `Retry-After`, 404 / 403 / 503 handling, archive order and filters, the foreign-link guard,
+  the cache's expiry, the script and every endpoint. No test touches the internet.
+
+**Live check** (3 recent games each from well-known public accounts, generic User-Agent): Lichess worked
+(`python scripts/import_games.py --lichess DrNykterstein --max 3` listed three blitz games with ratings and
+clocks). **Chess.com answered 404 ("no such player") for an account that exists**, so the Chess.com import is
+tested against the fake server only, and why the real API refused this request is still open. It may treat
+unfamiliar clients differently; their API documentation asks for a `User-Agent` with contact details, which this
+project deliberately does not send. Try it with your own username (`--chesscom <name>`); if it fails the same way,
+adding a contact address to `USER_AGENT` in `game_import.py` is the likely fix.
+
+**Decisions**
+- **One `ImportedGame` shape for every source**, carrying the original PGN, so later steps (review, rating estimate)
+  read a single format.
+- **Filters are applied in the request where the site supports it** (Lichess `perfType`, `rated`) and again locally,
+  so pasted PGN, Lichess and Chess.com behave the same.
+- **Bounded, polite fetching:** a game limit, at most 12 Chess.com monthly archives, retries with backoff that
+  honour `Retry-After`, and a cache so repeated imports do not hit the sites.
+- **Usernames are validated before any request**, both to give a clear error and so a crafted name cannot reach
+  another path on the API.
+- **Only the software is named in requests**, never the user, as the project's privacy rule requires.
