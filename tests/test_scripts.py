@@ -329,6 +329,24 @@ def test_play_script_hints_setting(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert len(looked) == 1 and "Hints are off: Stockfish was not found" in text
 
 
+def test_play_script_adaptive(tmp_path: Path) -> None:
+    import yaml
+
+    script = _load("play")
+    model = _small_model_file(tmp_path)
+    config = tmp_path / "c.yaml"
+    config.write_text(yaml.safe_dump({"paths": {"data_dir": str(tmp_path / "data")}}), encoding="utf-8")
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "adaptive.json").write_text('{"rating": 1730, "games": 3, "history": []}', encoding="utf-8")
+    out: list[str] = []
+    lines = iter(["resign"])
+    assert script.main(["--config", str(config), "--model", str(model), "--ascii", "--hints", "0",
+                        "--adaptive", "between", "--rating", "900"], read=lambda p: next(lines), write=out.append) == 0
+    text = "\n".join(out)
+    assert "the bot plays at your rating, 1750 (3 rated games)" in text and "bot rated 1750" in text
+    assert "Your adaptive rating: 1730 -> " in text
+
+
 def test_hint_script(tmp_path: Path) -> None:
     from review_helpers import ScriptedAnalyzer
 

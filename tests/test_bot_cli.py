@@ -141,3 +141,37 @@ def test_hints_off_and_limit(bot: BotPlayer) -> None:
     TerminalGame(bot, chess.WHITE, game, read=io.read, write=io.write, hints=engine, hint_limit=1).play()
     assert "No hints left in this game." in io.text and game.extra_headers["Hints"] == "1"
     assert "hint" in HELP
+
+
+def test_adaptive_in_the_terminal(tmp_path) -> None:
+    from chess_engine.bot.adaptive import AdaptiveGame, ProfileStore
+    from chess_engine.config import AdaptiveConfig
+
+    from test_api_service import LosingBotPredictor
+
+    cfg = AdaptiveConfig(live_after=0, live_every=1)
+    store = ProfileStore(tmp_path / "a.json", cfg)
+    bot = BotPlayer(LosingBotPredictor(), 1500, SamplingSettings(temperature=0), seed=0)
+    adaptive = AdaptiveGame("live", 1500, cfg)
+    io = Script("e4", "d4", "resign")
+    TerminalGame(bot, chess.WHITE, Game("You", "Bot"), read=io.read, write=io.write, adaptive=adaptive,
+                 profiles=store).play()
+    adapts = [line for line in io.out if "the bot adapts" in line]
+    assert len(adapts) == len(adaptive.live.changes) == 2, "the bot thinks it is losing after each of its moves"
+    assert adapts[0] == "  (the bot adapts: it now plays like a 1550 player, stronger)" and bot.rating == 1600
+    assert "Your adaptive rating: 1200 -> " in io.text and store.load().games == 1
+
+
+def test_adaptive_skips_hinted_games(tmp_path) -> None:
+    from chess_engine.bot.adaptive import AdaptiveGame, ProfileStore
+    from chess_engine.bot.hints import HintEngine
+    from chess_engine.config import AdaptiveConfig, HintsConfig
+    from review_helpers import ScriptedAnalyzer
+
+    store = ProfileStore(tmp_path / "a.json", AdaptiveConfig())
+    bot = BotPlayer(small_predictor(), 1500, SamplingSettings(temperature=0), seed=0)
+    io = Script("hint", "resign")
+    TerminalGame(bot, chess.WHITE, Game("You", "Bot"), read=io.read, write=io.write,
+                 hints=HintEngine(bot.predictor, ScriptedAnalyzer(), HintsConfig()), hint_limit=1,
+                 adaptive=AdaptiveGame("between", 1500, AdaptiveConfig()), profiles=store).play()
+    assert "does not change your adaptive rating" in io.text and store.load().games == 0

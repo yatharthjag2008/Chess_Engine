@@ -17,6 +17,7 @@ from collections.abc import Callable
 
 import chess
 
+from chess_engine.bot.adaptive import AdaptiveGame, ProfileStore, bot_rating_for
 from chess_engine.bot.clock import ChessClock, format_seconds
 from chess_engine.bot.game import Game, IllegalMoveError, Outcome
 from chess_engine.bot.hints import HintBudget, HintEngine, HintError, Tier
@@ -77,9 +78,11 @@ class TerminalGame:
     def __init__(self, bot: BotPlayer, human_color: chess.Color, game: Game, clock: ChessClock | None = None,
                  read: Callable[[str], str] = input, write: Callable[[str], None] = print,
                  unicode: bool = False, show_thinking: bool = False, hints: HintEngine | None = None,
-                 hint_limit: int = 0) -> None:
+                 hint_limit: int = 0, adaptive: AdaptiveGame | None = None,
+                 profiles: ProfileStore | None = None) -> None:
         self.bot, self.human, self.game, self.clock = bot, human_color, game, clock
         self.hints = hints
+        self.adaptive, self.profiles = adaptive, profiles
         self.budget = HintBudget(hint_limit if hints is not None else 0)
         self.read, self.write = read, write
         self.unicode, self.show_thinking = unicode, show_thinking
@@ -134,6 +137,12 @@ class TerminalGame:
         self.write(f"Bot plays {number}{dots} {san}")
         if self.show_thinking:
             self.write(self._thinking(choice))
+        if self.adaptive is not None:
+            before = self.bot.rating
+            new = self.adaptive.after_bot_move(self.bot, choice.wdl)
+            if new is not None:
+                word = "stronger" if new > before else "weaker"
+                self.write(f"  (the bot adapts: it now plays like a {new} player, {word})")
         return choice
 
     def human_turn(self) -> None:
@@ -231,4 +240,17 @@ class TerminalGame:
         if outcome is not None:
             self.show_board()
             self.write(outcome.describe() + ".")
+            self._record(outcome)
         return outcome
+
+    def _record(self, outcome: Outcome) -> None:
+        if self.adaptive is None or self.profiles is None or self.adaptive.mode == "off":
+            return
+        if not self.budget.rated:
+            self.write("Hints were used, so this game does not change your adaptive rating.")
+            return
+        profile = self.adaptive.finish(self.profiles, outcome, self.human, rated=True)
+        if profile is not None:
+            last = profile.history[-1]
+            self.write(f"Your adaptive rating: {last.rating_before:.0f} -> {last.rating_after:.0f} "
+                       f"(next bot: {bot_rating_for(profile.rating, self.profiles.cfg)}).")

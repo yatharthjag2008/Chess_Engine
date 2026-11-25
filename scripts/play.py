@@ -10,6 +10,8 @@ Usage:
     python scripts/play.py --temperature 0.5              # the bot sticks closer to the most common moves
     python scripts/play.py --save-pgn my_game.pgn
     python scripts/play.py --hints 5                      # up to 5 hints (type 'hint'; needs Stockfish)
+    python scripts/play.py --adaptive between             # the bot plays at your rating from earlier games
+    python scripts/play.py --adaptive live --rating 1400  # starts at 1400 and adapts during the game
 
 Type moves in SAN (Nf3, exd5, O-O) or UCI (g1f3); type 'help' during the game for commands.
 """
@@ -23,6 +25,7 @@ from pathlib import Path
 
 import chess
 
+from chess_engine.bot.adaptive import AdaptiveGame, ProfileStore, bot_rating_for
 from chess_engine.bot.cli import TerminalGame, supports_unicode
 from chess_engine.bot.clock import ChessClock, TimeControl
 from chess_engine.bot.game import Game
@@ -49,6 +52,8 @@ def main(argv: list[str] | None = None, read=input, write=print) -> int:
     parser.add_argument("--show-thinking", action="store_true", help="show the bot's likeliest moves after each move")
     parser.add_argument("--ascii", action="store_true", help="letters instead of piece symbols")
     parser.add_argument("--save-pgn", default=None, help="write the game to this PGN file at the end")
+    parser.add_argument("--adaptive", choices=["off", "between", "live"], default=None,
+                        help="adaptive difficulty (default: adaptive.mode in the config); 'between' ignores --rating")
     parser.add_argument("--hints", type=int, default=None,
                         help="hints allowed in the game (default: hints.limit in the config; 0 = none)")
     args = parser.parse_args(argv)
@@ -63,7 +68,16 @@ def main(argv: list[str] | None = None, read=input, write=print) -> int:
             base.min_prob,
         )
         control = TimeControl.parse(args.time) if args.time else None
-        bot = load_bot(cfg, args.rating, args.model, sampling, args.seed)
+        mode = args.adaptive or cfg.adaptive.mode
+        profiles = ProfileStore(cfg.paths.data_dir / cfg.adaptive.profile_file, cfg.adaptive)
+        rating = args.rating
+        if mode != "off":
+            profile = profiles.load()
+            if mode == "between":
+                rating = bot_rating_for(profile.rating, cfg.adaptive)
+            if args.your_rating is None:
+                args.your_rating = int(round(profile.rating))
+        bot = load_bot(cfg, rating, args.model, sampling, args.seed)
     except (ConfigError, BotError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -74,6 +88,12 @@ def main(argv: list[str] | None = None, read=input, write=print) -> int:
     game = (Game("You", bot_name, you_rating, bot.rating, event="Game vs. human-like bot") if color == chess.WHITE
             else Game(bot_name, "You", bot.rating, you_rating, event="Game vs. human-like bot"))
     clock = ChessClock(control) if control else None
+    adaptive = AdaptiveGame(mode, bot.rating, cfg.adaptive)
+    if mode == "between":
+        write(f"Adaptive difficulty: the bot plays at your rating, {bot.rating} ({profiles.load().games} rated games).")
+    elif mode == "live":
+        write(f"Adaptive difficulty: the bot starts at {bot.rating} and adapts during the game "
+              f"(at most {cfg.adaptive.live_cap} points).")
     if control:
         write(f"Time control {control} (the clocks start after both first moves).")
     hint_limit = cfg.hints.limit if args.hints is None else max(0, min(args.hints, cfg.hints.max_limit))
@@ -87,7 +107,7 @@ def main(argv: list[str] | None = None, read=input, write=print) -> int:
             write("Hints are off: Stockfish was not found (see the README).")
     terminal = TerminalGame(bot, color, game, clock, read=read, write=write,
                             unicode=not args.ascii and supports_unicode(), show_thinking=args.show_thinking,
-                            hints=engine, hint_limit=hint_limit)
+                            hints=engine, hint_limit=hint_limit, adaptive=adaptive, profiles=profiles)
     try:
         terminal.play()
     finally:
