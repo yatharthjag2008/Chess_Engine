@@ -438,6 +438,28 @@ def test_play_script_with_a_style(tmp_path: Path, capsys: pytest.CaptureFixture[
     assert "no style called 'nobody'" in capsys.readouterr().err
 
 
+def test_evaluate_styles_script(tmp_path: Path) -> None:
+    import yaml
+
+    from test_style import style_pgn
+
+    script = _load("evaluate_styles")
+    model = _small_model_file(tmp_path)
+    config = tmp_path / "c.yaml"
+    config.write_text(yaml.safe_dump({"paths": {"data_dir": str(tmp_path / "data")}, "style": {"epochs": 2}}),
+                      encoding="utf-8")
+    pgn = tmp_path / "g.pgn"
+    pgn.write_text(style_pgn(12), encoding="utf-8")
+    assert script.busiest_players(style_pgn(12), 1) == ["Ann"]
+    out: list[str] = []
+    assert script.main(["--config", str(config), "--model", str(model), "--pgn", str(pgn), "--players", "Ann", "opp1"],
+                       write=out.append) == 0
+    assert out[0].startswith("Ann ") and "12 games" in out[0] and "top-1" in out[0]
+    assert out[1].startswith("opp1: skipped (1 games of 'opp1' found")
+    assert out[-1].startswith("\n1 players: held-out loss ") and "better for 1 of 1" in out[-1]
+    assert not (tmp_path / "data" / "styles").exists(), "evaluation styles are thrown away"
+
+
 def test_hint_script(tmp_path: Path) -> None:
     from review_helpers import ScriptedAnalyzer
 
