@@ -450,3 +450,30 @@ def test_review_game_script(tmp_path: Path, capsys: pytest.CaptureFixture[str], 
         script.main([])
     with pytest.raises(SystemExit):
         script.main([str(game), "--lichess", "someone"])
+
+
+
+def test_coach_game_script(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch) -> None:
+    import chess_engine.review.run as run_module
+    from bot_helpers import small_predictor
+    from test_review_analyzer import PGN, _scripted
+
+    script = _load("coach_game")
+    real = run_module.run_coach
+    analyzer = _scripted()
+    monkeypatch.setattr(script, "run_coach", lambda cfg, text, **kw: real(
+        cfg, text, predictor=small_predictor(), analyzer=analyzer, cache=None, **kw))
+    game = tmp_path / "g.pgn"
+    game.write_text(PGN.replace('[Black "B"]', '[Black "B"]\n[BlackElo "1300"]'), encoding="utf-8")
+    out_json = tmp_path / "coach.json"
+    assert script.main([str(game), "--player", "b", "--json", str(out_json)]) == 0
+    out = capsys.readouterr().out
+    assert "Coach report for Black (rated about 1300)" in out and "3... Nf6??" in out and out_json.is_file()
+    assert script.main([str(game), "--color", "white", "--rating", "1500"]) == 0
+    assert "Coach report for White (rated about 1500)" in capsys.readouterr().out
+    assert script.main([str(game), "--color", "white"]) == 0             # no rating anywhere: estimated
+    assert "rating estimated from this game" in capsys.readouterr().out
+    assert script.main([str(game), "--player", "nobody"]) == 1
+    assert "did not play" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        script.main([str(game)])
