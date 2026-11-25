@@ -19,6 +19,7 @@ from dataclasses import dataclass
 import chess
 
 from chess_engine.model.inference import MovePredictor, MoveProbability
+from chess_engine.review.engine import Analyzer, PositionAnalysis
 
 
 @dataclass(frozen=True)
@@ -57,3 +58,24 @@ def level_choices(
         clocks=clock, opp_clocks=opp_clock, base_seconds=base_seconds, increment=increment,
     )
     return [LevelChoice(rating, prediction.moves[:top]) for rating, prediction in zip(ratings, predictions)]
+
+
+def move_values(board: chess.Board, moves: Sequence[chess.Move], analyzer: Analyzer,
+                known: PositionAnalysis | None = None) -> dict[str, int]:
+    """Stockfish's evaluation (centipawns, the mover's view) of each move in ``moves``.
+
+    Moves already among the engine lines of ``known`` (the analysis of ``board``, e.g. from the
+    game review) reuse that evaluation; others are scored by analysing the position after them.
+    """
+    values: dict[str, int] = {}
+    for move in moves:
+        if move.uci() in values:
+            continue
+        line = known.line_for(move) if known is not None else None
+        if line is not None:
+            values[move.uci()] = line.cp
+            continue
+        after = board.copy(stack=False)
+        after.push(move)
+        values[move.uci()] = -analyzer.analyse(after).best_cp
+    return values
