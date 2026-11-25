@@ -98,6 +98,12 @@ def test_default_elo_validation_settings(default_config: Config) -> None:
     assert min(e.stockfish_elos) >= 1320 and e.self_play == "adjacent" and e.temperature is None
 
 
+def test_default_rating_estimation_settings(default_config: Config) -> None:
+    r = default_config.rating_estimation
+    assert r.rating_min < 800 and r.rating_max > 2200 and r.prior == "data" and 0 < r.interval < 1
+    assert r.temper is None and r.evaluation_split == "test" and r.calibration_split == "val"
+
+
 def test_training_limits_can_be_unset(tmp_path: Path) -> None:
     override = _write_yaml(tmp_path / "t.yaml", {"training": {"grad_clip_norm": None, "val_max_positions": None,
                                                             "max_steps": 10, "max_minutes": 1.5}})
@@ -185,6 +191,9 @@ def test_invalid_yaml_is_rejected(tmp_path: Path) -> None:
         ({"bot": {"temperature": -0.5}}, "temperature"),
         ({"api": {"port": 70000}}, "port"),
         ({"elo_validation": {"stockfish_elos": [1000]}}, "1320"),
+        ({"rating_estimation": {"rating_min": 2000, "rating_max": 1000}}, "rating_max"),
+        ({"rating_estimation": {"interval": 1.0}}, "interval"),
+        ({"rating_estimation": {"prior": "uniform"}}, "prior"),
         ({"elo_validation": {"bot_ratings": [1500]}}, "bot_ratings"),
         ({"elo_validation": {"self_play": "some"}}, "self_play"),
         ({"api": {"max_games": 0}}, "max_games"),

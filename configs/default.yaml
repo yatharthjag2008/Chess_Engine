@@ -154,3 +154,14 @@ elo_validation:                  # step 11: does a higher dial rating make the b
   adjudicate_plies: 8            # ... for this many plies in a row wins
   judge_nodes: 20000
   seed: 0
+
+rating_estimation:               # step 12: estimate a player's rating from the moves they played
+  rating_min: 600                # the ratings considered (a grid from min to max)
+  rating_max: 2800
+  rating_step: 10
+  prior: data                    # data (how ratings are spread among the training players) | flat
+  prior_smoothing: 75            # Gaussian smoothing of the data prior (Elo)
+  interval: 0.8                  # probability mass of the reported rating range
+  temper: null                   # divide the summed log-likelihood by this (null = fitted on the validation games)
+  evaluation_split: test         # held-out games the estimate is scored on
+  calibration_split: val         # games used to fit `temper`

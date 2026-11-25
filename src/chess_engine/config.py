@@ -317,6 +317,26 @@ class EloValidationConfig(_StrictModel):
         return elos
 
 
+class RatingEstimationConfig(_StrictModel):
+    """Estimating a player's rating from their moves (see ``chess_engine.eval.rating_estimation``)."""
+
+    rating_min: int = Field(default=600, ge=0)
+    rating_max: int = Field(default=2800, gt=0)
+    rating_step: PositiveInt = 10
+    prior: Literal["data", "flat"] = "data"
+    prior_smoothing: float = Field(default=75, ge=0)
+    interval: float = Field(default=0.8, gt=0, lt=1)
+    temper: float | None = Field(default=None, gt=0)
+    evaluation_split: Literal["train", "val", "test"] = "test"
+    calibration_split: Literal["train", "val", "test"] = "val"
+
+    @model_validator(mode="after")
+    def _check_range(self) -> RatingEstimationConfig:
+        if self.rating_max <= self.rating_min:
+            raise ValueError("rating_max must be greater than rating_min")
+        return self
+
+
 class Config(_StrictModel):
     """The full project configuration."""
 
@@ -330,6 +350,7 @@ class Config(_StrictModel):
     bot: BotConfig = Field(default_factory=BotConfig)
     api: ApiConfig = Field(default_factory=ApiConfig)
     elo_validation: EloValidationConfig = Field(default_factory=EloValidationConfig)
+    rating_estimation: RatingEstimationConfig = Field(default_factory=RatingEstimationConfig)
 
 
 # --------------------------------------------------------------------------- loading
