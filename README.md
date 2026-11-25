@@ -1,5 +1,10 @@
 # Human-Like Chess Engine
 
+**▶ Open the website: [http://127.0.0.1:8000](http://127.0.0.1:8000)** (play) ·
+[http://127.0.0.1:8000/review.html](http://127.0.0.1:8000/review.html) (review a game).
+It runs on your own computer: start it first with `python scripts/serve.py` (setup below), then click the link.
+To open it from your phone or share it, see [DEPLOY.md](DEPLOY.md).
+
 A chess engine that plays like a **human at a given rating**, not like a perfect machine.
 Given a position and a target rating (800–2200+), a neural network trained on millions of real
 Lichess blitz games predicts a probability for each legal move: *what would a 1400 actually play here?*
