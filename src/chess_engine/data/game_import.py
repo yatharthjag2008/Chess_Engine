@@ -15,10 +15,12 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import re
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any
 
 import chess.pgn
@@ -335,6 +337,45 @@ def filter_games(games: list[ImportedGame], speeds: list[str] | None = None, rat
     return kept[:max_games] if max_games is not None else kept
 
 
+class ImportCache:
+    """Recent online imports on disk (one JSON file per request), reused for ``ttl_minutes``."""
+
+    def __init__(self, directory: str | Path, ttl_minutes: float, now: Callable[[], float] = time.time) -> None:
+        self.directory = Path(directory)
+        self.ttl = ttl_minutes * 60
+        self.now = now
+
+    def _path(self, source: str, username: str, max_games: int, speeds: list[str], rated_only: bool) -> Path:
+        key = json.dumps([source, username.lower(), max_games, sorted(speeds), rated_only])
+        digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
+        return self.directory / source.replace(".", "_") / f"{username.lower()}_{digest}.json"
+
+    def get(self, source: str, username: str, max_games: int, speeds: list[str], rated_only: bool) -> ImportResult | None:
+        if self.ttl <= 0:
+            return None
+        path = self._path(source, username, max_games, speeds, rated_only)
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if self.now() - data["cached_at"] > self.ttl:
+            return None
+        return ImportResult(data["source"], data["username"], [ImportedGame(**g) for g in data["games"]],
+                            data["fetched_at"])
+
+    def put(self, result: ImportResult, max_games: int, speeds: list[str], rated_only: bool) -> None:
+        if self.ttl <= 0 or result.username is None:
+            return
+        path = self._path(result.source, result.username, max_games, speeds, rated_only)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"source": result.source, "username": result.username, "fetched_at": result.fetched_at,
+                   "cached_at": self.now(),  # expiry is judged on the cache's own clock
+                   "games": [asdict(g) for g in result.games]}
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        tmp.replace(path)
+
+
 def import_games(
     cfg: GameImportConfig,
     source: str,
@@ -344,10 +385,12 @@ def import_games(
     speeds: list[str] | None = None,
     rated_only: bool | None = None,
     client: HttpClient | None = None,
+    cache: ImportCache | None = None,
 ) -> ImportResult:
     """Import from ``source``: ``"pgn"`` (needs ``text``), ``"lichess"`` or ``"chess.com"`` (need ``username``).
 
-    Unset limits and filters come from ``cfg``.
+    Unset limits and filters come from ``cfg``. With a ``cache``, a recent identical online
+    import is returned without contacting the site.
     """
     max_games = max_games or cfg.max_games
     speeds = cfg.speeds if speeds is None else speeds
@@ -358,6 +401,10 @@ def import_games(
         return ImportResult("pgn", None, filter_games(parse_pgn_text(text), speeds, rated_only, max_games), time.time())
     if not username:
         raise GameImportError(f"a {source} username is needed")
+    if source in SOURCES:
+        username = check_username(source, username)
+    if cache is not None and (cached := cache.get(source, username, max_games, speeds, rated_only)) is not None:
+        return cached
     client = client or HttpClient(cfg.timeout_seconds, cfg.retries)
     if source == "lichess":
         games = fetch_lichess(username, max_games, speeds, rated_only, cfg.lichess_url, client)
@@ -365,4 +412,7 @@ def import_games(
         games = fetch_chesscom(username, max_games, speeds, rated_only, cfg.chesscom_url, client)
     else:
         raise InvalidUsernameError(f"unknown source {source!r} (use pgn, lichess or chess.com)")
-    return ImportResult(source, username.strip(), filter_games(games, speeds, rated_only, max_games), time.time())
+    result = ImportResult(source, username, filter_games(games, speeds, rated_only, max_games), time.time())
+    if cache is not None:
+        cache.put(result, max_games, speeds, rated_only)
+    return result

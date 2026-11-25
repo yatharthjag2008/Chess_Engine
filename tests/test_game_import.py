@@ -263,3 +263,27 @@ def test_import_games_from_every_source(default_config) -> None:
         assert lichess.source == "lichess" and lichess.username == "someone" and len(lichess.games) == 4
         assert api.requests[0][1]["max"] == ["4"]              # the config's limit reached the API
         assert import_games(cfg, "chess.com", username="someone", client=client).games == []
+
+
+def test_cache_reuses_recent_imports(default_config, tmp_path) -> None:
+    from chess_engine.data.game_import import ImportCache, import_games
+    from fake_api import FakeApi, Reply
+
+    now = [1000.0]
+    cache = ImportCache(tmp_path / "imports", ttl_minutes=10, now=lambda: now[0])
+    with FakeApi() as api:
+        cfg = default_config.game_import.model_copy(update={"lichess_url": api.url, "max_games": 3})
+        api.routes["/api/games/user/someone"] = Reply(200, FIXTURE.read_text(encoding="utf-8"))
+        client, _ = _client()
+        first = import_games(cfg, "lichess", username="someone", client=client, cache=cache)
+        again = import_games(cfg, "lichess", username="SomeOne", client=client, cache=cache)  # names ignore case
+        assert len(api.requests) == 1 and [g.id for g in again.games] == [g.id for g in first.games]
+        assert again.games[0] == first.games[0]
+        import_games(cfg, "lichess", username="someone", client=client, cache=cache, speeds=["blitz"])
+        assert len(api.requests) == 2                       # different filters: a different request
+        now[0] += 11 * 60                                   # expired
+        import_games(cfg, "lichess", username="someone", client=client, cache=cache)
+        assert len(api.requests) == 3
+    assert any((tmp_path / "imports" / "lichess").iterdir())
+    off = ImportCache(tmp_path / "off", ttl_minutes=0)
+    assert off.get("lichess", "someone", 3, [], False) is None
