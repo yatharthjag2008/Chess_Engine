@@ -316,3 +316,14 @@ def test_coach_endpoint(default_config: Config, tmp_path) -> None:
         for bad in ({"pgn": PGN}, {"pgn": PGN, "player": "w", "color": "white"}, {"pgn": PGN, "player": "zed"}):
             r = c.post("/api/coach", json=bad)
             assert r.status_code == 422 and r.json()["error"] == "invalid_request", bad
+
+
+
+def test_review_page_and_navigation_are_served(client: TestClient) -> None:
+    page = client.get("/review.html")
+    assert page.status_code == 200 and 'id="graph"' in page.text and 'src="js/review.js"' in page.text
+    assert 'href="index.html"' in page.text and 'aria-current="page">Review' in page.text
+    assert 'href="review.html"' in client.get("/").text
+    for asset in ("/css/review.css", "/js/review.js", "/js/api.js"):
+        assert client.get(asset).status_code == 200
+    assert "reviewBotGame" in client.get("/js/api.js").text

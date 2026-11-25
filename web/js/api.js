@@ -37,4 +37,19 @@ export const api = {
   resign: (id) => request("POST", `/api/games/${encodeURIComponent(id)}/resign`),
   takeback: (id) => request("POST", `/api/games/${encodeURIComponent(id)}/takeback`),
   pgnUrl: (id) => `/api/games/${encodeURIComponent(id)}/pgn`,
+  pgn: async (id) => {
+    const response = await fetch(`/api/games/${encodeURIComponent(id)}/pgn`);
+    if (!response.ok) throw new ApiError(response.status, "game_not_found", "no such game (unknown id, or it expired)");
+    return response.text();
+  },
+
+  // Review, coach, import, rating estimate (steps 12-15)
+  review: (pgn, gameIndex = 0) => request("POST", "/api/review", { pgn, game_index: gameIndex }),
+  reviewBotGame: (id) => request("GET", `/api/games/${encodeURIComponent(id)}/review`),
+  coach: (pgn, who, rating = null, gameIndex = 0) =>
+    request("POST", "/api/coach", { pgn, ...who, ...(rating ? { rating } : {}), game_index: gameIndex }),
+  importPgn: (pgn) => request("POST", "/api/import/pgn", { pgn }),
+  importUser: (site, username, maxGames = 20) =>
+    request("GET", `/api/import/${encodeURIComponent(site)}/${encodeURIComponent(username)}?max_games=${maxGames}`),
+  ratingEstimate: (pgn, who) => request("POST", "/api/rating-estimate", { pgn, ...who }),
 };

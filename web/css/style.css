@@ -64,6 +64,10 @@ body {
 
 .topbar { padding: 18px 16px 4px; max-width: 1040px; margin: 0 auto; }
 .topbar h1 { font-size: 1.35rem; margin: 0; }
+.nav { display: flex; gap: 4px; margin-bottom: 8px; }
+.nav a { color: var(--ink-2); text-decoration: none; padding: 4px 10px; border-radius: 6px; }
+.nav a:hover { background: var(--surface); }
+.nav a[aria-current="page"] { color: var(--ink); background: var(--surface); border: 1px solid var(--line); }
 .tagline { margin: 2px 0 0; color: var(--ink-2); }
 
 .layout {
