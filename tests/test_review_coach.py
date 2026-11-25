@@ -73,3 +73,33 @@ def test_explain_level() -> None:
     assert other.endswith("You played Qe7 (40%).")
     agree = explain_level(_moment(("e5", "e7e5"), ("e5", "e7e5", 0.5, 50.0), None))
     assert agree.endswith("Stronger players agree.")
+
+
+def test_coach_game_merges_mistakes_and_level_notes() -> None:
+    import chess
+
+    from chess_engine.config import CoachConfig
+    from chess_engine.model.inference import MoveProbability, Prediction
+    from chess_engine.review.coach import coach_game
+    from test_review_analyzer import PGN, _scripted
+
+    analyzer = _scripted()
+    review = review_pgn(PGN, analyzer, CFG)
+
+    class Levels:  # Black's level plays what Black played; stronger players play the engine's move
+        def predict_many(self, boards, ratings, **kwargs):
+            out = []
+            for board, rating in zip(boards, ratings):
+                played = next(m for m in review.moves if m.fen_before == board.fen())
+                san = played.san if rating == 1300 else (played.best_san or played.san)
+                out.append(Prediction([MoveProbability(0.5, board.parse_san(san), san)], None))
+            return out
+
+    report = coach_game(review, "black", 1300, Levels(), analyzer, CoachConfig())
+    assert report.color == "black" and report.rating == 1300 and report.summary.counts["blunder"] == 1
+    assert report.your_level_match == 1.0
+    (note,) = report.notes                                     # only 3...Nf6: a blunder AND a level moment
+    assert note.san == "Nf6" and note.kinds == ("mistake", "level") and note.classification == "blunder"
+    assert note.text.startswith("This allows a forced mate.") and "Players around 1500 prefer g6" in note.text
+    white = coach_game(review, "white", 1300, Levels(), analyzer, CoachConfig())
+    assert white.notes == []                                  # White made no errors and matched its level

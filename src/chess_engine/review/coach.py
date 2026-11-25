@@ -17,15 +17,26 @@ followed by what it cost: "Your winning chances dropped from 55% to 31%."
 
 Level differences (:func:`explain_level`) say what your level and the stronger level
 play and what the difference is worth, then what you actually played.
+
+:func:`coach_game` puts both together for one player of a reviewed game::
+
+    report = coach_game(review, "white", 1400, predictor, analyzer, cfg.coach)
+    for note in report.notes:
+        print(note.move_number, note.san, note.text)
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import chess
 
-from chess_engine.review.analyzer import MoveReview
+from chess_engine.config import CoachConfig
+from chess_engine.model.inference import MovePredictor
+from chess_engine.review.analyzer import GameReview, MoveReview, SideSummary
+from chess_engine.review.engine import Analyzer
 from chess_engine.review.features import captured_piece, gives_mate, newly_hanging, piece_name
-from chess_engine.review.level_compare import LevelMoment
+from chess_engine.review.level_compare import LevelMoment, compare_game
 from chess_engine.review.scoring import MATE_CP
 
 
@@ -73,3 +84,58 @@ def explain_level(moment: LevelMoment) -> str:
     else:
         text += f" You played {moment.played_san} ({moment.played_win:.0f}%)."
     return text
+
+
+# --------------------------------------------------------------------------- the report
+
+
+@dataclass(frozen=True)
+class CoachNote:
+    """One coaching note about one of your moves."""
+
+    ply: int
+    move_number: str
+    san: str
+    kinds: tuple[str, ...]          # "mistake" and / or "level"
+    classification: str             # the review's class of your move
+    text: str
+
+
+@dataclass(frozen=True)
+class CoachReport:
+    """Everything the coach says about one player's game."""
+
+    color: str
+    rating: int
+    summary: SideSummary
+    your_level_match: float          # how often you played your level's favourite move
+    next_level_match: float          # how often you played the next level's favourite move
+    notes: list[CoachNote]           # in game order
+
+
+def coach_game(
+    review: GameReview,
+    color: str,
+    rating: int,
+    predictor: MovePredictor,
+    analyzer: Analyzer,
+    cfg: CoachConfig,
+    opp_rating: int | None = None,
+) -> CoachReport:
+    """Notes on ``color``'s errors (from the review) and on the moments where the next level plays better."""
+    comparison = compare_game(review, color, rating, predictor, analyzer, cfg, opp_rating)
+    level_by_ply = {m.ply: m for m in comparison.flagged}
+    notes = []
+    for move in review.for_color(color):
+        kinds, parts = [], []
+        if move.classification.is_error:
+            kinds.append("mistake")
+            parts.append(explain_mistake(move))
+        if move.ply in level_by_ply:
+            kinds.append("level")
+            parts.append(explain_level(level_by_ply[move.ply]))
+        if parts:
+            notes.append(CoachNote(move.ply, move.move_number, move.san, tuple(kinds), move.classification.value,
+                                   " ".join(parts)))
+    return CoachReport(color, rating, review.summary()[color], comparison.your_level_match,
+                       comparison.next_level_match, notes)
