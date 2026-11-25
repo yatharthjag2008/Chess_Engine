@@ -460,6 +460,33 @@ def test_evaluate_styles_script(tmp_path: Path) -> None:
     assert not (tmp_path / "data" / "styles").exists(), "evaluation styles are thrown away"
 
 
+def test_lichess_bot_script(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    from lichess_fake import FakeLichess, FakeResponse
+    from test_lichess_bot import _game
+
+    script = _load("lichess_bot")
+    model = _small_model_file(tmp_path)
+    monkeypatch.delenv("LICHESS_BOT_TOKEN", raising=False)
+    assert script.main(["--model", str(model)]) == 1
+    assert "set LICHESS_BOT_TOKEN" in capsys.readouterr().err
+    monkeypatch.setenv("LICHESS_BOT_TOKEN", "lip_test_token")
+    human = FakeLichess({"/api/account": FakeResponse(body={"id": "me", "username": "Me"})})
+    assert script.main(["--model", str(model)], session=human) == 1
+    assert "Me is not a BOT account" in capsys.readouterr().err
+    fake = FakeLichess({
+        "/api/account": FakeResponse(body={"id": "humanbot", "username": "HumanBot", "title": "BOT"}),
+        "/api/stream/event": FakeResponse(lines=[{"type": "gameStart", "game": {"id": "g1"}}]),
+        "/api/bot/game/stream/g1": FakeResponse(lines=_game(True, ["e2e4 e7e5"], "draw")),
+    })
+    out: list[str] = []
+    assert script.main(["--model", str(model), "--rating", "1300", "--max-games", "1"], write=out.append,
+                       session=fake) == 0
+    assert out[0] == "Playing as HumanBot: rated 1300; accepting blitz, rapid, classical. Ctrl+C to stop."
+    assert out[-1] == "Done: 1 game played." and len([p for p, _ in fake.posts if "/move/" in p]) == 2
+    assert "lip_test_token" not in "\n".join(out)
+    assert script.main(["--model", str(model), "--rating", "9999"], session=fake) == 1
+
+
 def test_hint_script(tmp_path: Path) -> None:
     from review_helpers import ScriptedAnalyzer
 
