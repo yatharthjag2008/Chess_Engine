@@ -12,6 +12,10 @@ POST     /api/games                      start a game (rating, colour, time cont
 GET      /api/games/{id}                 the full game state (board, moves, legal moves, ...)
 GET      /api/games/{id}/legal-moves     the side to move's legal moves (UCI, SAN, squares)
 POST     /api/games/{id}/moves           play your move; the bot replies unless ``reply`` is false
+POST     /api/games/{id}/bot-move        the bot plays (after a move sent with ``reply: false``)
+POST     /api/games/{id}/resign          you resign
+POST     /api/games/{id}/takeback        undo your last move (and the bot's reply)
+GET      /api/games/{id}/pgn             the game as PGN text
 =======  ==============================  ===================================================
 
 The model is loaded once when the app starts (from ``bot.model`` in the config),
@@ -24,7 +28,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from chess_engine.api.schemas import GameState, Health, LegalMove, MoveRequest, MoveResponse, NewGameRequest, legal_moves
 from chess_engine.api.service import GameRuleError, GameService
@@ -92,5 +96,21 @@ def create_app(cfg: Config | None = None, predictor: MovePredictor | None = None
     @app.post("/api/games/{game_id}/moves", response_model=MoveResponse)
     def play_move(game_id: str, body: MoveRequest, request: Request) -> MoveResponse:
         return service(request).play(session(request, game_id), body.move, body.reply)
+
+    @app.post("/api/games/{game_id}/bot-move", response_model=MoveResponse)
+    def bot_move(game_id: str, request: Request) -> MoveResponse:
+        return service(request).bot_move(session(request, game_id))
+
+    @app.post("/api/games/{game_id}/resign", response_model=GameState)
+    def resign(game_id: str, request: Request) -> GameState:
+        return service(request).resign(session(request, game_id))
+
+    @app.post("/api/games/{game_id}/takeback", response_model=GameState)
+    def takeback(game_id: str, request: Request) -> GameState:
+        return service(request).takeback(session(request, game_id))
+
+    @app.get("/api/games/{game_id}/pgn", response_class=PlainTextResponse)
+    def pgn(game_id: str, request: Request) -> str:
+        return service(request).pgn(session(request, game_id))
 
     return app

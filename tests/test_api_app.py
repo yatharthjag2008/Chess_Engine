@@ -99,3 +99,49 @@ def test_play_to_checkmate_over_http(client: TestClient) -> None:
     assert client.get(f"/api/games/{game['id']}/legal-moves").json() == []
     over = client.post(url, json={"move": "Kh7"})
     assert over.status_code == 409 and over.json()["error"] == "game_over"
+
+
+def test_bot_move_endpoint(client: TestClient) -> None:
+    game = _new(client)
+    base = f"/api/games/{game['id']}"
+    early = client.post(f"{base}/bot-move")
+    assert early.status_code == 409 and early.json()["error"] == "not_bots_turn"
+    client.post(f"{base}/moves", json={"move": "d4", "reply": False})
+    answer = client.post(f"{base}/bot-move").json()
+    assert answer["played"] == answer["bot_move"]["san"] and answer["state"]["turn"] == "white"
+
+
+def test_resign_and_pgn(client: TestClient) -> None:
+    game = _new(client, your_rating=1650)
+    base = f"/api/games/{game['id']}"
+    client.post(f"{base}/moves", json={"move": "e4"})
+    state = client.post(f"{base}/resign").json()
+    assert state["status"] == "over" and state["outcome"]["termination"] == "resignation"
+    assert state["outcome"]["winner"] == "black"
+    assert client.post(f"{base}/resign").status_code == 409
+    pgn = client.get(f"{base}/pgn")
+    assert pgn.status_code == 200 and pgn.headers["content-type"].startswith("text/plain")
+    assert '[Result "0-1"]' in pgn.text and '[WhiteElo "1650"]' in pgn.text and "1. e4" in pgn.text
+
+
+def test_takeback(client: TestClient) -> None:
+    game = _new(client)
+    base = f"/api/games/{game['id']}"
+    nothing = client.post(f"{base}/takeback")
+    assert nothing.status_code == 409 and nothing.json()["error"] == "nothing_to_take_back"
+    client.post(f"{base}/moves", json={"move": "e4"})
+    client.post(f"{base}/moves", json={"move": "Nf3"})
+    state = client.post(f"{base}/takeback").json()
+    assert len(state["moves_san"]) == 2 and state["moves_san"][0] == "e4" and state["turn"] == "white"
+    client.post(f"{base}/moves", json={"move": "d4", "reply": False})
+    state = client.post(f"{base}/takeback").json()  # the bot has not answered: only your move goes
+    assert len(state["moves_san"]) == 2 and state["last_bot_move"] is None
+
+
+def test_takeback_never_undoes_the_bots_opening(client: TestClient) -> None:
+    game = _new(client, color="black")
+    base = f"/api/games/{game['id']}"
+    assert client.post(f"{base}/takeback").status_code == 409
+    client.post(f"{base}/moves", json={"move": game["legal_moves"][0]["uci"]})
+    state = client.post(f"{base}/takeback").json()
+    assert len(state["moves_san"]) == 1 and state["turn"] == "black"

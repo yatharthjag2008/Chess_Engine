@@ -45,6 +45,12 @@ def _require(condition: bool, code: str, message: str) -> None:
         raise GameRuleError(code, message)
 
 
+def _mover(game: Game, ply: int) -> chess.Color:
+    """The side that played the ``ply``-th move of ``game`` (0-based)."""
+    first = chess.Board(game.start_fen).turn
+    return first if ply % 2 == 0 else not first
+
+
 class GameService:
     """Creates and runs games against the bot, stored in a :class:`GameStore`."""
 
@@ -115,6 +121,31 @@ class GameService:
             self._bot_plays(session)
             return MoveResponse(played=game.sans[-1], bot_move=bot_move_info(session.last_bot_move),
                                 state=self._state(session))
+
+    def resign(self, session: Session) -> GameState:
+        """You resign."""
+        with session.lock:
+            _require(not session.game.is_over, "game_over", "the game is over")
+            session.game.resign(session.human_color)
+            return self._state(session)
+
+    def takeback(self, session: Session) -> GameState:
+        """Undo moves back to your previous turn: your last move, and the bot's reply if it has answered.
+
+        The bot's opening move (when it has White) is never undone on its own.
+        """
+        with session.lock:
+            game = session.game
+            _require(not game.is_over, "game_over", "the game is over")
+            yours = sum(1 for ply in range(len(game.sans)) if _mover(game, ply) == session.human_color)
+            _require(yours > 0, "nothing_to_take_back", "you have not moved yet")
+            game.takeback(2 if game.turn == session.human_color else 1)
+            session.last_bot_move = None
+            return self._state(session)
+
+    def pgn(self, session: Session) -> str:
+        with session.lock:
+            return session.game.pgn()
 
     # ------------------------------------------------------------------ state
 
