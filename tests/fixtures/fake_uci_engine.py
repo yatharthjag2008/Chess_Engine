@@ -5,6 +5,7 @@ ask for a move, and shut it down. It always answers ``bestmove e2e4`` unless
 started with ``--illegal``, in which case it answers an illegal move, or with
 ``--first-legal``, in which case it tracks the ``position`` command and answers
 the alphabetically first legal move (UCI notation) of that position.
+With ``--score-cp=N`` it reports ``info depth 1 score cp N`` (side to move's view) before each answer.
 """
 
 import sys
@@ -13,6 +14,7 @@ import sys
 def main() -> None:
     best_move = "e2e5" if "--illegal" in sys.argv else "e2e4"
     first_legal = "--first-legal" in sys.argv
+    score = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--score-cp=")), None)
     board = None
     if first_legal:
         import chess
@@ -29,6 +31,8 @@ def main() -> None:
         elif command.startswith("position") and first_legal:
             board = _parse_position(command)
         elif command.startswith("go"):
+            if score is not None:
+                print(f"info depth 1 score cp {score} nodes 1 pv {best_move}")
             if first_legal:
                 best_move = min(move.uci() for move in board.legal_moves)
             print(f"bestmove {best_move}")
