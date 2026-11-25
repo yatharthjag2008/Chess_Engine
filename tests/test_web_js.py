@@ -77,4 +77,4 @@ def test_web_ui_javascript_unit_tests(web_server: str, tmp_path: Path) -> None:
     assert match, f"the test page did not finish:\n{dom[-2000:]}"
     failures = [line for line in dom.splitlines() if line.startswith("FAIL")]
     assert int(match.group(2)) == 0, "\n".join(failures)
-    assert int(match.group(1)) >= 5
+    assert int(match.group(1)) >= 9

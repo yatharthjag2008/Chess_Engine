@@ -12,9 +12,13 @@ function equal(actual, expected, message) {
   if (a !== e) throw new Error(`${message || "not equal"}: got ${a}, expected ${e}`);
 }
 function fixture() {
-  const el = document.getElementById("fixture");
-  el.replaceChildren();
+  // A fresh element per test, so listeners of earlier boards cannot react to this test's clicks.
+  const old = document.getElementById("fixture");
+  const el = document.createElement("div");
+  el.id = "fixture";
   el.className = "board";
+  el.style.cssText = "width: 400px; height: 400px";
+  old.replaceWith(el);
   return el;
 }
 
@@ -69,6 +73,87 @@ test("flip, last move and check highlights", () => {
   assert(board.squareEl("e1").classList.contains("in-check"), "white king in check");
   assert(!board.squareEl("e8").classList.contains("in-check"), "black king not in check");
   equal(board.squareEl("h4").getAttribute("aria-label"), "h4 black queen");
+});
+
+// ------------------------------------------------------------------ moving
+
+const START_MOVES = [
+  { uci: "e2e4", san: "e4", from_square: "e2", to_square: "e4", promotion: null },
+  { uci: "e2e3", san: "e3", from_square: "e2", to_square: "e3", promotion: null },
+  { uci: "g1f3", san: "Nf3", from_square: "g1", to_square: "f3", promotion: null },
+];
+
+function click(board, square) {
+  board.squareEl(square).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+}
+
+test("click a piece, then a target, plays the move", () => {
+  const played = [];
+  const board = new Board(fixture(), { onMove: (uci) => played.push(uci) });
+  board.setLegalMoves(START_MOVES, "white");
+  click(board, "e2");
+  assert(board.squareEl("e2").classList.contains("selected"), "e2 selected");
+  equal([...board.el.querySelectorAll(".target")].map((c) => c.dataset.square).sort(), ["e3", "e4"]);
+  click(board, "e4");
+  equal(played, ["e2e4"]);
+  equal(board.el.querySelectorAll(".selected, .target").length, 0, "selection cleared");
+});
+
+test("clicks that are not moves only change the selection", () => {
+  const played = [];
+  const board = new Board(fixture(), { onMove: (uci) => played.push(uci) });
+  board.setLegalMoves(START_MOVES, "white");
+  click(board, "e7");                     // opponent piece: nothing
+  equal(board.selected, null);
+  click(board, "a2");                     // own piece with no legal move in the list: nothing
+  equal(board.selected, null);
+  click(board, "e2");
+  click(board, "g1");                     // another own piece: switch the selection
+  equal(board.selected, "g1");
+  click(board, "g1");                     // the same piece again: deselect
+  equal(board.selected, null);
+  click(board, "g1");
+  click(board, "h5");                     // empty, unreachable square: deselect
+  equal(board.selected, null);
+  equal(played, []);
+});
+
+test("no moves while it is not the player's turn", () => {
+  const played = [];
+  const board = new Board(fixture(), { onMove: (uci) => played.push(uci) });
+  board.setLegalMoves(START_MOVES, null);
+  click(board, "e2");
+  click(board, "e4");
+  equal(played, []);
+  assert(board.el.classList.contains("locked"), "board locked");
+});
+
+test("promotion asks which piece and plays the choice", async () => {
+  const played = [];
+  const promotionEl = document.createElement("div");
+  promotionEl.hidden = true;
+  document.body.append(promotionEl);
+  const board = new Board(fixture(), { promotionEl, onMove: (uci) => played.push(uci) });
+  board.setPosition("8/4P1k1/8/8/8/8/8/K7 w - - 0 1");
+  board.setLegalMoves(["q", "r", "b", "n"].map((p) => (
+    { uci: "e7e8" + p, san: "e8=" + p.toUpperCase(), from_square: "e7", to_square: "e8", promotion: p })), "white");
+  click(board, "e7");
+  click(board, "e8");
+  await Promise.resolve();
+  assert(!promotionEl.hidden, "chooser shown");
+  equal([...promotionEl.querySelectorAll("button")].map((b) => b.dataset.promotion), ["q", "r", "b", "n"]);
+  promotionEl.querySelector('[data-promotion="n"]').click();
+  await new Promise((r) => setTimeout(r, 0));
+  equal(played, ["e7e8n"]);
+  assert(promotionEl.hidden, "chooser closed");
+
+  click(board, "e7");                    // cancelling (click outside the choices) plays nothing
+  click(board, "e8");
+  await Promise.resolve();
+  promotionEl.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 0));
+  equal(played, ["e7e8n"]);
+  promotionEl.remove();
 });
 
 // ------------------------------------------------------------------ runner
