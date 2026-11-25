@@ -96,9 +96,13 @@ class ConditionedResidualBlock(nn.Module):
         nn.init.zeros_(self.modulation.weight)
         nn.init.zeros_(self.modulation.bias)
 
-    def forward(self, x: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, cond: torch.Tensor, extra: torch.Tensor | None = None) -> torch.Tensor:
+        """``extra``: an optional ``(channels * k,)`` shift added to the modulation (style adapters, step 19)."""
         h = torch.relu(self.bn1(self.conv1(x)))
-        mod = self.modulation(cond)[:, :, None, None]
+        mod = self.modulation(cond)
+        if extra is not None:
+            mod = mod + extra
+        mod = mod[:, :, None, None]
         if self.conditioning == "film":
             gamma, beta = mod.chunk(2, dim=1)
             h = h * (1 + gamma) + beta
