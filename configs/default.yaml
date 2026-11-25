@@ -165,3 +165,13 @@ rating_estimation:               # step 12: estimate a player's rating from the 
   temper: null                   # divide the summed log-likelihood by this (null = fitted on the validation games)
   evaluation_split: test         # held-out games the estimate is scored on
   calibration_split: val         # games used to fit `temper`
+
+game_import:                     # step 13: import games from pasted PGN or by username
+  lichess_url: https://lichess.org
+  chesscom_url: https://api.chess.com
+  max_games: 20                  # most recent games fetched per import
+  speeds: []                     # keep only these speeds, e.g. [blitz, rapid] (empty = any)
+  rated_only: false
+  timeout_seconds: 30
+  retries: 3                     # on network errors, HTTP 429 (rate limit) and 5xx
+  cache_minutes: 30              # reuse a fetched list of games for this long (0 = never cache)

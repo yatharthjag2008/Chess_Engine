@@ -104,6 +104,12 @@ def test_default_rating_estimation_settings(default_config: Config) -> None:
     assert r.temper is None and r.evaluation_split == "test" and r.calibration_split == "val"
 
 
+def test_default_game_import_settings(default_config: Config) -> None:
+    g = default_config.game_import
+    assert g.lichess_url.startswith("https://") and g.chesscom_url.startswith("https://")
+    assert g.max_games > 0 and g.speeds == [] and g.retries >= 0
+
+
 def test_training_limits_can_be_unset(tmp_path: Path) -> None:
     override = _write_yaml(tmp_path / "t.yaml", {"training": {"grad_clip_norm": None, "val_max_positions": None,
                                                             "max_steps": 10, "max_minutes": 1.5}})
@@ -193,6 +199,8 @@ def test_invalid_yaml_is_rejected(tmp_path: Path) -> None:
         ({"elo_validation": {"stockfish_elos": [1000]}}, "1320"),
         ({"rating_estimation": {"rating_min": 2000, "rating_max": 1000}}, "rating_max"),
         ({"rating_estimation": {"interval": 1.0}}, "interval"),
+        ({"game_import": {"speeds": ["hyperbullet"]}}, "speeds"),
+        ({"game_import": {"max_games": 0}}, "max_games"),
         ({"rating_estimation": {"prior": "uniform"}}, "prior"),
         ({"elo_validation": {"bot_ratings": [1500]}}, "bot_ratings"),
         ({"elo_validation": {"self_play": "some"}}, "self_play"),

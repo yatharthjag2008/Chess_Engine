@@ -337,6 +337,19 @@ class RatingEstimationConfig(_StrictModel):
         return self
 
 
+class GameImportConfig(_StrictModel):
+    """Importing a player's games (see ``chess_engine.data.game_import``)."""
+
+    lichess_url: str = "https://lichess.org"
+    chesscom_url: str = "https://api.chess.com"
+    max_games: PositiveInt = 20
+    speeds: list[Speed] = Field(default_factory=list)
+    rated_only: bool = False
+    timeout_seconds: float = Field(default=30, gt=0)
+    retries: int = Field(default=3, ge=0)
+    cache_minutes: float = Field(default=30, ge=0)
+
+
 class Config(_StrictModel):
     """The full project configuration."""
 
@@ -351,6 +364,7 @@ class Config(_StrictModel):
     api: ApiConfig = Field(default_factory=ApiConfig)
     elo_validation: EloValidationConfig = Field(default_factory=EloValidationConfig)
     rating_estimation: RatingEstimationConfig = Field(default_factory=RatingEstimationConfig)
+    game_import: GameImportConfig = Field(default_factory=GameImportConfig)
 
 
 # --------------------------------------------------------------------------- loading
