@@ -18,8 +18,10 @@ from dataclasses import dataclass
 
 import chess
 
+from chess_engine.config import CoachConfig
 from chess_engine.model.inference import MovePredictor, MoveProbability
 from chess_engine.review.engine import Analyzer, PositionAnalysis
+from chess_engine.review.scoring import win_percent
 
 
 @dataclass(frozen=True)
@@ -79,3 +81,56 @@ def move_values(board: chess.Board, moves: Sequence[chess.Move], analyzer: Analy
         after.push(move)
         values[move.uci()] = -analyzer.analyse(after).best_cp
     return values
+
+
+# --------------------------------------------------------------------------- one position
+
+
+@dataclass(frozen=True)
+class LevelOption:
+    """One level's favourite move here, how often that level plays it, and how good it is."""
+
+    rating: int
+    san: str
+    uci: str
+    prob: float          # how often players of this rating play it
+    cp: int              # Stockfish, the mover's view
+    win: float           # the mover's win % after it
+    alternatives: list[tuple[str, float]]   # the level's next likeliest moves: (san, prob)
+
+
+@dataclass(frozen=True)
+class PositionComparison:
+    """Your level against the higher levels in one position."""
+
+    levels: list[LevelOption]           # your level first, then the higher ones
+    stronger: LevelOption | None        # the first higher level whose favourite move differs from yours
+    win_gap: float                      # how many more win-% points the stronger level's move keeps (or 0)
+    matters: bool                       # the levels disagree AND the gap is at least min_win_gap
+
+    @property
+    def yours(self) -> LevelOption:
+        return self.levels[0]
+
+
+def compare_position(
+    predictor: MovePredictor,
+    board: chess.Board,
+    rating: int,
+    analyzer: Analyzer,
+    cfg: CoachConfig,
+    known: PositionAnalysis | None = None,
+    opp_rating: int | None = None,
+    **clock: object,
+) -> PositionComparison:
+    """What your rating and the ratings ``cfg.level_offsets`` above it play here, valued by Stockfish."""
+    ratings = [rating] + [rating + offset for offset in cfg.level_offsets]
+    choices = level_choices(predictor, board, ratings, opp_rating, cfg.top_moves, **clock)
+    values = move_values(board, [c.top.move for c in choices], analyzer, known)
+    levels = [LevelOption(c.rating, c.top.san, c.top.move.uci(), c.top.prob, values[c.top.move.uci()],
+                          win_percent(values[c.top.move.uci()]), [(m.san, m.prob) for m in c.moves[1:]])
+              for c in choices]
+    yours = levels[0]
+    stronger = next((level for level in levels[1:] if level.uci != yours.uci), None)
+    gap = (stronger.win - yours.win) if stronger is not None else 0.0
+    return PositionComparison(levels, stronger, gap, stronger is not None and gap >= cfg.min_win_gap)

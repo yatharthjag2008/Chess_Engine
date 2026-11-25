@@ -49,3 +49,45 @@ def test_move_values_reuse_known_lines_and_analyse_the_rest() -> None:
     assert analyzer.calls == calls + 1                    # only a3 needed the engine
     fresh = move_values(board, [chess.Move.from_uci("e2e4")], ScriptedAnalyzer({position_key("e4"): ("e7e5", -30, {})}))
     assert fresh == {"e2e4": 30}
+
+
+class FixedLevels:
+    """A stand-in predictor whose favourite move depends only on the rating (for exact tests)."""
+
+    def __init__(self, by_rating: dict[int, list[tuple[str, float]]]) -> None:
+        self.by_rating = by_rating
+
+    def predict_many(self, boards, ratings, **kwargs):
+        from chess_engine.model.inference import MoveProbability, Prediction
+
+        out = []
+        for board, rating in zip(boards, ratings):
+            moves = [MoveProbability(p, board.parse_san(san), san) for san, p in self.by_rating[rating]]
+            out.append(Prediction(moves, None))
+        return out
+
+
+def test_compare_position_flags_only_disagreements_that_matter() -> None:
+    from chess_engine.config import CoachConfig
+    from chess_engine.review.level_compare import compare_position
+    from chess_engine.review.scoring import win_percent
+    from review_helpers import ScriptedAnalyzer, position_key
+
+    cfg = CoachConfig(level_offsets=[200, 400], min_win_gap=8, top_moves=2)
+    analyzer = ScriptedAnalyzer({position_key(): ("e2e4", 40, {"d2d4": 35, "a2a3": -150})})
+    board = chess.Board()
+    weak = FixedLevels({1200: [("a3", 0.4), ("e4", 0.3)], 1400: [("a3", 0.35), ("e4", 0.3)],
+                        1600: [("e4", 0.5), ("d4", 0.2)]})
+    result = compare_position(weak, board, 1200, analyzer, cfg, known=analyzer.analyse(board))
+    assert [l.rating for l in result.levels] == [1200, 1400, 1600]
+    assert result.yours.san == "a3" and result.yours.cp == -150 and result.yours.alternatives == [("e4", 0.3)]
+    assert result.stronger.rating == 1600 and result.stronger.san == "e4"     # 1400 agrees with 1200
+    assert result.win_gap == pytest.approx(win_percent(40) - win_percent(-150)) and result.matters
+
+    close = FixedLevels({1200: [("d4", 0.4)], 1400: [("e4", 0.4)], 1600: [("e4", 0.5)]})
+    small_gap = compare_position(close, board, 1200, analyzer, cfg)
+    assert small_gap.stronger.san == "e4" and small_gap.win_gap < 8 and not small_gap.matters
+
+    same = FixedLevels({1200: [("e4", 0.4)], 1400: [("e4", 0.5)], 1600: [("e4", 0.6)]})
+    agree = compare_position(same, board, 1200, analyzer, cfg)
+    assert agree.stronger is None and agree.win_gap == 0 and not agree.matters
