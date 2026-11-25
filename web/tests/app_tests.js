@@ -187,6 +187,58 @@ test("a checkmate ends the game with the right banner", async () => {
   assert($("result-banner").hidden, "banner closed");
 });
 
+test("hints go nudge -> piece -> move, marked on the board, and make the game unrated", async () => {
+  await app.startGame({ rating: 1500, color: "white", hint_limit: 2, seed: 12 });
+  const button = $("hint");
+  assert(!button.hidden && !button.disabled, "hint button available");
+  equal(button.textContent, "Hint (2 left)");
+  assert($("unrated").hidden, "rated before any hint");
+  const nudge = await app.askHint();
+  equal(nudge.tier, "nudge");
+  assert(!$("hint-panel").hidden, "panel shown");
+  equal($("hint-text").textContent, nudge.text);
+  equal($("hint-tier").textContent, "1 of 3: a nudge");
+  equal($("hint-more").textContent, "Which piece?");
+  equal(button.textContent, "Hint (1 left)");
+  assert(!$("unrated").hidden, "Unrated badge");
+  equal(app.ui.board.el.querySelectorAll(".hint-from, .hint-to").length, 0, "a nudge marks nothing");
+  $("hint-more").click();
+  await until(() => app.ui.hint.data.tier === "point", "point");
+  assert(app.ui.board.squareEl("a2").classList.contains("hint-from"), "the piece is marked");
+  await app.askHint();
+  equal(app.ui.hint.data.tier, "show");
+  assert(app.ui.board.squareEl("a3").classList.contains("hint-to"), "the target is marked");
+  assert($("hint-more").hidden, "nothing more to show");
+  equal(app.ui.hint.data.hints.used, 1, "one position, one hint");
+  $("flip").click();
+  assert(app.ui.board.squareEl("a2").classList.contains("hint-from"), "marks survive a flip");
+  $("flip").click();
+  await app.playMove("a2a3");
+  await until(() => app.ui.game.moves_san.length === 2, "bot reply");
+  assert($("hint-panel").hidden, "the hint belongs to the old position");
+  equal(app.ui.board.el.querySelectorAll(".hint-from, .hint-to").length, 0);
+  const pgn = await (await fetch(`/api/games/${app.ui.game.id}/pgn`)).text();
+  assert(pgn.includes('[Hints "1"]'), pgn);
+});
+
+test("the hint button runs out, and is hidden when hints are off", async () => {
+  await app.startGame({ rating: 1500, color: "white", hint_limit: 1, seed: 13 });
+  await app.askHint();
+  await app.playMove("a2a3");
+  await until(() => app.ui.game.moves_san.length === 2, "bot reply");
+  assert($("hint").disabled, "no hints left for a new position");
+  equal($("hint").textContent, "Hint (0 left)");
+  await app.startGame({ rating: 1500, color: "white", hint_limit: 3, seed: 14 });
+  await app.askHint();
+  await app.startGame({ rating: 1500, color: "white", hint_limit: 0, seed: 15 });
+  assert($("hint-panel").hidden, "the last game's hint (same start position) is not shown in a new game");
+  equal(app.ui.board.el.querySelectorAll(".hint-from, .hint-to").length, 0);
+  assert($("hint").hidden, "hints off");
+  assert($("unrated").hidden, "a new game is rated");
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "h", bubbles: true }));
+  equal(app.ui.hint.id === app.ui.game.id, false, "the h key does nothing when hints are off");
+});
+
 test("new-game settings are remembered in this browser", () => {
   app.saveSettings({ rating: 1750, color: "black", time_control: "10+0", hint_limit: 0 });
   const form = $("new-game");

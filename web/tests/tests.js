@@ -204,4 +204,16 @@ test("dropping off a target or a tiny drag plays nothing", () => {
   equal(played, []);
 });
 
+test("marks stay on squares across renders and can be cleared", () => {
+  const board = new Board(fixture());
+  board.setMarks({ e2: "hint-from", e4: "hint-to best-to" });
+  assert(board.squareEl("e2").classList.contains("hint-from"), "from");
+  assert(board.squareEl("e4").classList.contains("best-to"), "several classes");
+  board.setPosition(START_FEN, { lastMove: "e2e4" });
+  board.flip();
+  assert(board.squareEl("e2").classList.contains("hint-from"), "kept after a new position and a flip");
+  board.setMarks({});
+  equal(board.el.querySelectorAll(".hint-from, .hint-to").length, 0);
+});
+
 run();

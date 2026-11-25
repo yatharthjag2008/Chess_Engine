@@ -15,7 +15,7 @@ export const ui = {
   board: null,
   clock: null,       // { white, black, running, at }: the server's clock and when it was received
   flagCheck: false,  // a state refresh after a flag fall is in flight
-  hint: null,        // { fen, data }: the latest hint, shown while that position is on the board
+  hint: null,        // { id, fen, data }: the latest hint, shown while that game and position are on the board
 };
 
 const LOW_TIME = 20; // seconds: the clock turns red below this
@@ -168,7 +168,8 @@ const MORE_LABELS = { point: "Which piece?", show: "Show the move" };
 
 /** The hint for the position on the board (hints belong to one position), or null. */
 function currentHint(state) {
-  return ui.hint && state && ui.hint.fen === state.fen && state.status === "ongoing" ? ui.hint.data : null;
+  return ui.hint && state && ui.hint.id === state.id && ui.hint.fen === state.fen && state.status === "ongoing"
+    ? ui.hint.data : null;
 }
 
 function hintMarks(state) {
@@ -198,7 +199,7 @@ export async function askHint(tier = null) {
   $("hint").disabled = true;
   try {
     const data = await api.hint(game.id, tier);
-    ui.hint = { fen: game.fen, data };
+    ui.hint = { id: game.id, fen: game.fen, data };
     if (ui.game === game) {
       ui.game = { ...game, hints: data.hints };
       ui.board.setMarks(hintMarks(ui.game));
