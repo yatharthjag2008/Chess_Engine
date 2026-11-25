@@ -98,3 +98,33 @@ def test_prior_from_a_dataset(tiny_dataset) -> None:
     assert (flat == 0).all()
     with pytest.raises(ValueError, match="dataset"):
         make_log_prior(CFG)
+
+
+def test_move_bucket_log_likelihoods_match_the_predictor() -> None:
+    import chess
+
+    from bot_helpers import small_predictor
+    from chess_engine.eval.rating_estimation import move_bucket_log_likelihoods
+
+    predictor = small_predictor()
+    board = chess.Board()
+    boards, moves = [], []
+    for san in ("e4", "e5", "Nf3", "Nc6"):
+        move = board.parse_san(san)
+        boards.append(board.copy())
+        moves.append(move)
+        board.push(move)
+    ll = move_bucket_log_likelihoods(predictor, boards, moves, opp_ratings=1500, chunk=5)
+    assert ll.shape == (4, 8) and (ll < 0).all()
+    # Same numbers as asking the predictor directly, bucket by bucket (bucket b at its lowest rating).
+    for b, rating in enumerate(predictor.ratings.bucket_edges):
+        direct = predictor.predict(boards[2], rating, opp_ratings=1500).as_dict()["g1f3"]
+        assert ll[2, b] == pytest.approx(np.log(direct), abs=1e-4)
+    assert not np.allclose(ll[:, 0], ll[:, 7])  # the rating matters (random modulation switched on)
+
+    unknown = move_bucket_log_likelihoods(predictor, boards, moves)  # opponent = candidate rating
+    direct = predictor.predict(boards[0], 2300, opp_ratings=2300).as_dict()["e2e4"]
+    assert unknown[0, 7] == pytest.approx(np.log(direct), abs=1e-4)
+    assert move_bucket_log_likelihoods(predictor, [], []).shape == (0, 8)
+    with pytest.raises(ValueError, match="not legal"):
+        move_bucket_log_likelihoods(predictor, [chess.Board()], [chess.Move.from_uci("e2e5")])

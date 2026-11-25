@@ -20,10 +20,17 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import chess
 import numpy as np
 import pandas as pd
+import torch
 
 from chess_engine.config import RatingEstimationConfig, RatingsConfig
+from chess_engine.encoding.board import encode_boards
+from chess_engine.encoding.moves import legal_move_mask, move_to_index
+from chess_engine.model.features import buckets_from_ratings, context_features, make_inputs
+from chess_engine.model.inference import MovePredictor
+from chess_engine.model.masking import legal_log_probs
 
 
 def bucket_centers(edges: Sequence[int]) -> np.ndarray:
@@ -64,6 +71,64 @@ def posterior(log_likelihood: np.ndarray, log_prior: np.ndarray, temper: float =
     logp = logp - logp.max(axis=-1, keepdims=True)
     p = np.exp(logp)
     return p / p.sum(axis=-1, keepdims=True)
+
+
+# --------------------------------------------------------------------------- per-move likelihoods
+
+
+@torch.no_grad()
+def move_bucket_log_likelihoods(
+    predictor: MovePredictor,
+    boards: Sequence[chess.Board],
+    moves: Sequence[chess.Move],
+    opp_ratings: Sequence[int | None] | int | None = None,
+    clocks: Sequence[float] | None = None,
+    opp_clocks: Sequence[float] | None = None,
+    base_seconds: int = 180,
+    increment: int = 0,
+    chunk: int = 2048,
+) -> np.ndarray:
+    """``(moves, K)``: log-probability that a player of each rating bucket plays ``moves[i]`` in ``boards[i]``.
+
+    Args:
+        opp_ratings: The opponent's rating at each move (or one for all). Where it is unknown
+            (None), the opponent is assumed to be as strong as the candidate rating: Lichess
+            pairs players of similar strength.
+        clocks / opp_clocks: Seconds left before each move (default: the full base time).
+    """
+    n, k = len(boards), predictor.ratings.num_buckets
+    if n != len(moves):
+        raise ValueError("boards and moves must have the same length")
+    if n == 0:
+        return np.zeros((0, k))
+    for board, move in zip(boards, moves):
+        if move not in board.legal_moves:
+            raise ValueError(f"{move.uci()} is not legal in {board.fen()}")
+    opp = [opp_ratings] * n if opp_ratings is None or isinstance(opp_ratings, int) else list(opp_ratings)
+    clock = np.full(n, float(base_seconds)) if clocks is None else np.asarray(clocks, dtype=np.float64)
+    opp_clock = np.full(n, float(base_seconds)) if opp_clocks is None else np.asarray(opp_clocks, dtype=np.float64)
+    planes = encode_boards(list(boards))
+    masks = np.stack([legal_move_mask(b) for b in boards])
+    targets = np.array([move_to_index(m, b.turn) for b, m in zip(boards, moves)], dtype=np.int64)
+    known = np.array([o is not None for o in opp])
+    opp_bucket = buckets_from_ratings(np.array([o if o is not None else 0 for o in opp]), predictor.ratings)
+    context = context_features(clock, opp_clock, np.full(n, base_seconds), np.full(n, increment))
+
+    # Every (move, bucket) pair as one row: move i at bucket b is row b * n + i.
+    rows_bucket = np.repeat(np.arange(k), n)
+    rows_move = np.tile(np.arange(n), k)
+    rows_opp = np.where(known[rows_move], opp_bucket[rows_move], rows_bucket)
+    out = np.empty(n * k)
+    model = predictor.model
+    for start in range(0, n * k, chunk):
+        sl = slice(start, start + chunk)
+        idx = rows_move[sl]
+        inputs = make_inputs(planes[idx], rows_bucket[sl], rows_opp[sl], context[idx], predictor.device)
+        mask = torch.as_tensor(masks[idx], device=predictor.device)
+        log_probs = legal_log_probs(model(inputs).policy, mask)
+        target = torch.as_tensor(targets[idx], device=predictor.device)
+        out[sl] = log_probs.gather(1, target[:, None]).squeeze(1).cpu().numpy()
+    return out.reshape(k, n).T
 
 
 # --------------------------------------------------------------------------- prior
