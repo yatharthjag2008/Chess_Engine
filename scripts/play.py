@@ -12,6 +12,7 @@ Usage:
     python scripts/play.py --hints 5                      # up to 5 hints (type 'hint'; needs Stockfish)
     python scripts/play.py --adaptive between             # the bot plays at your rating from earlier games
     python scripts/play.py --adaptive live --rating 1400  # starts at 1400 and adapts during the game
+    python scripts/play.py --style some-player            # in a trained style or ghost (scripts/train_style.py)
 
 Type moves in SAN (Nf3, exd5, O-O) or UCI (g1f3); type 'help' during the game for commands.
 """
@@ -33,6 +34,9 @@ from chess_engine.bot.hints import HintEngine
 from chess_engine.bot.player import BotError, load_bot, sampling_from_config
 from chess_engine.bot.sampling import SamplingSettings
 from chess_engine.config import ConfigError, load_config
+from chess_engine.style.build import library_for
+from chess_engine.style.predictor import StylePredictor
+from chess_engine.style.store import StyleError, blend_weight
 from chess_engine.review.engine import StockfishAnalyzer
 from chess_engine.stockfish import StockfishError, find_stockfish
 
@@ -54,6 +58,7 @@ def main(argv: list[str] | None = None, read=input, write=print) -> int:
     parser.add_argument("--save-pgn", default=None, help="write the game to this PGN file at the end")
     parser.add_argument("--adaptive", choices=["off", "between", "live"], default=None,
                         help="adaptive difficulty (default: adaptive.mode in the config); 'between' ignores --rating")
+    parser.add_argument("--style", default=None, help="play in a trained style or ghost (see train_style.py --list)")
     parser.add_argument("--hints", type=int, default=None,
                         help="hints allowed in the game (default: hints.limit in the config; 0 = none)")
     args = parser.parse_args(argv)
@@ -78,13 +83,22 @@ def main(argv: list[str] | None = None, read=input, write=print) -> int:
             if args.your_rating is None:
                 args.your_rating = int(round(profile.rating))
         bot = load_bot(cfg, rating, args.model, sampling, args.seed)
-    except (ConfigError, BotError, ValueError) as exc:
+        style = None
+        if args.style:
+            adapter, style = library_for(cfg).load(args.style, bot.predictor.model)
+            weight = blend_weight(style.games, cfg.style)
+            bot.predictor = StylePredictor(bot.predictor, adapter, weight, style)
+    except (ConfigError, BotError, StyleError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
     color = {"white": chess.WHITE, "black": chess.BLACK}.get(args.color, random.choice([chess.WHITE, chess.BLACK]))
     you_rating = args.your_rating
-    bot_name = f"Bot {bot.rating}"
+    bot_name = f"Bot {bot.rating}" + (f" ({style.player} {style.kind})" if style else "")
+    if style:
+        when = f", games up to {style.until}" if style.until else ""
+        write(f"The bot plays in the style of {style.player} ({style.games} games{when}; "
+              f"weight {bot.predictor.weight:.2f} next to the rating model).")
     game = (Game("You", bot_name, you_rating, bot.rating, event="Game vs. human-like bot") if color == chess.WHITE
             else Game(bot_name, "You", bot.rating, you_rating, event="Game vs. human-like bot"))
     clock = ChessClock(control) if control else None

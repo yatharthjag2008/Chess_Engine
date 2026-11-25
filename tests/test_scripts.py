@@ -414,6 +414,30 @@ def test_train_style_script(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
         script.main(common + ["--pgn", str(pgn), "--name", "x"])            # --player missing
 
 
+def test_play_script_with_a_style(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    import yaml
+
+    from test_style import _biased_adapter, _info
+
+    from chess_engine.model.inference import load_model
+    from chess_engine.style.store import StyleLibrary
+
+    script = _load("play")
+    model = _small_model_file(tmp_path)
+    base = load_model(model).model
+    StyleLibrary(tmp_path / "data" / "styles").save(_biased_adapter(base, "a2a3"), _info("ann", games=200), base)
+    config = tmp_path / "c.yaml"
+    config.write_text(yaml.safe_dump({"paths": {"data_dir": str(tmp_path / "data")}}), encoding="utf-8")
+    out: list[str] = []
+    assert script.main(["--config", str(config), "--model", str(model), "--ascii", "--hints", "0", "--color", "black",
+                        "--temperature", "0", "--style", "ann"], read=lambda p: "quit", write=out.append) == 0
+    text = "\n".join(out)
+    assert "The bot plays in the style of Ann (200 games; weight 1.00" in text
+    assert "Bot plays 1. a3" in text and '[White "Bot 1500 (Ann style)"]' in text
+    assert script.main(["--config", str(config), "--model", str(model), "--style", "nobody"]) == 1
+    assert "no style called 'nobody'" in capsys.readouterr().err
+
+
 def test_hint_script(tmp_path: Path) -> None:
     from review_helpers import ScriptedAnalyzer
 
