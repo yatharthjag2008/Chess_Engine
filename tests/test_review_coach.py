@@ -45,3 +45,31 @@ def test_generic_explanation() -> None:
     move = _one_move(fen, "Qh5", {position_key(fen=fen): ("g1f3", 30, {"d1h5": -20})})
     assert explain_mistake(move) == "Nf3 was stronger (+0.3 instead of -0.2). " \
                                     f"Your winning chances dropped from {move.win_before:.0f}% to {move.win_after:.0f}%."
+
+
+def _moment(played: str, yours: tuple, stronger: tuple | None, played_win: float = 0.0):
+    from chess_engine.review.level_compare import LevelMoment, LevelOption, PositionComparison
+
+    def option(rating, san, uci, prob, win):
+        return LevelOption(rating, san, uci, prob, 0, win, [])
+
+    y = option(1300, *yours)
+    s = option(1500, *stronger) if stronger else None
+    comparison = PositionComparison([y] + ([s] if s else []), s, (s.win - y.win) if s else 0.0, s is not None)
+    return LevelMoment(5, "3...", played[0], played[1], played_win, comparison)
+
+
+def test_explain_level() -> None:
+    from chess_engine.review.coach import explain_level
+
+    like_level = _moment(("Nf6", "g8f6"), ("Nf6", "g8f6", 0.4, 0.0), ("g6", "g7g6", 0.35, 46.0))
+    text = explain_level(like_level)
+    assert text.startswith("Players around 1300 usually play Nf6 here (40%).")
+    assert "Players around 1500 prefer g6 (35%), which keeps 46% winning chances instead of 0%." in text
+    assert text.endswith("You played Nf6, like most players at your level.")
+    found = explain_level(_moment(("g6", "g7g6"), ("Nf6", "g8f6", 0.4, 0.0), ("g6", "g7g6", 0.35, 46.0)))
+    assert found.endswith("You found g6: that is the stronger players' move.")
+    other = explain_level(_moment(("Qe7", "d8e7"), ("Nf6", "g8f6", 0.4, 0.0), ("g6", "g7g6", 0.35, 46.0), 40.0))
+    assert other.endswith("You played Qe7 (40%).")
+    agree = explain_level(_moment(("e5", "e7e5"), ("e5", "e7e5", 0.5, 50.0), None))
+    assert agree.endswith("Stronger players agree.")

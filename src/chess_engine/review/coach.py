@@ -14,6 +14,9 @@ Mistakes (inaccuracy or worse) are explained by the first rule that applies:
 5. otherwise: "Nf3 was stronger (+0.3 instead of -0.2)."
 
 followed by what it cost: "Your winning chances dropped from 55% to 31%."
+
+Level differences (:func:`explain_level`) say what your level and the stronger level
+play and what the difference is worth, then what you actually played.
 """
 
 from __future__ import annotations
@@ -22,6 +25,7 @@ import chess
 
 from chess_engine.review.analyzer import MoveReview
 from chess_engine.review.features import captured_piece, gives_mate, newly_hanging, piece_name
+from chess_engine.review.level_compare import LevelMoment
 from chess_engine.review.scoring import MATE_CP
 
 
@@ -51,3 +55,21 @@ def explain_mistake(move: MoveReview) -> str:
         sentences.append(f"{move.best_san} was stronger ({_pawns(move.best_cp)} instead of {_pawns(move.played_cp)}).")
     sentences.append(f"Your winning chances dropped from {move.win_before:.0f}% to {move.win_after:.0f}%.")
     return " ".join(sentences)
+
+
+def explain_level(moment: LevelMoment) -> str:
+    """What players at your rating and at a higher rating play here, and what you played."""
+    c = moment.comparison
+    yours, stronger = c.yours, c.stronger
+    text = f"Players around {yours.rating} usually play {yours.san} here ({yours.prob:.0%})."
+    if stronger is None:
+        return text + " Stronger players agree."
+    text += (f" Players around {stronger.rating} prefer {stronger.san} ({stronger.prob:.0%}), which keeps "
+             f"{stronger.win:.0f}% winning chances instead of {yours.win:.0f}%.")
+    if moment.played_uci == stronger.uci:
+        text += f" You found {stronger.san}: that is the stronger players' move."
+    elif moment.played_uci == yours.uci:
+        text += f" You played {moment.played_san}, like most players at your level."
+    else:
+        text += f" You played {moment.played_san} ({moment.played_win:.0f}%)."
+    return text
