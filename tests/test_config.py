@@ -133,6 +133,12 @@ def test_default_adaptive_settings(default_config: Config) -> None:
     assert a.live_low < 0.5 < a.live_high and a.live_cap >= a.live_step and a.profile_file.endswith(".json")
 
 
+def test_default_style_settings(default_config: Config) -> None:
+    st = default_config.style
+    assert st.blend_games == 200 and st.min_games < st.blend_games and 0 <= st.min_weight <= 1
+    assert st.epochs >= 1 and st.learning_rate > 0 and 0 < st.val_fraction < 0.5 and st.directory
+
+
 def test_training_limits_can_be_unset(tmp_path: Path) -> None:
     override = _write_yaml(tmp_path / "t.yaml", {"training": {"grad_clip_norm": None, "val_max_positions": None,
                                                             "max_steps": 10, "max_minutes": 1.5}})
@@ -235,6 +241,8 @@ def test_invalid_yaml_is_rejected(tmp_path: Path) -> None:
         ({"adaptive": {"min_rating": 2000, "max_rating": 1000}}, "min_rating"),
         ({"adaptive": {"start_rating": 600}}, "start_rating"),
         ({"adaptive": {"live_low": 0.6}}, "live_low"),
+        ({"style": {"val_fraction": 0.7}}, "val_fraction"),
+        ({"style": {"min_weight": 2}}, "min_weight"),
         ({"rating_estimation": {"prior": "uniform"}}, "prior"),
         ({"elo_validation": {"bot_ratings": [1500]}}, "bot_ratings"),
         ({"elo_validation": {"self_play": "some"}}, "self_play"),

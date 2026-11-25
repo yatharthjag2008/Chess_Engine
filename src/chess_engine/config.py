@@ -435,6 +435,24 @@ class AdaptiveConfig(_StrictModel):
         return self
 
 
+class StyleConfig(_StrictModel):
+    """Style imitation and ghost mode (see ``chess_engine.style``)."""
+
+    directory: str = "styles"                         # under data_dir: one file per trained style or ghost
+    blend_games: PositiveInt = 200                    # with this many games the style is used fully
+    min_games: PositiveInt = 5                        # fewer games: refuse to train
+    min_weight: float = Field(default=0.25, ge=0, le=1)   # the style's weight with very few games
+    epochs: PositiveInt = 8
+    batch_size: PositiveInt = 256
+    learning_rate: float = Field(default=3e-3, gt=0)
+    weight_decay: float = Field(default=1e-3, ge=0)
+    val_fraction: float = Field(default=0.15, gt=0, lt=0.5)   # games held out to check the style generalises
+    patience: PositiveInt = 2                         # epochs without validation improvement before stopping
+    max_positions: PositiveInt = 200_000              # cap on training positions
+    skip_opening_plies: int = Field(default=0, ge=0)  # ignore the first plies (book moves say little about style)
+    seed: int = 0
+
+
 class Config(_StrictModel):
     """The full project configuration."""
 
@@ -454,6 +472,7 @@ class Config(_StrictModel):
     coach: CoachConfig = Field(default_factory=CoachConfig)
     hints: HintsConfig = Field(default_factory=HintsConfig)
     adaptive: AdaptiveConfig = Field(default_factory=AdaptiveConfig)
+    style: StyleConfig = Field(default_factory=StyleConfig)
 
 
 # --------------------------------------------------------------------------- loading

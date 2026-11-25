@@ -224,3 +224,20 @@ adaptive:                        # step 18: adaptive difficulty
   live_low: 0.35                 # the bot expects less than this: it plays stronger
   live_high: 0.65                # more than this: it plays weaker
   profile_file: adaptive.json    # your rating and recent games, in data_dir
+
+style:                           # step 19: style imitation (a player's games) and ghost mode (your games to a date)
+  directory: styles              # under data_dir
+  # A style is a small adapter on the frozen model, trained on one player's moves. With few games it is blended
+  # with the base model: weight = min_weight + (1 - min_weight) * games / blend_games, at most 1.
+  blend_games: 200
+  min_games: 5
+  min_weight: 0.25
+  epochs: 8
+  batch_size: 256
+  learning_rate: 0.003
+  weight_decay: 0.001
+  val_fraction: 0.15             # share of games held out to check the style generalises
+  patience: 2                    # epochs without validation improvement before stopping
+  max_positions: 200000
+  skip_opening_plies: 0
+  seed: 0
