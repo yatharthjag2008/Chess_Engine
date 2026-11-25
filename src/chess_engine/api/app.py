@@ -21,6 +21,7 @@ GET      /api/import/{site}/{username}   a player's recent games from ``lichess`
 POST     /api/rating-estimate            a player's rating (and likely range) from PGN games
 POST     /api/review                     Stockfish review of a PGN game (classes, accuracy, key moments, graph)
 GET      /api/games/{id}/review          the same for a game played against the bot
+POST     /api/coach                      coach one player: mistakes and "your level vs. next level"
 =======  ==============================  ===================================================
 
 The model is loaded once when the app starts (from ``bot.model`` in the config),
@@ -65,6 +66,7 @@ from chess_engine.api.schemas import (
     RatingEstimateResponse,
     RatingRange,
     ReviewRequest,
+    CoachRequest,
     legal_moves,
 )
 from chess_engine.api.service import GameRuleError, GameService
@@ -88,7 +90,8 @@ from chess_engine.eval.player_games import player_games_from_pgn
 from chess_engine.eval.rating_estimation import estimate_rating, setup_from_config
 from chess_engine.review.analyzer import review_to_dict
 from chess_engine.review.engine import Analyzer
-from chess_engine.review.run import run_review
+from chess_engine.review.coach import report_to_dict
+from chess_engine.review.run import run_coach, run_review
 from chess_engine.stockfish import StockfishError
 from chess_engine.model.inference import MovePredictor, load_model
 
@@ -272,6 +275,18 @@ def create_app(cfg: Config | None = None, predictor: MovePredictor | None = None
     @app.get("/api/games/{game_id}/review")
     def review_bot_game(game_id: str, request: Request) -> dict:
         return reviewed(service(request).pgn(session(request, game_id)))
+
+    @app.post("/api/coach")
+    def coach(body: CoachRequest, request: Request) -> dict:
+        if (body.player is None) == (body.color is None):
+            raise GameImportError("give either a player name or a colour")
+        try:
+            result = run_coach(cfg, body.pgn, body.player, body.color, body.rating, body.game_index,
+                               predictor=service(request).predictor, analyzer=review_analyzer)
+        except ValueError as exc:
+            raise GameImportError(str(exc)) from exc
+        return {"report": report_to_dict(result.report), "rating_source": result.rating_source,
+                "next_level": result.report.rating + cfg.coach.level_offsets[0]}
 
     if web is not None and (web / "index.html").is_file():
         # Mounted last, so every /api route and /docs is matched first.

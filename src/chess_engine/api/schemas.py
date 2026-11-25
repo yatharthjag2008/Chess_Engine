@@ -250,3 +250,13 @@ class ReviewRequest(_Body):
 
     pgn: str = Field(min_length=1, max_length=5_000_000)
     game_index: int = Field(default=0, ge=0)
+
+
+class CoachRequest(_Body):
+    """Coach one player of a PGN game: name them or pick a colour; the rating is optional."""
+
+    pgn: str = Field(min_length=1, max_length=5_000_000)
+    player: str | None = Field(default=None, max_length=50)
+    color: Literal["white", "black"] | None = None
+    rating: int | None = Field(default=None, ge=MIN_RATING, le=MAX_RATING)
+    game_index: int = Field(default=0, ge=0)

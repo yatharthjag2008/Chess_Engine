@@ -298,3 +298,21 @@ def test_review_without_stockfish(default_config: Config, tmp_path, monkeypatch)
         r = c.post("/api/review", json={"pgn": "1. e4 e5 *"})
         assert r.status_code == 503 and r.json()["error"] == "stockfish_unavailable"
         assert "not found" in r.json()["detail"] and "install" not in r.json()["detail"]
+
+
+
+def test_coach_endpoint(default_config: Config, tmp_path) -> None:
+    from test_review_analyzer import PGN, _scripted
+
+    cfg = default_config.model_copy(update={"paths": default_config.paths.model_copy(update={"data_dir": tmp_path})})
+    with TestClient(create_app(cfg, small_predictor(), review_analyzer=_scripted())) as c:
+        body = c.post("/api/coach", json={"pgn": PGN, "color": "black", "rating": 1300}).json()
+        assert body["rating_source"] == "given" and body["next_level"] == 1500
+        report = body["report"]
+        assert report["color"] == "black" and report["summary"]["counts"]["blunder"] == 1
+        assert any(n["san"] == "Nf6" and "mistake" in n["kinds"] for n in report["notes"])
+        by_name = c.post("/api/coach", json={"pgn": PGN, "player": "w", "rating": 1600}).json()
+        assert by_name["report"]["color"] == "white"
+        for bad in ({"pgn": PGN}, {"pgn": PGN, "player": "w", "color": "white"}, {"pgn": PGN, "player": "zed"}):
+            r = c.post("/api/coach", json=bad)
+            assert r.status_code == 422 and r.json()["error"] == "invalid_request", bad

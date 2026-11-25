@@ -14,13 +14,12 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import chess
 import chess.pgn
-
-from dataclasses import dataclass
 
 from chess_engine.config import Config
 from chess_engine.data.dataset_builder import dataset_output_dir
