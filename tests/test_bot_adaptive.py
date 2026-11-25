@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from chess_engine.bot.adaptive import bot_rating_for, expected_score, k_for, update_rating
+from chess_engine.bot.adaptive import HISTORY, ProfileStore, bot_rating_for, expected_score, k_for, update_rating
 from chess_engine.config import AdaptiveConfig
 
 CFG = AdaptiveConfig()
@@ -46,3 +46,29 @@ def test_repeated_results_move_the_rating_towards_the_players_level() -> None:
         player = update_rating(player, bot, score, games, CFG)
         games += 1
     assert 1300 <= bot_rating_for(player, CFG) <= 1500
+
+
+def test_profile_store_records_games(tmp_path) -> None:
+    store = ProfileStore(tmp_path / "sub" / "adaptive.json", CFG)
+    fresh = store.load()
+    assert fresh.rating == CFG.start_rating and fresh.games == 0 and fresh.history == []
+    assert fresh.bot_rating(CFG) == 1200
+    after = store.record(1200, 1.0, "between")
+    assert after.rating == 1200 + CFG.k_new / 2 and after.games == 1
+    again = ProfileStore(tmp_path / "sub" / "adaptive.json", CFG).load()   # read back from the file
+    assert again.rating == after.rating and again.history[0].score == 1.0 and again.history[0].mode == "between"
+    assert again.history[0].rating_before == 1200 and again.history[0].bot_rating == 1200
+    for _ in range(HISTORY + 5):
+        store.record(1300, 0.5, "live")
+    assert len(store.load().history) == HISTORY and store.load().games == HISTORY + 6
+
+
+def test_profile_store_reset_and_bad_file(tmp_path) -> None:
+    path = tmp_path / "adaptive.json"
+    path.write_text("{not json", encoding="utf-8")
+    store = ProfileStore(path, CFG)
+    assert store.load().rating == CFG.start_rating, "an unreadable file starts fresh"
+    store.record(1200, 0, "between")
+    assert store.reset(1650).rating == 1650 and store.load().games == 0
+    assert store.reset(9999).rating == CFG.max_rating and store.reset().rating == CFG.start_rating
+    assert not (tmp_path / "adaptive.json.tmp").exists()
