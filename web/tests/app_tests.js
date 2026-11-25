@@ -288,6 +288,34 @@ test("the bot's label and the adaptive summary", () => {
   equal(app.adaptiveSummary({ ...over, adaptive: { mode: "off", result: null } }), "");
 });
 
+test("the bot can play in a trained style", async () => {
+  const styles = await app.loadStyles();
+  equal(styles.map((st) => st.name), ["ann"]);
+  assert(!$("style-field").hidden, "the Style choice is shown when styles exist");
+  const option = $("style").querySelector('option[value="ann"]');
+  equal(option.textContent, "Ann: style, 200 games");
+  $("style").value = "ann";
+  $("style").dispatchEvent(new Event("change"));
+  equal($("style-note").textContent, "Imitates Ann's choices fully.");
+  const options = app.readForm($("new-game"));
+  equal(options.style, "ann");
+  await app.startGame({ ...options, color: "black", temperature: 0, hint_limit: 0 });
+  equal(app.ui.game.moves_san, ["a3"], "Ann's favourite first move");
+  equal(app.ui.game.style.player, "Ann");
+  equal($("top-name").textContent, `Bot ${options.rating} (Ann)`);
+  $("style").value = "";
+  $("style").dispatchEvent(new Event("change"));
+  equal($("style-note").textContent, "");
+  equal(app.readForm($("new-game")).style, undefined, "no style: the rating model");
+});
+
+test("style labels and blending notes", () => {
+  equal(app.styleLabel({ player: "me", kind: "ghost", until: "2025-05-31", games: 40 }), "me: ghost, games up to 2025-05-31");
+  equal(app.styleLabel({ player: "Ann", kind: "style", games: 12 }), "Ann: style, 12 games");
+  equal(app.botLabel({ bot_rating: 1600, style: { player: "Ann" },
+                       adaptive: { mode: "live", start_rating: 1500 } }), "Bot 1600 (Ann) \u2191");
+});
+
 test("new-game settings are remembered in this browser", () => {
   app.saveSettings({ rating: 1750, color: "black", time_control: "10+0", hint_limit: 0, adaptive: "live" });
   const form = $("new-game");

@@ -90,7 +90,15 @@ def api_server(default_config: Config, tmp_path_factory: pytest.TempPathFactory)
 
     script = {position_key("e4", "e5", "Qh5", "Nc6", "Bc4"): ("g7g6", 0, {"g8f6": -900}),
               position_key("e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6"): ("h5f7", 900, {})}
-    app = create_app(cfg, small_predictor(), review_analyzer=ScriptedAnalyzer(script))
+    # One trained style for the play page tests: "Ann" always opens 1. a3 (a style file in the data directory).
+    from test_style import _biased_adapter, _info
+
+    from chess_engine.style.store import StyleLibrary
+
+    predictor = small_predictor()
+    StyleLibrary(data / cfg.style.directory).save(_biased_adapter(predictor.model, "a2a3"), _info("ann", games=200),
+                                                  predictor.model)
+    app = create_app(cfg, predictor, review_analyzer=ScriptedAnalyzer(script))
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -126,7 +134,7 @@ def test_web_ui_javascript_unit_tests(web_server: str, tmp_path: Path) -> None:
 
 def test_play_page_end_to_end(api_server: str, tmp_path: Path) -> None:
     dom = dump_dom(browser_or_skip(), f"{api_server}/tests/app.html", tmp_path / "profile", budget_ms=20000)
-    check_results(dom, 23)
+    check_results(dom, 25)
 
 
 def test_review_page_end_to_end(api_server: str, tmp_path: Path) -> None:
