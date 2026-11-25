@@ -58,6 +58,10 @@ test("the move list and the bot's candidates are shown", async () => {
   }
   const width = parseFloat(rows[0].querySelector(".fill").style.width);
   assert(Math.abs(width - played.candidates[0].prob * 100) < 1.01, `bar width ${width}`);
+  const fill = rows[0].querySelector(".fill").getBoundingClientRect().width;
+  const track = rows[0].querySelector(".track").getBoundingClientRect().width;
+  assert(track > 0 && Math.abs(fill / track - Math.max(0.01, played.candidates[0].prob)) < 0.02,
+         `the bar is drawn to scale (fill ${fill}px of ${track}px)`);
 });
 
 test("move list rows start empty for White when Black moved first", () => {
@@ -119,6 +123,66 @@ test("the form sends the chosen rating, side and time control", () => {
   equal(app.readForm($("new-game")), { rating: 1350, color: "black", time_control: "5+3" });
   $("time-control").value = "";
   equal(app.readForm($("new-game")).time_control, undefined);
+});
+
+test("resign needs a second click, then the result banner offers the PGN", async () => {
+  await app.startGame({ rating: 1500, color: "white", seed: 8 });
+  await app.playMove("d2d4");
+  await until(() => app.ui.game.moves_san.length === 2, "bot reply");
+  $("resign").click();
+  equal(app.ui.game.status, "ongoing");
+  equal($("resign").textContent, "Click again to resign");
+  $("resign").click();
+  await until(() => app.ui.game.status === "over", "resigned");
+  assert(!$("result-banner").hidden, "banner shown");
+  equal($("result-banner").querySelector("h2").textContent, "The bot won");
+  const link = $("result-banner").querySelector("a");
+  assert(link.href.endsWith(`/api/games/${app.ui.game.id}/pgn`), link.href);
+  const pgn = await (await fetch(link.href)).text();
+  assert(pgn.includes('[Termination "resignation"]'), pgn);
+  assert($("resign").disabled && $("takeback").disabled, "buttons disabled after the game");
+  equal(app.ui.board.mover, null);
+});
+
+test("take back undoes your move and the bot's reply", async () => {
+  await app.startGame({ rating: 1500, color: "white", seed: 9 });
+  assert($("takeback").disabled, "nothing to take back yet");
+  await app.playMove("e2e4");
+  await until(() => app.ui.game.moves_san.length === 2, "bot reply");
+  assert(!$("takeback").disabled, "take back enabled");
+  await app.takeback();
+  equal(app.ui.game.moves_san, []);
+  equal(app.ui.board.mover, "white");
+});
+
+test("timed games have no take back", async () => {
+  await app.startGame({ rating: 1500, color: "white", time_control: "5+0", seed: 10 });
+  await app.playMove("e2e4");
+  await until(() => app.ui.game.moves_san.length === 2, "bot reply");
+  assert($("takeback").disabled, "take back disabled");
+});
+
+test("the game id is kept in the URL and a reload continues the game", async () => {
+  const id = app.ui.game.id;
+  equal(location.hash, `#game=${id}`);
+  app.ui.game = null;
+  assert(await app.resumeFromUrl(), "resumed");
+  equal(app.ui.game.id, id);
+  history.replaceState(null, "", "#game=unknown-id");
+  assert(!(await app.resumeFromUrl()), "unknown game");
+  equal(location.hash, "");
+  assert($("status").textContent.includes("no longer on the server"), $("status").textContent);
+});
+
+test("a checkmate ends the game with the right banner", async () => {
+  await app.startGame({ rating: 1500, color: "white", fen: "7k/8/6K1/8/8/8/R7/1R6 w - - 0 1", seed: 11 });
+  await app.playMove("a2a7");
+  await until(() => app.ui.game.moves_san.length === 2, "forced reply");
+  await app.playMove("b1b8");
+  equal(app.ui.game.outcome.termination, "checkmate");
+  equal($("result-banner").querySelector("h2").textContent, "You won");
+  $("result-banner").querySelector("button:last-child").click();
+  assert($("result-banner").hidden, "banner closed");
 });
 
 test("server errors are shown, and the game resyncs", async () => {

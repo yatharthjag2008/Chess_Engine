@@ -1,7 +1,8 @@
 // The play page: start a game, move on the board, show the bot's replies.
 //
 // All game state lives on the server; the page shows the latest state it received
-// (render) and sends what the player does (moves, buttons) to the API.
+// (render) and sends what the player does (moves, buttons) to the API. The game id
+// is kept in the URL (#game=<id>), so reloading the page continues the game.
 
 import { api, ApiError } from "./api.js";
 import { Board } from "./board.js";
@@ -130,6 +131,77 @@ export function renderThinking(state) {
   $("candidates").replaceChildren(...rows);
 }
 
+function humanMoves(state) {
+  // Moves you made = all moves minus the bot's (the bot moved first if it had White).
+  const botFirst = state.human_color === "black";
+  const n = state.moves_san.length;
+  return botFirst ? Math.floor(n / 2) : Math.ceil(n / 2);
+}
+
+function renderButtons(state) {
+  const over = state.status === "over";
+  const resign = $("resign");
+  resign.disabled = over || ui.busy;
+  if (over) resetResign();
+  $("takeback").disabled = over || ui.busy || Boolean(state.clock) || humanMoves(state) === 0;
+  $("takeback").title = state.clock ? "No takebacks in timed games" : "";
+}
+
+function resetResign() {
+  const resign = $("resign");
+  resign.dataset.confirm = "";
+  resign.textContent = "Resign";
+}
+
+/** The result banner over the board when the game has ended. */
+export function renderResult(state) {
+  const banner = $("result-banner");
+  if (state.status !== "over") {
+    banner.hidden = true;
+    return;
+  }
+  const outcome = state.outcome;
+  const won = outcome.winner === state.human_color;
+  const title = outcome.winner === null ? "Draw" : won ? "You won" : "The bot won";
+  const heading = document.createElement("h2");
+  heading.textContent = title;
+  const text = document.createElement("p");
+  text.textContent = outcome.description;
+  const actions = document.createElement("div");
+  actions.className = "actions";
+  const again = button("New game", () => startGame(readForm($("new-game"))), "primary");
+  again.style.width = "auto";
+  const download = document.createElement("a");
+  download.href = api.pgnUrl(state.id);
+  download.download = `game-vs-bot-${state.bot_rating}.pgn`;
+  download.textContent = "Download PGN";
+  download.className = "button-link";
+  const copy = button("Copy PGN", () => copyPgn(state.id, copy));
+  const close = button("Close", () => { banner.hidden = true; });
+  actions.append(again, download, copy, close);
+  banner.replaceChildren(heading, text, actions);
+  banner.hidden = false;
+}
+
+function button(label, onClick, className = "") {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.textContent = label;
+  if (className) b.className = className;
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+async function copyPgn(id, el) {
+  try {
+    const pgn = await (await fetch(api.pgnUrl(id))).text();
+    await navigator.clipboard.writeText(pgn);
+    el.textContent = "Copied";
+  } catch {
+    el.textContent = "Copy failed";
+  }
+}
+
 /** Show a game state from the server. */
 export function render(state) {
   ui.game = state;
@@ -148,6 +220,9 @@ export function render(state) {
   renderMoves(state);
   renderThinking(state);
   updateClocks();
+  renderButtons(state);
+  renderResult(state);
+  if (location.hash !== `#game=${state.id}`) history.replaceState(null, "", `#game=${state.id}`);
   if (state.status === "over") {
     setStatus(state.outcome.description);
   } else if (ui.busy) {
@@ -208,6 +283,53 @@ export async function startGame(options) {
   }
 }
 
+export async function resign() {
+  const el = $("resign");
+  if (!ui.game || ui.busy) return;
+  if (el.dataset.confirm !== "yes") {        // first click asks for confirmation
+    el.dataset.confirm = "yes";
+    el.textContent = "Click again to resign";
+    setTimeout(resetResign, 4000);
+    return;
+  }
+  resetResign();
+  await act(() => api.resign(ui.game.id));
+}
+
+export async function takeback() {
+  if (!ui.game || ui.busy) return;
+  await act(() => api.takeback(ui.game.id));
+}
+
+async function act(call) {
+  ui.busy = true;
+  try {
+    const state = await call();
+    ui.busy = false;
+    render(state);
+  } catch (err) {
+    ui.busy = false;
+    render(ui.game);
+    showError(err);
+  }
+}
+
+/** Continue the game named in the URL (#game=<id>), if the server still has it. */
+export async function resumeFromUrl() {
+  const match = location.hash.match(/^#game=([\w-]+)$/);
+  if (!match) return false;
+  try {
+    const state = await api.state(match[1]);
+    ui.board.setOrientation(state.human_color);
+    render(state);
+    return true;
+  } catch {
+    history.replaceState(null, "", location.pathname + location.search);
+    setStatus("That game is no longer on the server. Start a new one.");
+    return false;
+  }
+}
+
 export function init() {
   ui.board = new Board($("board"), { promotionEl: $("promotion"), onMove: (uci) => playMove(uci) });
   ui.board.setLegalMoves([], null);
@@ -221,10 +343,15 @@ export function init() {
     startGame(readForm(event.target));
   });
   setInterval(updateClocks, 100);
+  $("resign").addEventListener("click", resign);
+  $("takeback").addEventListener("click", takeback);
   $("flip").addEventListener("click", () => {
     ui.board.flip();
     if (ui.game) render(ui.game);
   });
 }
 
-if (document.getElementById("board") && !window.__noAutoInit) init();
+if (document.getElementById("board") && !window.__noAutoInit) {
+  init();
+  resumeFromUrl();
+}
