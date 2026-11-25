@@ -21,8 +21,11 @@ Step 11 modules:
     elo_fit             Elo ratings from results (anchored, bootstrap intervals), dial monotonicity
     elo_report          dial-vs-strength chart, score matrix, Markdown report
 
-Planned:
-    rating_estimation  (step 12) estimate a player rating (and range) from games
+Step 12 modules:
+    rating_estimation   per-move likelihoods at every rating, prior, tempered posterior -> estimate + range
+    player_games        one player's moves, clocks and opponent rating from PGN games
+    rating_eval         held-out evaluation: data, scores vs. baselines, temper fit, convergence
+    rating_report       charts and Markdown report
 """
 
 from chess_engine.eval.evaluate import EvaluationError, EvaluationOutput, evaluate_model

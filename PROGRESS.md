@@ -15,7 +15,7 @@ See [PLAN.md](PLAN.md) for details on each step.
 - [x] 9. Backend API
 - [x] 10. Web UI for playing
 - [x] 11. Elo dial validation
-- [ ] 12. Rating estimation
+- [x] 12. Rating estimation
 - [ ] 13. Game import
 - [ ] 14. Game review engine
 - [ ] 15. "Your level vs. next level" + mistake coach
@@ -714,3 +714,67 @@ temperature 1; 460 games in 29 minutes; full report:
 - **What this means for the project:** the dial works enough to give clearly different opponents at 1100, 1400,
   1700 and 2300, but not a smooth 100-point resolution. The fix is the same as step 7's: a model trained longer on
   more games (the GPU config), then re-run this check (`python scripts/elo_validation.py`, ~30 minutes).
+
+## Step 12: Rating estimation (done 2026-11-24)
+
+**Built** (`chess_engine.eval`)
+- `rating_estimation`: per-move log-likelihood at every rating bucket in one batched model pass; bucket centres
+  (900, 1100, ..., 2300) interpolated to a 600-2800 grid; a prior from the training players' rating distribution
+  (smoothed, with a 1% uniform floor) or flat; a tempered posterior summarized as mean, median and a central range;
+  `estimate_rating` for one or several games of a player (their evidence adds up).
+- `player_games`: one player's moves from PGN text (by name or colour), with the positions, the opponent's rating,
+  both clocks before each move (from `[%clk]`) and the time control.
+- `rating_eval`: per-move likelihoods for every held-out position at every bucket, grouped into player-games (one
+  side of one game); estimates and scores (error, bias, range coverage) against two baselines; fitting the
+  temper on validation games; convergence with the number of moves.
+- `rating_report`: three charts and the Markdown report.
+- Scripts: `scripts/estimate_rating.py` (PGN -> estimate with a range), `scripts/evaluate_rating_estimation.py`.
+- Tests (about 40 new): the maths against hand-computed cases, the likelihoods against the predictor, PGN reading
+  (names, colours, clocks, custom positions, broken games), synthetic players with known ratings (including
+  correlated moves, which the temper must correct), and both scripts.
+
+**Results** (`python scripts/evaluate_rating_estimation.py`: the step-6 model on 4,888 player-games from the
+2,444 test games, one game per estimate, 35 moves on average; scoring both splits at 8 ratings took 33 minutes,
+cached afterwards; full report: [reports/rating/laptop_64x6_best_model/report.md](reports/rating/laptop_64x6_best_model/report.md))
+
+![Estimated vs. true](reports/rating/laptop_64x6_best_model/estimated_vs_true.png)
+
+| | Mean error (Elo) |
+|---|---|
+| **estimate from the moves of one game** | **253** (median 213, bias +23) |
+| guess the average rating (1629) | 286 |
+| guess the opponent's rating | **61** |
+
+| True rating | 800-999 | 1000-1199 | 1200-1399 | 1400-1599 | 1600-1799 | 1800-1999 | 2000-2199 | 2200+ |
+|---|---|---|---|---|---|---|---|---|
+| error | 566 | 434 | 293 | 176 | 125 | 190 | 318 | 535 |
+| bias | +566 | +434 | +280 | +109 | -32 | -176 | -318 | -535 |
+| inside the 80% range | 18% | 50% | 79% | 95% | 98% | 90% | 66% | 12% |
+
+- **The estimate barely moves away from the middle.** It beats "everyone is average" (253 vs. 286 Elo) and points in
+  the right direction, but an 800 player is estimated ~570 too high and a 2200+ player ~540 too low. The cause is
+  the one steps 7 and 11 found: the model's move probabilities change little with the rating it is given, so a
+  game's moves carry little evidence about the rating and the prior dominates. More moves hardly help (269 Elo
+  after 5 moves, 253 after a whole game), which says the same thing.
+- **The opponent's rating is a far better guess (61 Elo)**, because Lichess pairs players of similar strength.
+  The estimate deliberately does not use it as evidence (it answers "what do these moves say?"), but when it is
+  known it is the better answer.
+- **The ranges are honest on average** (80% ranges contain the true rating 79% of the time with a temper of 1.19)
+  but not per rating: too narrow at the extremes (18% at 800-999), too wide in the middle (98% at 1600-1799),
+  again because the evidence is weak and the prior pulls towards the middle.
+
+**Decisions**
+- **Bayesian estimate on a fine rating grid**, interpolating between the 8 bucket centres: it gives a range, not just a
+  number, combines any number of games by adding log-likelihoods, and handles a prior cleanly.
+- **The prior is the training players' rating distribution** (not flat): with weak evidence it is the honest starting
+  point, and it is what makes the estimate beat the average baseline at all. Flat is available (`prior: flat`).
+- **The opponent's rating is a model input, not evidence about the player.** When the PGN has it, the model is told it
+  (it changes what humans play); otherwise the opponent is assumed to be as strong as each candidate rating.
+- **A fitted temper instead of trusting the raw sum.** Moves of one game are correlated (one opening, one style), so
+  the summed log-likelihood overstates the evidence; dividing it by a temper chosen on validation games makes the
+  stated range coverage true on held-out games. Here the fitted value is small (1.19) because there is little
+  evidence to overstate.
+- **Honest baselines in every table**, so a weak result is visible as weak.
+- **What would fix it:** the same as for the dial: a model whose predictions depend more on the rating (more training
+  data and steps, possibly a stronger rating signal in the architecture), then re-running
+  `scripts/evaluate_rating_estimation.py`.

@@ -251,6 +251,19 @@ Stockfish's weakest setting. [Report](reports/elo/laptop_64x6_best_model/report.
 
 ![Dial vs. measured strength](reports/elo/laptop_64x6_best_model/dial_vs_measured.png)
 
+## Estimate a rating from games
+
+```bash
+python scripts/estimate_rating.py my_games.pgn --player MyName      # estimate + 80% range, overall and per game
+python scripts/evaluate_rating_estimation.py                        # how accurate is it on held-out games?
+```
+
+Every move is scored at every rating; the evidence of a game (or several) is combined with a prior over ratings
+into an estimate with a likely range. With the current model the estimate is **weak**: from one game it is off by
+253 Elo on average and is pulled towards the middle (low ratings estimated too high, high ratings too low), only a
+little better than guessing the average rating, and far worse than guessing the opponent's rating (61 Elo).
+See the [report](reports/rating/laptop_64x6_best_model/report.md).
+
 ## Play the bot
 
 ```bash

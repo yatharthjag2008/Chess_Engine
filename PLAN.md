@@ -62,7 +62,7 @@ tracked in [PROGRESS.md](PROGRESS.md).
 | 13 | `src/chess_engine/data/game_import.py` |
 | 5 | `src/chess_engine/model/` (`features.py`, `layers.py`, `policy_map.py`, `heads.py`, `network.py`, `masking.py`, `inference.py`), `scripts/model_summary.py` |
 | 6 | `src/chess_engine/training/`, `src/chess_engine/plotting.py`, `scripts/train.py`, `scripts/plot_training.py`, `configs/laptop.yaml` |
-| 7, 11, 12 | `src/chess_engine/eval/`, `scripts/evaluate.py`, `scripts/compare_models.py`, `scripts/elo_validation.py`, `reports/eval/`, `reports/elo/` |
+| 7, 11, 12 | `src/chess_engine/eval/`, `scripts/evaluate.py`, `scripts/compare_models.py`, `scripts/elo_validation.py`, `scripts/estimate_rating.py`, `scripts/evaluate_rating_estimation.py`, `reports/eval/`, `reports/elo/`, `reports/rating/` |
 | 8, 17, 18, 19 | `src/chess_engine/bot/`, `scripts/play.py`, `scripts/bot_match.py` |
 | 14, 15 | `src/chess_engine/review/` |
 | 9 | `src/chess_engine/api/` (`schemas`, `store`, `service`, `app`), `scripts/serve.py` |
