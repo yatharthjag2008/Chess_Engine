@@ -251,6 +251,19 @@ Stockfish's weakest setting. [Report](reports/elo/laptop_64x6_best_model/report.
 
 ![Dial vs. measured strength](reports/elo/laptop_64x6_best_model/dial_vs_measured.png)
 
+## Review a game
+
+```bash
+python scripts/review_game.py game.pgn                     # accuracy, mistakes, key moments, move list
+python scripts/review_game.py --lichess YourName           # your latest Lichess game
+python scripts/review_game.py game.pgn --annotated out.pgn # a PGN with evaluations and ?! ? ?? for any viewer
+```
+
+Stockfish analyses every position (depth 14 by default); each move is judged by how much of the mover's winning
+chances it gave away (Lichess's method): best, good, inaccuracy, mistake or blunder, with an accuracy per player
+and the 3-5 key moments. A typical blitz game takes about a minute on a laptop; reviews are cached. The API offers
+`POST /api/review` and `GET /api/games/{id}/review`.
+
 ## Import your games
 
 ```bash

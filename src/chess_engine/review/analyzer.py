@@ -107,7 +107,8 @@ class SideSummary:
     def describe(self) -> str:
         if not self.moves:
             return f"{self.color}: no moves"
-        errors = ", ".join(f"{self.counts[k]} {k}{'s' if self.counts[k] != 1 else ''}"
+        plural = {"inaccuracy": "inaccuracies", "mistake": "mistakes", "blunder": "blunders"}
+        errors = ", ".join(f"{self.counts[k]} {k if self.counts[k] == 1 else plural[k]}"
                            for k in ("inaccuracy", "mistake", "blunder") if self.counts[k])
         return (f"{self.color.capitalize()}: accuracy {self.accuracy:.0f}%, average loss {self.average_cp_loss:.0f} cp"
                 + (f", {errors}" if errors else ", no errors"))

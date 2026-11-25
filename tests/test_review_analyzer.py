@@ -128,3 +128,10 @@ def test_graph_and_json_round_trip() -> None:
     assert again.moves[5].classification is MoveClass.BLUNDER and again.moves[0].alternatives[0].san == "e4"
     assert review_to_dict(again) == review_to_dict(review)
     assert eval_graph(review_pgn('[Result "*"]\n\n1. e4 *\n', ScriptedAnalyzer(), CFG))[0]["ply"] == 0
+
+
+def test_describe_uses_proper_plurals() -> None:
+    from chess_engine.review.analyzer import SideSummary
+
+    side = SideSummary("white", 30, 88.0, 40.0, {"best": 20, "good": 5, "inaccuracy": 2, "mistake": 1, "blunder": 2})
+    assert side.describe() == "White: accuracy 88%, average loss 40 cp, 2 inaccuracies, 1 mistake, 2 blunders"

@@ -17,7 +17,7 @@ See [PLAN.md](PLAN.md) for details on each step.
 - [x] 11. Elo dial validation
 - [x] 12. Rating estimation
 - [x] 13. Game import
-- [ ] 14. Game review engine
+- [x] 14. Game review engine
 - [ ] 15. "Your level vs. next level" + mistake coach
 - [ ] 16. Review UI
 - [ ] 17. Tiered hints
@@ -818,3 +818,56 @@ adding a contact address to `USER_AGENT` in `game_import.py` is the likely fix.
 - **Usernames are validated before any request**, both to give a clear error and so a crafted name cannot reach
   another path on the API.
 - **Only the software is named in requests**, never the user, as the project's privacy rule requires.
+
+## Step 14: Game review engine (done 2026-11-25)
+
+**Built** (`chess_engine.review`)
+- `scoring`: Lichess's formulas: win % from centipawns (`50 + 50(2 / (1 + e^(-0.00368 cp)) - 1)`, capped at +-1000
+  cp, mates 100 / 0), move accuracy (`103.17 e^(-0.0435 * win % lost) - 3.17`, +1, clamped), and game accuracy (the
+  mean of a volatility-weighted mean and the harmonic mean of the move accuracies).
+- `classify`: best (the engine's move, or at most 2 win-% points lost) / good / inaccuracy (10+) / mistake (20+) /
+  blunder (30+), with symbols and PGN NAGs.
+- `engine`: `StockfishAnalyzer` (fixed depth, 3 lines per position, positions cached; finished games scored
+  without the engine).
+- `analyzer`: `review_game` analyses every position once and judges each move by the mover's win chance with the
+  best move against after the move played (the played move's own line when the engine considered it); per-side
+  summary (accuracy, average centipawn loss, moves per class); key moments (the 5 biggest losses, in game order,
+  with a one-line explanation and the better move); eval-graph data; JSON round trip.
+- `annotate`: annotated PGN (`[%eval]` per move, `?!` `?` `??`, the better move as a variation).
+- `run`: `run_review` (configured Stockfish, disk cache keyed by moves + start position + depth + lines +
+  thresholds). Script: `scripts/review_game.py` (a PGN file, or the latest game of a Lichess / Chess.com user via
+  step 13). API: `POST /api/review`, `GET /api/games/{id}/review` (503 `stockfish_unavailable` without Stockfish).
+- Tests (about 40 new): a scripted analyser gives exact evaluations for every rule (classes, the move the engine did
+  not consider, key-moment selection, plurals), real Stockfish checks the chess (mate in one, the scholar's-mate
+  blunder), plus the PGN export, the cache, the script and the endpoints.
+
+**A real review** (`python scripts/review_game.py tests/fixtures/lichess_real.pgn --index 2`, a real 89-ply blitz
+game from the fixture, Stockfish 19 at depth 14 with 3 lines): 61 seconds (about 0.7 s per position on this laptop;
+reviews are cached afterwards).
+
+```
+White: accuracy 89%, average loss 49 cp, 2 inaccuracies
+Black: accuracy 85%, average loss 59 cp, 4 inaccuracies
+
+Key moments:
+  23... Qb6?! dropped Black's chances from 40% to 20%. Better was Qd7.
+  25... Qa6?! dropped Black's chances from 19% to 6%. Better was Qc6.
+  26. Nb4?! dropped White's chances from 94% to 76%. Better was Bxc5.
+  26... Qa4?! dropped Black's chances from 24% to 5%. Better was Qb7.
+  38. Ne6?! dropped White's chances from 98% to 80%. Better was Ne5+.
+```
+
+The real run also showed "2 inaccuracys" in the summary line; that is fixed and tested.
+
+**Decisions**
+- **Judge moves by win % lost, not centipawns** (as Lichess does): +3 -> +6 and -0.5 -> -3.5 are both "300 cp", but
+  only the second changes the game. Centipawn loss is still reported (capped at 1000 per side).
+- **Lichess's published formulas and thresholds** for accuracy and classes, so numbers are comparable with what
+  players already know.
+- **One analysis per position, reused for two moves**: the analysis of the position after a move is also the
+  "before" of the next move, which halves the engine time. When the move played is one of the engine's lines,
+  its own evaluation from the same search is used, which keeps "before" and "after" consistent.
+- **Key moments are errors only** (inaccuracy or worse), the biggest losses, shown in game order, with a template
+  sentence; the step-15 coach builds on these.
+- **Reviews are cached**, because a game takes about a minute at depth 14 on a laptop and is usually looked at more
+  than once (the review page, the coach).
