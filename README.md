@@ -264,6 +264,24 @@ bot = load_bot(load_config(), rating=1400)
 choice = bot.choose_move(board)          # choice.move, choice.san, choice.prob, choice.candidates
 ```
 
+## API server
+
+```bash
+python scripts/serve.py                       # http://127.0.0.1:8000, interactive docs at /docs
+```
+
+A small FastAPI backend for playing the bot from other programs (and the web UI): start a game with a rating,
+colour and optional time control, send moves, and get the bot's reply, legal moves, clocks and result back as JSON.
+
+```bash
+curl -X POST localhost:8000/api/games -H "Content-Type: application/json" -d '{"rating": 1200, "time_control": "5+0"}'
+curl -X POST localhost:8000/api/games/<id>/moves -H "Content-Type: application/json" -d '{"move": "e4"}'
+```
+
+Endpoints: `GET /api/health`, `POST /api/games`, `GET /api/games/{id}`, `GET .../legal-moves`, `POST .../moves`,
+`POST .../bot-move`, `POST .../resign`, `POST .../takeback`, `GET .../pgn`. See [PROGRESS.md](PROGRESS.md) for
+the full table and error codes.
+
 ## Project structure
 
 ```
@@ -278,7 +296,7 @@ src/chess_engine/
   eval/               move-match accuracy, baselines, calibration (later: Elo validation, rating estimation)
   bot/                move sampling, games + clocks, terminal play, self-play (later: hints, adaptive, styles)
   review/             Stockfish game review, level comparison
-  api/                FastAPI backend
+  api/                FastAPI backend (schemas, game store, service, app)
 web/                  frontend
 scripts/              command-line entry points
 tests/                pytest suite

@@ -12,7 +12,7 @@ See [PLAN.md](PLAN.md) for details on each step.
 - [x] 6. Training pipeline
 - [x] 7. Evaluation + baselines
 - [x] 8. Bot move selection + CLI
-- [ ] 9. Backend API
+- [x] 9. Backend API
 - [ ] 10. Web UI for playing
 - [ ] 11. Elo dial validation
 - [ ] 12. Rating estimation
@@ -562,3 +562,56 @@ about a minute per 40 games)
   `Game`, `ChessClock` and `BotPlayer` unchanged.
 - **The bot is charged its real thinking time** on the clock (a few milliseconds per move); simulating human
   thinking time is not part of the model yet.
+
+## Step 9: Backend API (done 2026-11-24)
+
+**Built** (`chess_engine.api`)
+- `schemas`: request and response bodies (pydantic) with validation: rating 400-3000, colour, time control (`3+2`),
+  sampling overrides, a legal starting FEN; responses give moves in both UCI (for a board widget) and SAN.
+- `store`: in-memory games under random 16-character ids; games idle for `idle_minutes` are dropped, and at
+  `max_games` the least recently used one makes room; thread-safe.
+- `service`: `GameService`, the game logic without HTTP: create (the bot opens if it has White), play a move (with
+  the bot's reply in the same call by default), bot move, resign, takeback, PGN, and server-side clocks (flag fall
+  checked on every request, both clocks passed to the bot).
+- `app`: `create_app`, the FastAPI app; the model is loaded once at startup.
+- Script: `scripts/serve.py` (uvicorn). Config: the `api:` section. Dev dependency: `httpx` (FastAPI's test client).
+- Tests (about 40 new): validation, the store's expiry and cap with a fake time source, the service, and every
+  endpoint over HTTP with a small in-memory model, including a game to checkmate, a time forfeit, takebacks,
+  CORS and the error format.
+
+**Endpoints** (all under `/api`, JSON; interactive docs at `/docs`)
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/api/health` | status, model file, games in memory |
+| POST | `/api/games` | start a game: `rating`, `color` (white/black/random), `your_rating`, `time_control`, `temperature`, `top_k`, `top_p`, `seed`, `fen` |
+| GET | `/api/games/{id}` | the state: FEN, turn, moves (SAN + UCI), legal moves, clocks, outcome, the bot's last move with its candidates |
+| GET | `/api/games/{id}/legal-moves` | the side to move's legal moves |
+| POST | `/api/games/{id}/moves` | `{"move": "e4"}`; the bot replies in the same response unless `"reply": false` |
+| POST | `/api/games/{id}/bot-move` | the bot plays (after a move sent with `"reply": false`) |
+| POST | `/api/games/{id}/resign` | you resign |
+| POST | `/api/games/{id}/takeback` | undo your last move and the bot's reply (untimed games) |
+| GET | `/api/games/{id}/pgn` | the game as PGN |
+
+Errors always look like `{"error": "<code>", "detail": "<message>"}`: 404 `game_not_found`; 409 `game_over`,
+`not_your_turn`, `not_bots_turn`, `nothing_to_take_back`, `timed_game`; 422 `illegal_move`, `invalid_request`.
+
+**Smoke test** (`python scripts/serve.py`, the step-6 model, a 5+0 game at rating 1200 over curl): the server
+starts in a few seconds, each move round trip with the bot's reply takes well under a second on the laptop CPU,
+the clocks run (the bot spends ~0.05 s per move), and the bot's candidates come back with every reply
+(after 1. e4: e5 48%, c5 11%, d5 11%).
+
+**Decisions**
+- **One model for the whole server, one `BotPlayer` per game.** Loading the model takes a few seconds and ~10 MB of
+  memory; each game only needs its own rating, sampling settings and random generator.
+- **The bot replies in the same request by default** (`reply: true`), so a client needs one round trip per move;
+  `reply: false` + `/bot-move` lets a UI show your move first and then ask for the bot's.
+- **Game logic in a service class, not in the route functions**, so it is tested without HTTP and the routes stay
+  one line each. The terminal game (step 8) and the API share `Game`, `ChessClock` and `BotPlayer`.
+- **Clocks live on the server** and a flag fall is checked on every request, so a client cannot cheat or forget
+  the time; timed games do not allow takebacks (the clocks would need rewinding).
+- **Games are in memory only.** This is a local, single-user server; finished games are kept by saving their PGN.
+  Ids are random (`secrets.token_urlsafe`) so one game cannot be guessed from another.
+- **Local by default** (`127.0.0.1`) with CORS limited to the local origins the web UI (step 10) will use.
+- **`httpx` for the test client.** Starlette 1.10 prints a deprecation warning suggesting a package named `httpx2`
+  instead; that package was not installed (it is new and was not vetted), so API tests show one harmless warning.
