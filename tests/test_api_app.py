@@ -55,3 +55,47 @@ def test_model_loaded_from_the_config(tmp_path, default_config: Config) -> None:
     with TestClient(create_app(cfg)) as c:
         assert c.get("/api/health").json()["model"] == "m.pt"
         assert c.post("/api/games", json={}).status_code == 201
+
+
+def _new(client: TestClient, **body) -> dict:
+    return client.post("/api/games", json={"seed": 5, **body}).json()
+
+
+def test_legal_moves_endpoint(client: TestClient) -> None:
+    game = _new(client)
+    moves = client.get(f"/api/games/{game['id']}/legal-moves").json()
+    assert len(moves) == 20 and {"uci", "san", "from_square", "to_square", "promotion"} <= set(moves[0])
+    assert client.get("/api/games/nope/legal-moves").status_code == 404
+
+
+def test_play_a_move_and_get_the_reply(client: TestClient) -> None:
+    game = _new(client)
+    response = client.post(f"/api/games/{game['id']}/moves", json={"move": "e2e4"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["played"] == "e4" and body["bot_move"]["san"] == body["state"]["moves_san"][1]
+    assert len(body["bot_move"]["candidates"]) == 5 and 0 < body["bot_move"]["prob"] <= 1
+    assert body["state"]["turn"] == "white" and body["state"]["last_bot_move"] == body["bot_move"]
+
+
+def test_move_errors(client: TestClient) -> None:
+    game = _new(client)
+    url = f"/api/games/{game['id']}/moves"
+    illegal = client.post(url, json={"move": "e5"})
+    assert illegal.status_code == 422 and illegal.json()["error"] == "illegal_move"
+    assert client.post(url, json={"move": "Nf3", "reply": False}).status_code == 200
+    turn = client.post(url, json={"move": "d4"})
+    assert turn.status_code == 409 and turn.json()["error"] == "not_your_turn"
+    assert client.post(url, json={}).status_code == 422          # missing move
+    assert client.post("/api/games/nope/moves", json={"move": "e4"}).status_code == 404
+
+
+def test_play_to_checkmate_over_http(client: TestClient) -> None:
+    game = _new(client, fen="7k/8/6K1/8/8/8/R7/1R6 w - - 0 1")
+    url = f"/api/games/{game['id']}/moves"
+    client.post(url, json={"move": "Ra7"})
+    final = client.post(url, json={"move": "Rb8#"}).json()
+    assert final["state"]["status"] == "over" and final["state"]["outcome"]["result"] == "1-0"
+    assert client.get(f"/api/games/{game['id']}/legal-moves").json() == []
+    over = client.post(url, json={"move": "Kh7"})
+    assert over.status_code == 409 and over.json()["error"] == "game_over"

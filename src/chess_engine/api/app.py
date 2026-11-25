@@ -10,6 +10,8 @@ method   path                            what it does
 GET      /api/health                     server status, model file, number of games
 POST     /api/games                      start a game (rating, colour, time control, ...)
 GET      /api/games/{id}                 the full game state (board, moves, legal moves, ...)
+GET      /api/games/{id}/legal-moves     the side to move's legal moves (UCI, SAN, squares)
+POST     /api/games/{id}/moves           play your move; the bot replies unless ``reply`` is false
 =======  ==============================  ===================================================
 
 The model is loaded once when the app starts (from ``bot.model`` in the config),
@@ -24,9 +26,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from chess_engine.api.schemas import GameState, Health, NewGameRequest
-from chess_engine.api.service import GameService
+from chess_engine.api.schemas import GameState, Health, LegalMove, MoveRequest, MoveResponse, NewGameRequest, legal_moves
+from chess_engine.api.service import GameRuleError, GameService
 from chess_engine.api.store import GameNotFoundError, Session
+from chess_engine.bot.game import IllegalMoveError
 from chess_engine.config import Config, load_config
 from chess_engine.model.inference import MovePredictor, load_model
 
@@ -60,6 +63,14 @@ def create_app(cfg: Config | None = None, predictor: MovePredictor | None = None
         return JSONResponse(status_code=404, content={"error": "game_not_found",
                                                       "detail": "no such game (unknown id, or it expired)"})
 
+    @app.exception_handler(GameRuleError)
+    async def rule_error(request: Request, exc: GameRuleError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"error": exc.code, "detail": str(exc)})
+
+    @app.exception_handler(IllegalMoveError)
+    async def illegal_move(request: Request, exc: IllegalMoveError) -> JSONResponse:
+        return JSONResponse(status_code=422, content={"error": "illegal_move", "detail": str(exc)})
+
     @app.get("/api/health", response_model=Health)
     def health(request: Request) -> Health:
         return Health(status="ok", model=request.app.state.model_name, games=len(service(request).store))
@@ -72,5 +83,14 @@ def create_app(cfg: Config | None = None, predictor: MovePredictor | None = None
     @app.get("/api/games/{game_id}", response_model=GameState)
     def get_game(game_id: str, request: Request) -> GameState:
         return service(request).state(session(request, game_id))
+
+    @app.get("/api/games/{game_id}/legal-moves", response_model=list[LegalMove])
+    def get_legal_moves(game_id: str, request: Request) -> list[LegalMove]:
+        game = session(request, game_id).game
+        return [] if game.is_over else legal_moves(game.board)
+
+    @app.post("/api/games/{game_id}/moves", response_model=MoveResponse)
+    def play_move(game_id: str, body: MoveRequest, request: Request) -> MoveResponse:
+        return service(request).play(session(request, game_id), body.move, body.reply)
 
     return app
