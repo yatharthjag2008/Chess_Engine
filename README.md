@@ -343,6 +343,13 @@ panel shows what players of that rating usually choose in that position. Games c
 
 ![The play page](reports/web/play_page.png)
 
+The **Review** page (`http://127.0.0.1:8000/review.html`, or "Review this game" after a game against the bot)
+reviews a pasted PGN or your recent Lichess / Chess.com games: step through the moves with Stockfish's verdict on
+each, the better move shown on the board, an eval graph, accuracy per player, key moments and the coach's notes on
+your moves (with an estimate of the rating you played at).
+
+![The review page](reports/web/review_page.png)
+
 ## API server
 
 The same server also exposes the JSON API (interactive docs at `/docs`):
@@ -374,7 +381,7 @@ src/chess_engine/
   bot/                move sampling, games + clocks, terminal play, self-play (later: hints, adaptive, styles)
   review/             Stockfish game review, level comparison
   api/                FastAPI backend (schemas, game store, service, app)
-web/                  browser play page (plain HTML/CSS/JS, no build step)
+web/                  browser play and review pages (plain HTML/CSS/JS, no build step)
 scripts/              command-line entry points
 tests/                pytest suite
 reports/              generated plots and result tables

@@ -19,7 +19,7 @@ See [PLAN.md](PLAN.md) for details on each step.
 - [x] 13. Game import
 - [x] 14. Game review engine
 - [x] 15. "Your level vs. next level" + mistake coach
-- [ ] 16. Review UI
+- [x] 16. Review UI
 - [ ] 17. Tiered hints
 - [ ] 18. Adaptive difficulty
 - [ ] 19. Style imitation + ghost mode
@@ -926,3 +926,44 @@ Coach report for Black (rated about 1109)
   explanation says so plainly with numbers instead of inventing a reason.
 - **Reuse the review**: level moves are valued from the review's engine lines when possible, and the whole review is
   cached, so coaching an already reviewed game takes seconds.
+
+## Step 16: Review UI (done 2026-11-25)
+
+**Built** (`web/review.html`, `web/css/review.css`, `web/js/review.js`; Play / Review links on both pages)
+- **Choosing a game**: paste PGN (one or more games), or fetch recent games from Lichess or Chess.com by username
+  (the step-13 import endpoints). Games are listed with players, ratings, result, speed, date and length; your side
+  is found from the username, or picked with "I played White / Black".
+- **The review** (`POST /api/review`): your side at the bottom; the move list coloured by class, errors always with
+  their symbol (?! ? ??), never colour alone. Stepping by buttons, arrow / Home / End keys, or clicking a move.
+- **This move**: verdict, evaluation and win chance before and after, Stockfish's better move ("Show on board" shows
+  the position before the move with its squares marked) and its top alternatives.
+- **Eval graph**: White's win chance per ply as an inline SVG area, errors marked, a tooltip per ply, click to jump,
+  a line at the current move.
+- **Summary**: accuracy, average loss and moves per class for both players; key moments jump to their move.
+- **Coach** (`POST /api/coach`, run in the background after the review): your rating and where it came from, how
+  often you played your level's and the next level's favourite move, the note on each of your moves, "Next note",
+  coaching again at another rating, and an on-demand performance estimate from the game (`/api/rating-estimate`).
+- **From the play page**: the result banner has "Review this game" (`review.html#game=<id>` reviews the bot game
+  from the side you played).
+- Busy and error states: buttons disabled while a request runs, a spinner, and plain hints for a missing Stockfish
+  or an unreachable server; a failed review hides the previous one.
+- Reviews now include `fen_after` for each move, so the page shows every position without a chess library.
+- Tests: 18 end-to-end tests against the real app (a scripted analyser with one blunder, so no Stockfish is needed,
+  and a temporary data directory) and 6 unit tests on a hand-made review (Black to move first, a clean game,
+  Stockfish's own move, no moves).
+
+![The review page](reports/web/review_page.png)
+
+**Checked with screenshots** (a real bot game reviewed by Stockfish at depth 14): the key moments named the move
+twice, a heading had no space above it, the rating box was unstyled and the "good" dot was invisible in dark mode;
+all fixed. At 390 px the page is one column with no horizontal scroll (checked inside an iframe, as headless
+Chrome will not open a window narrower than 504 px).
+
+**Decisions**
+- **One page, no build step**, like the play page: plain ES modules and an inline SVG graph, no chart library.
+- **The coach runs after the review is shown**, so the board, graph and summary are usable while it works; the
+  rating estimate only runs when asked, as it is the slowest call.
+- **"Show on board" goes back to the position before the move**: the better move only makes sense there, and the
+  next step returns to the game.
+- **The level comparison is shown as it is**: with the current model it rarely disagrees (step 15), so most moves
+  get "Nothing to add about this move" rather than invented advice.
