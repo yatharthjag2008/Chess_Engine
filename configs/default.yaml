@@ -192,3 +192,14 @@ coach:                           # step 15: "your level vs. next level" and the 
                                  # more win-% points than yours (by Stockfish)
   top_moves: 3                   # likeliest moves shown per level
   max_moments: 5                 # level-comparison moments shown per game
+
+hints:                           # step 17: tiered hints (nudge -> point -> show) while playing the bot
+  limit: 3                       # hints per game by default (a game may choose 0..max_limit); any hint makes the
+  max_limit: 20                  # game unrated, so adaptive difficulty (step 18) ignores it
+  depth: 12                      # Stockfish depth for a hint
+  multipv: 2                     # the best move and the runner-up (to tell an "only move")
+  # How vague the first hint is depends on how often players at your rating find the best move (the model's
+  # probability for it at your rating):
+  easy_find_rate: 0.35           # at least this: usually found, so the nudge only says what kind of move to look for
+  hard_find_rate: 0.10           # below this: rarely found, so the nudge also names the piece type
+  only_move_gap: 15              # the best move keeps this many win-% points more than the next: "only move"

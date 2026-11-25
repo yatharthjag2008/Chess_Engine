@@ -384,6 +384,26 @@ class CoachConfig(_StrictModel):
         return offsets
 
 
+class HintsConfig(_StrictModel):
+    """Tiered hints while playing the bot (see ``chess_engine.bot.hints``)."""
+
+    limit: int = Field(default=3, ge=0, le=99)          # hints per game unless the game says otherwise; 0 = none
+    max_limit: int = Field(default=20, ge=1, le=99)     # the most a game may ask for
+    depth: PositiveInt = 12                              # Stockfish depth for a hint (quicker than a review)
+    multipv: PositiveInt = 2                             # lines: the best move, and the next to tell "only move"
+    easy_find_rate: float = Field(default=0.35, gt=0, lt=1)   # players at your rating usually find it: vaguest nudge
+    hard_find_rate: float = Field(default=0.10, gt=0, lt=1)   # rarely found: the most specific nudge
+    only_move_gap: float = Field(default=15, ge=0, le=100)    # win-% points between best and second: "only move"
+
+    @model_validator(mode="after")
+    def _check(self) -> HintsConfig:
+        if not self.hard_find_rate < self.easy_find_rate:
+            raise ValueError("hard_find_rate must be below easy_find_rate")
+        if self.limit > self.max_limit:
+            raise ValueError("limit must not exceed max_limit")
+        return self
+
+
 class Config(_StrictModel):
     """The full project configuration."""
 
@@ -401,6 +421,7 @@ class Config(_StrictModel):
     game_import: GameImportConfig = Field(default_factory=GameImportConfig)
     review: ReviewConfig = Field(default_factory=ReviewConfig)
     coach: CoachConfig = Field(default_factory=CoachConfig)
+    hints: HintsConfig = Field(default_factory=HintsConfig)
 
 
 # --------------------------------------------------------------------------- loading
