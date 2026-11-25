@@ -21,6 +21,7 @@ import chess
 
 from chess_engine.bot.clock import ChessClock
 from chess_engine.bot.game import Game
+from chess_engine.bot.hints import HintBudget
 from chess_engine.bot.player import BotMove, BotPlayer
 
 
@@ -39,6 +40,7 @@ class Session:
     your_rating: int | None
     clock: ChessClock | None = None
     last_bot_move: BotMove | None = None
+    hints: HintBudget = field(default_factory=lambda: HintBudget(0))
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     last_used: float = 0.0
 

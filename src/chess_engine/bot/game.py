@@ -98,6 +98,7 @@ class Game:
         self.date = datetime.date.today()
         self.sans: list[str] = []
         self._ended: Outcome | None = None  # resignation or time forfeit
+        self.extra_headers: dict[str, str] = {}  # more PGN headers (e.g. hints used)
 
     @property
     def turn(self) -> chess.Color:
@@ -201,4 +202,6 @@ class Game:
             h["Termination"] = outcome.termination
         if self.start_fen != chess.STARTING_FEN:
             h["SetUp"], h["FEN"] = "1", self.start_fen
+        for key, value in self.extra_headers.items():
+            h[key] = value
         return str(game) + "\n"

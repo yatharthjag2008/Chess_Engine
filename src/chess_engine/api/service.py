@@ -24,6 +24,7 @@ import chess
 from chess_engine.api.schemas import (
     ClockState,
     GameState,
+    HintsState,
     MoveResponse,
     NewGameRequest,
     bot_move_info,
@@ -34,6 +35,7 @@ from chess_engine.api.schemas import (
 from chess_engine.api.store import GameStore, Session
 from chess_engine.bot.clock import ChessClock, TimeControl
 from chess_engine.bot.game import Game, IllegalMoveError
+from chess_engine.bot.hints import HintBudget
 from chess_engine.bot.player import BotPlayer, sampling_from_config
 from chess_engine.bot.sampling import SamplingSettings
 from chess_engine.config import Config
@@ -92,7 +94,11 @@ class GameService:
                                 else (bot.rating, request.your_rating))
         game = Game(white, black, white_elo, black_elo, fen=request.fen, event="Game vs. human-like bot")
         clock = ChessClock(TimeControl.parse(request.time_control), self._now) if request.time_control else None
-        session = self.store.add(Session(GameStore.new_id(), game, bot, human, request.your_rating, clock))
+        limit = request.hint_limit if request.hint_limit is not None else self.cfg.hints.limit
+        _require(limit <= self.cfg.hints.max_limit, "too_many_hints",
+                 f"at most {self.cfg.hints.max_limit} hints per game")
+        session = Session(GameStore.new_id(), game, bot, human, request.your_rating, clock, hints=HintBudget(limit))
+        session = self.store.add(session)
         if game.turn != human:
             self._bot_plays(session)
         return session
@@ -189,8 +195,13 @@ class GameService:
             return self._state(session)
 
     def pgn(self, session: Session) -> str:
+        """The game as PGN; a game with hints says so (and how many) in its headers."""
         with session.lock:
-            return session.game.pgn()
+            game, hints = session.game, session.hints
+            if not hints.rated:
+                game.extra_headers["Hints"] = str(hints.used)
+                game.extra_headers["Annotator"] = "unrated: hints used"
+            return game.pgn()
 
     # ------------------------------------------------------------------ state
 
@@ -220,6 +231,8 @@ class GameService:
             legal_moves=[] if outcome else legal_moves(board),
             clock=self._clock_state(session),
             last_bot_move=bot_move_info(session.last_bot_move) if session.last_bot_move else None,
+            hints=HintsState(limit=session.hints.limit, used=session.hints.used, left=session.hints.left,
+                             rated=session.hints.rated),
         )
 
 

@@ -105,3 +105,27 @@ def test_timed_game_clocks_and_flag(default_config: Config) -> None:
 
 def test_untimed_game_has_no_clock(service: GameService) -> None:
     assert service.state(service.create(NewGameRequest())).clock is None
+
+
+def test_hint_limit_and_rated_state(service: GameService, default_config: Config) -> None:
+    session = service.create(NewGameRequest(seed=3))
+    hints = service.state(session).hints
+    assert (hints.limit, hints.used, hints.left, hints.rated) == (default_config.hints.limit, 0, hints.limit, True)
+    assert "[Hints" not in service.pgn(session)
+    off = service.create(NewGameRequest(hint_limit=0))
+    assert service.state(off).hints.limit == 0 and service.state(off).hints.rated
+    with pytest.raises(GameRuleError) as err:
+        service.create(NewGameRequest(hint_limit=default_config.hints.max_limit + 1))
+    assert err.value.code == "too_many_hints"
+
+
+def test_a_game_with_hints_is_unrated_and_says_so_in_the_pgn(service: GameService) -> None:
+    session = service.create(NewGameRequest(seed=4, hint_limit=2))
+    session.hints.take(session.game.board)          # what the hint endpoint does
+    state = service.state(session)
+    assert (state.hints.used, state.hints.left, state.hints.rated) == (1, 1, False)
+    pgn = service.pgn(session)
+    assert '[Hints "1"]' in pgn and '[Annotator "unrated: hints used"]' in pgn
+    service.play(session, "e4")
+    service.takeback(session)
+    assert service.state(session).hints.used == 1, "a takeback does not give the hint back"

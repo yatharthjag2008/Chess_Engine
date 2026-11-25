@@ -42,6 +42,8 @@ class NewGameRequest(_Body):
     top_p: float | None = Field(default=None, gt=0, le=1)
     seed: int | None = Field(default=None, description="reproducible bot moves")
     fen: str | None = Field(default=None, description="start from this position instead of the start position")
+    hint_limit: int | None = Field(default=None, ge=0, le=99,
+                                   description="hints allowed in this game (0 = none); default from the config")
 
     @field_validator("time_control")
     @classmethod
@@ -114,6 +116,13 @@ class OutcomeInfo(BaseModel):
     description: str
 
 
+class HintsState(BaseModel):
+    limit: int = Field(description="hints allowed in this game")
+    used: int = Field(description="positions where you took a hint")
+    left: int
+    rated: bool = Field(description="false once a hint was used (adaptive difficulty ignores the game)")
+
+
 class GameState(BaseModel):
     id: str
     fen: str
@@ -132,6 +141,7 @@ class GameState(BaseModel):
     legal_moves: list[LegalMove] = Field(description="the side to move's legal moves (empty when the game is over)")
     clock: ClockState | None
     last_bot_move: BotMoveInfo | None
+    hints: HintsState
 
 
 class MoveResponse(BaseModel):
