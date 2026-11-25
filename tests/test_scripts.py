@@ -487,6 +487,27 @@ def test_lichess_bot_script(tmp_path: Path, capsys: pytest.CaptureFixture[str], 
     assert script.main(["--model", str(model), "--rating", "9999"], session=fake) == 1
 
 
+def test_check_setup_lists_what_you_can_use(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    import yaml
+
+    script = _load("check_setup")
+    model = _small_model_file(tmp_path)
+    config = tmp_path / "c.yaml"
+    config.write_text(yaml.safe_dump({"paths": {"data_dir": str(tmp_path / "data")},
+                                      "bot": {"model": str(model)}}), encoding="utf-8")
+    script.main(["--config", str(config)])
+    out = capsys.readouterr().out
+    assert "What you can use:" in out and f"OK  trained model     {model}" in out
+    assert "OK  play the bot (browser, terminal)" in out
+    assert "styles and ghosts: 0" in out and "adaptive rating:   1200 after 0 rated games" in out
+    config.write_text(yaml.safe_dump({"paths": {"data_dir": str(tmp_path / "data")},
+                                      "bot": {"model": str(tmp_path / "none.pt")}}), encoding="utf-8")
+    script.main(["--config", str(config)])
+    out = capsys.readouterr().out
+    assert "--  trained model" in out and "train one:" in out and "--  play the bot" in out
+    assert not (tmp_path / "data" / "adaptive.json").exists(), "checking never writes your profile"
+
+
 def test_hint_script(tmp_path: Path) -> None:
     from review_helpers import ScriptedAnalyzer
 

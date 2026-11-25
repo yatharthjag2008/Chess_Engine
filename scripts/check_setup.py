@@ -1,7 +1,9 @@
 """Check that the development environment is ready.
 
-Prints the Python version, key package versions, the loaded config, and whether
-Stockfish was found and responds. Exits with code 1 if something is missing.
+Prints the Python version, key package versions, the loaded config, whether
+Stockfish was found and responds, and which features this setup can use (a trained
+model, Stockfish, styles, your adaptive rating). Exits with code 1 if something
+required is missing (a model that is not trained yet is reported but not an error).
 
 Usage:
     python scripts/check_setup.py
@@ -14,7 +16,9 @@ import argparse
 import sys
 from importlib.metadata import PackageNotFoundError, version
 
+from chess_engine.bot.adaptive import ProfileStore
 from chess_engine.config import ConfigError, load_config
+from chess_engine.style.store import StyleLibrary
 from chess_engine.stockfish import StockfishError, get_stockfish
 
 PACKAGES = ["chess", "torch", "numpy", "pandas", "pyarrow", "zstandard", "pydantic", "fastapi", "pytest"]
@@ -53,12 +57,26 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  sample mode    {'ON, first ' + format(sample.max_games, ',') + ' games' if sample.enabled else 'OFF'}")
 
     print("\nStockfish:")
+    stockfish = False
     try:
         info = get_stockfish(config)
         print(f"  OK  {info.name}  ({info.path}); test move from start: {info.test_move}")
+        stockfish = True
     except StockfishError as exc:
         print("  " + str(exc).replace("\n", "\n  "))
         ok = False
+
+    print("\nWhat you can use:")
+    model = config.bot.model.is_file()
+    print(f"  {'OK' if model else '--'}  trained model     {config.bot.model}"
+          + ("" if model else "  (train one: python scripts/train.py --config configs/laptop.yaml)"))
+    for feature, needs in [("play the bot (browser, terminal)", model), ("reviews", stockfish),
+                           ("hints and the coach", model and stockfish), ("rating estimation, styles", model)]:
+        print(f"  {'OK' if needs else '--'}  {feature}")
+    styles = StyleLibrary(config.paths.data_dir / config.style.directory).list()
+    print(f"      styles and ghosts: {len(styles)}" + (f" ({', '.join(i.name for i in styles)})" if styles else ""))
+    profile = ProfileStore(config.paths.data_dir / config.adaptive.profile_file, config.adaptive).load()
+    print(f"      adaptive rating:   {profile.rating:.0f} after {profile.games} rated games")
 
     print("\nAll checks passed." if ok else "\nSome checks failed (see above).")
     return 0 if ok else 1
