@@ -26,7 +26,7 @@ built, what was measured (with real runs), and the decisions behind it.
 | 17. Hints | Nudge → piece → move, vaguer when your level usually finds it; hinted games unrated | found moves: median find rate 54% vs. 6.5% missed |
 | 18. Adaptive difficulty | Your level between games (Elo) or live within a game (capped) | settles where results are even |
 | 19. Styles and ghosts | A small adapter per player, or yourself up to a date | better for 8 of 10 real players on unseen games |
-| 20. Polish | README results, deployment guide, Lichess BOT account, coverage pass | 97% statement coverage |
+| 20. Polish | README results, deployment guide, Lichess BOT account, coverage pass | 1,098 tests, 99% statement coverage |
 
 **One finding runs through steps 7, 11, 12, 15, 17 and 18:** the laptop model plays like a human but barely
 changes with the rating it is told. Everything built on that rating sense works and is tested, and gets better as
@@ -53,7 +53,7 @@ soon as a stronger model is trained (`configs/full.yaml`).
 - [x] 17. Tiered hints
 - [x] 18. Adaptive difficulty
 - [x] 19. Style imitation + ghost mode
-- [ ] 20. Polish
+- [x] 20. Polish
 
 ## Step 1: Project setup (done 2026-11-20)
 
@@ -1171,3 +1171,35 @@ most games in the step-2 sample, 24-72 blitz games each, one style per player, t
   rating model with a lean towards the player's habits; at 200 games it is the style alone.
 - **Held-out games choose the epoch**, so overfitting a small set of games can only stop training early, never
   make the bot imitate the player worse than the rating model does.
+
+## Step 20: Polish (done 2026-11-25)
+
+**Built**
+- **README**: a feature table (what to run for each feature), *results at a glance* with a link to every report,
+  the main limitation stated plainly, fresh screenshots, and the project structure brought up to date.
+- **DEPLOY.md**: your own computer, other devices on your network, a server (behind a proxy: the app has no
+  login), and a Lichess BOT account. What was and was not tested is said in the guide.
+- **Lichess BOT account** (`chess_engine.lichess_bot`, `scripts/lichess_bot.py`, optional): streams events,
+  accepts or declines challenges by variant, speed and rated/casual (with Lichess's reason codes), plays one game
+  at a time with the clocks fed to the model, at a fixed rating or matched to the opponent, in any trained style.
+  The token is read from `LICHESS_BOT_TOKEN` only, sent only in the request header, and never printed; the script
+  refuses accounts that are not BOT accounts. Tested against a fake Lichess; not run on a real account (that
+  needs your account and token).
+- **Coverage pass**: 97% before it, 99% after (7,857 statements; the rest are mostly defensive branches). New
+  tests for clocks stopping at mate and resignation, failed hints not being counted, timed terminal hints, model
+  and style files from other versions, failed saves leaving no temporary file, and every one of the 25 scripts
+  having usage notes and a working `--help`.
+- **Cleanup**: an unused import, the empty `bot/styles.py` placeholder from step 1 (styles live in
+  `chess_engine.style`), and the one test warning (Starlette asking for `httpx2`, which the project does not use)
+  filtered with a note. `check_setup.py` now also lists what you can use with your setup (a trained model,
+  Stockfish, styles, your adaptive rating).
+- PROGRESS has an overview table at the top; PLAN's code map is in step order.
+
+**Final state**: 1,098 tests pass in about 4 minutes (Python, plus the browser tests in headless Chrome), with no
+warnings and 99% statement coverage.
+
+**Decisions**
+- **The Lichess integration stays optional and small**: one game at a time, the same move model as everywhere,
+  no extra dependency (`requests` was already there), and nothing in the tests touches the real site.
+- **Honest docs over polished claims**: the README leads with what works and what does not yet (the model's weak
+  sense of rating), and points to the full training config as the next step rather than to more features.
