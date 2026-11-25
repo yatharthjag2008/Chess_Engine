@@ -11,8 +11,8 @@
   --accent: #2a78d6;
   --accent-ink: #ffffff;
   --danger: #d03b3b;
-  --square-light: #eeeed2;
-  --square-dark: #8ca2ad;
+  --square-light: #f0d9b5;
+  --square-dark: #b58863;
   --last-move: rgba(255, 213, 0, 0.42);
   --selected: rgba(42, 120, 214, 0.45);
   --target-dot: rgba(11, 11, 11, 0.28);
@@ -35,8 +35,6 @@
     --ink-muted: #898781;
     --line: #2c2c2a;
     --accent: #3987e5;
-    --square-light: #c9cfb4;
-    --square-dark: #6b7f89;
     --target-dot: rgba(11, 11, 11, 0.35);
     --bar: #3987e5;
   }
@@ -50,12 +48,12 @@
   --ink-2: #c3c2b7;
   --line: #2c2c2a;
   --accent: #3987e5;
-  --square-light: #c9cfb4;
-  --square-dark: #6b7f89;
   --bar: #3987e5;
 }
 
 * { box-sizing: border-box; }
+/* Elements with display rules (the promotion overlay, banners) must still disappear when hidden. */
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
@@ -116,7 +114,7 @@ body {
   width: 100%; height: 100%; border-radius: 0; background: none;
   box-shadow: inset 0 0 0 5px var(--target-dot);
 }
-.coord { position: absolute; font-size: 2.1cqw; font-weight: 600; opacity: 0.75; pointer-events: none; }
+.coord { position: absolute; font-size: 2.2cqw; font-weight: 700; opacity: 0.9; pointer-events: none; }
 .coord.rank { top: 2px; left: 3px; }
 .coord.file { bottom: 1px; right: 4px; }
 .square.light .coord { color: var(--square-dark); }
@@ -129,9 +127,11 @@ body {
   position: relative;
   z-index: 1;
 }
-.piece.white { color: var(--piece-white); -webkit-text-stroke: 1.2px var(--piece-outline);
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25); }
-.piece.black { color: var(--piece-black); }
+/* Outlines drawn with shadows, so they do not eat into the white fill as a text stroke does. */
+.piece.white { color: var(--piece-white);
+  text-shadow: 1px 0 var(--piece-outline), -1px 0 var(--piece-outline), 0 1px var(--piece-outline),
+               0 -1px var(--piece-outline), 0 2px 2px rgba(0, 0, 0, 0.35); }
+.piece.black { color: var(--piece-black); text-shadow: 0 0 2px rgba(255, 255, 255, 0.55), 0 2px 2px rgba(0, 0, 0, 0.3); }
 .piece.dragging { opacity: 0.35; }
 .drag-ghost { position: fixed; pointer-events: none; z-index: 50; transform: translate(-50%, -50%); }
 .board.locked .piece { cursor: default; }

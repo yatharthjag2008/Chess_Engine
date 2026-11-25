@@ -24,6 +24,71 @@ function colorWord(color) {
   return color === "white" ? "White" : "Black";
 }
 
+/** The move list as numbered pairs; the latest move is marked. */
+export function renderMoves(state) {
+  const list = $("move-list");
+  const items = [];
+  const blackStarts = state.fen && state.moves_san.length % 2 === (state.turn === "white" ? 1 : 0);
+  // When the game started from a Black-to-move position, the first row has an empty White cell.
+  const sans = blackStarts ? [null, ...state.moves_san] : state.moves_san;
+  for (let i = 0; i < sans.length; i += 2) {
+    const li = document.createElement("li");
+    const num = document.createElement("span");
+    num.className = "num";
+    num.textContent = `${i / 2 + 1}.`;
+    li.append(num);
+    for (const index of [i, i + 1]) {
+      const cell = document.createElement("span");
+      cell.className = "san";
+      if (sans[index]) cell.textContent = sans[index];
+      if (index === sans.length - 1) cell.classList.add("latest");
+      li.append(cell);
+    }
+    items.push(li);
+  }
+  list.replaceChildren(...items);
+  list.scrollTop = list.scrollHeight;
+}
+
+/** The bot's last move next to the moves players of its rating usually choose there. */
+export function renderThinking(state) {
+  const panel = $("thinking-panel");
+  const move = state.last_bot_move;
+  if (!move) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  $("thinking-caption").textContent =
+    `In the position before ${move.san}, players rated about ${state.bot_rating} chose:`;
+  const rows = move.candidates.map((c) => {
+    const li = document.createElement("li");
+    li.className = "candidate" + (c.uci === move.uci ? " played" : "");
+    li.title = `${c.san}: ${(c.prob * 100).toFixed(1)}%`;
+    const san = document.createElement("span");
+    san.className = "san";
+    san.textContent = c.san;
+    const track = document.createElement("span");
+    track.className = "track";
+    const fill = document.createElement("span");
+    fill.className = "fill";
+    fill.style.width = `${Math.max(1, c.prob * 100)}%`;
+    track.append(fill);
+    const pct = document.createElement("span");
+    pct.className = "pct";
+    pct.textContent = `${Math.round(c.prob * 100)}%`;
+    li.append(san, track, pct);
+    return li;
+  });
+  if (!move.candidates.some((c) => c.uci === move.uci)) {
+    const note = document.createElement("li");
+    note.className = "hint";
+    note.textContent = `It played ${move.san}, a rarer choice (${(move.prob * 100).toFixed(1)}%).`;
+    rows.push(note);
+  }
+  $("candidates").replaceChildren(...rows);
+}
+
 /** Show a game state from the server. */
 export function render(state) {
   ui.game = state;
@@ -37,6 +102,8 @@ export function render(state) {
   $("top-name").textContent = bottomIsHuman ? bot : you;
   $("bottom-name").textContent = bottomIsHuman ? you : bot;
   $("game-panel").hidden = false;
+  renderMoves(state);
+  renderThinking(state);
   if (state.status === "over") {
     setStatus(state.outcome.description);
   } else if (ui.busy) {

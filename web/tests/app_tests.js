@@ -29,6 +29,11 @@ test("a new game as White shows the start position, ready to move", async () => 
   assert(!$("game-panel").hidden, "game panel shown");
 });
 
+test("hidden overlays are really invisible (the promotion backdrop must not dim the board)", () => {
+  equal(getComputedStyle($("promotion")).display, "none");
+  equal(getComputedStyle($("result-banner")).display, "none");
+});
+
 test("clicking a move plays it and the bot answers", async () => {
   clickSquare("e2");
   clickSquare("e4");
@@ -36,6 +41,30 @@ test("clicking a move plays it and the bot answers", async () => {
   equal(app.ui.game.moves_san[0], "e4");
   equal(app.ui.board.mover, "white");
   assert(app.ui.board.squareEl(app.ui.game.last_move.slice(2, 4)).classList.contains("last-move"), "last move shown");
+});
+
+test("the move list and the bot's candidates are shown", async () => {
+  const cells = [...document.querySelectorAll("#move-list .san")].map((c) => c.textContent);
+  equal(cells, app.ui.game.moves_san);
+  equal(document.querySelectorAll("#move-list .num")[0].textContent, "1.");
+  assert(document.querySelector("#move-list .san.latest").textContent === app.ui.game.moves_san[1], "latest marked");
+  assert(!$("thinking-panel").hidden, "candidates panel shown");
+  const rows = document.querySelectorAll("#candidates .candidate");
+  equal(rows.length, 5);
+  assert($("thinking-caption").textContent.includes("about 1200"), $("thinking-caption").textContent);
+  const played = app.ui.game.last_bot_move;
+  if (played.candidates.some((c) => c.uci === played.uci)) {
+    equal(document.querySelector("#candidates .played .san").textContent, played.san);
+  }
+  const width = parseFloat(rows[0].querySelector(".fill").style.width);
+  assert(Math.abs(width - played.candidates[0].prob * 100) < 1.01, `bar width ${width}`);
+});
+
+test("move list rows start empty for White when Black moved first", () => {
+  app.renderMoves({ fen: "x", turn: "white", moves_san: ["e5"] });
+  const cells = [...document.querySelectorAll("#move-list .san")].map((c) => c.textContent);
+  equal(cells, ["", "e5"]);
+  app.renderMoves(app.ui.game);
 });
 
 test("as Black the board is flipped and the bot has opened", async () => {
