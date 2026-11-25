@@ -25,28 +25,41 @@ Every error has the same shape, ``{"error": "<code>", "detail": "<message>"}``:
 404 ``game_not_found``; 409 ``game_over`` / ``not_your_turn`` / ``not_bots_turn`` /
 ``nothing_to_take_back`` / ``timed_game``; 422 ``illegal_move`` / ``invalid_request``.
 Browsers may call the API from the origins in ``api.cors_origins``.
+
+The web UI (``web/``, step 10) is served at ``/`` by the same app, so the page and
+the API share one origin; without a web directory, ``/`` redirects to the API docs.
 """
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from chess_engine.api.schemas import GameState, Health, LegalMove, MoveRequest, MoveResponse, NewGameRequest, legal_moves
 from chess_engine.api.service import GameRuleError, GameService
 from chess_engine.api.store import GameNotFoundError, Session
 from chess_engine.bot.game import IllegalMoveError
-from chess_engine.config import Config, load_config
+from chess_engine.config import PROJECT_ROOT, Config, load_config
 from chess_engine.model.inference import MovePredictor, load_model
 
 
-def create_app(cfg: Config | None = None, predictor: MovePredictor | None = None) -> FastAPI:
-    """The API app for ``cfg`` (default: the project config), using ``predictor`` or the configured model."""
+WEB_DIR = PROJECT_ROOT / "web"
+
+
+def create_app(cfg: Config | None = None, predictor: MovePredictor | None = None,
+               web_dir: str | Path | None = WEB_DIR) -> FastAPI:
+    """The API app for ``cfg`` (default: the project config), using ``predictor`` or the configured model.
+
+    Args:
+        web_dir: Directory served at ``/`` (the web UI); None serves only the API.
+    """
     cfg = cfg or load_config()
 
     @asynccontextmanager
@@ -92,9 +105,11 @@ def create_app(cfg: Config | None = None, predictor: MovePredictor | None = None
     async def illegal_move(request: Request, exc: IllegalMoveError) -> JSONResponse:
         return JSONResponse(status_code=422, content={"error": "illegal_move", "detail": str(exc)})
 
-    @app.get("/", include_in_schema=False)
-    def root() -> RedirectResponse:
-        return RedirectResponse("/docs")
+    web = Path(web_dir) if web_dir is not None else None
+    if web is None or not (web / "index.html").is_file():
+        @app.get("/", include_in_schema=False)
+        def root() -> RedirectResponse:
+            return RedirectResponse("/docs")
 
     @app.get("/api/health", response_model=Health)
     def health(request: Request) -> Health:
@@ -134,4 +149,7 @@ def create_app(cfg: Config | None = None, predictor: MovePredictor | None = None
     def pgn(game_id: str, request: Request) -> str:
         return service(request).pgn(session(request, game_id))
 
+    if web is not None and (web / "index.html").is_file():
+        # Mounted last, so every /api route and /docs is matched first.
+        app.mount("/", StaticFiles(directory=web, html=True), name="web")
     return app

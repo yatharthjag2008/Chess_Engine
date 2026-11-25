@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Human-like Chess Bot</title>
+  <meta name="description" content="Play a chess bot that moves like human players of the rating you choose.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Human-like chess bot</h1>
+    <p class="tagline">It plays the moves real players of your chosen rating play, as often as they play them.</p>
+  </header>
+
+  <main class="layout">
+    <section class="board-column" aria-label="Board">
+      <div class="player-row" id="top-player">
+        <span class="player-name" id="top-name">Bot</span>
+        <span class="clock" id="top-clock" hidden>0:00</span>
+      </div>
+      <div class="board-wrap">
+        <div id="board" class="board" role="grid" aria-label="Chess board"></div>
+        <div id="promotion" class="promotion" hidden></div>
+        <div id="result-banner" class="result-banner" hidden></div>
+      </div>
+      <div class="player-row" id="bottom-player">
+        <span class="player-name" id="bottom-name">You</span>
+        <span class="clock" id="bottom-clock" hidden>0:00</span>
+      </div>
+      <p id="status" class="status" role="status" aria-live="polite">Start a game to play.</p>
+    </section>
+
+    <aside class="side-column">
+      <form id="new-game" class="panel" autocomplete="off">
+        <h2>New game</h2>
+        <label class="field">
+          <span>Bot rating <output id="rating-value">1500</output></span>
+          <input id="rating" name="rating" type="range" min="800" max="2400" step="50" value="1500">
+        </label>
+        <fieldset class="field">
+          <legend>Your side</legend>
+          <div class="segmented" role="radiogroup">
+            <label><input type="radio" name="color" value="white" checked><span>White</span></label>
+            <label><input type="radio" name="color" value="random"><span>Random</span></label>
+            <label><input type="radio" name="color" value="black"><span>Black</span></label>
+          </div>
+        </fieldset>
+        <label class="field">
+          <span>Time control</span>
+          <select id="time-control" name="time_control">
+            <option value="">Untimed</option>
+            <option value="1+0">1+0</option>
+            <option value="3+0">3+0</option>
+            <option value="3+2" selected>3+2</option>
+            <option value="5+0">5+0</option>
+            <option value="5+3">5+3</option>
+            <option value="10+0">10+0</option>
+          </select>
+        </label>
+        <button type="submit" class="primary">Play</button>
+      </form>
+
+      <section class="panel" id="game-panel" hidden>
+        <h2>Moves</h2>
+        <ol id="move-list" class="move-list"></ol>
+        <div class="actions">
+          <button type="button" id="flip">Flip board</button>
+          <button type="button" id="takeback">Take back</button>
+          <button type="button" id="resign" class="danger">Resign</button>
+        </div>
+      </section>
+
+      <section class="panel" id="thinking-panel" hidden>
+        <h2>What players at this rating play</h2>
+        <p class="hint" id="thinking-caption"></p>
+        <ul id="candidates" class="candidates"></ul>
+      </section>
+    </aside>
+  </main>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

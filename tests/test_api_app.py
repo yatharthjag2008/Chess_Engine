@@ -169,8 +169,22 @@ def test_cors_and_root(client: TestClient) -> None:
     assert allowed.headers.get("access-control-allow-origin") == "http://localhost:8000"
     other = client.get("/api/health", headers={"Origin": "http://evil.example"})
     assert "access-control-allow-origin" not in other.headers
-    root = client.get("/", follow_redirects=False)
-    assert root.status_code == 307 and root.headers["location"] == "/docs"
     assert client.get("/docs").status_code == 200
     paths = client.get("/openapi.json").json()["paths"]
     assert {"/api/games", "/api/games/{game_id}/moves", "/api/games/{game_id}/takeback"} <= set(paths)
+
+
+def test_web_ui_is_served_at_the_root(client: TestClient) -> None:
+    page = client.get("/")
+    assert page.status_code == 200 and page.headers["content-type"].startswith("text/html")
+    assert '<div id="board"' in page.text and 'src="js/app.js"' in page.text
+    assert client.get("/index.html").status_code == 200
+    assert client.get("/api/health").json()["status"] == "ok"  # the API is not shadowed
+    assert client.get("/no-such-file.js").status_code == 404
+
+
+def test_without_a_web_directory_the_root_redirects_to_the_docs(default_config: Config, tmp_path) -> None:
+    for web_dir in (None, tmp_path):
+        with TestClient(create_app(default_config, small_predictor(), web_dir=web_dir)) as c:
+            root = c.get("/", follow_redirects=False)
+            assert root.status_code == 307 and root.headers["location"] == "/docs"
