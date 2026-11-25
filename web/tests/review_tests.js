@@ -63,6 +63,37 @@ test("the player's side comes from the username", () => {
   app.ui.username = null;
 });
 
+test("choosing a game offers your side and a Review button", async () => {
+  await app.loadGames("pgn", PGN);
+  app.chooseGame(0, "black");
+  const radios = document.querySelectorAll('input[name="side"]');
+  equal(radios.length, 2);
+  assert(radios[1].checked && !radios[0].checked, "Black chosen");
+  assert(radios[0].nextElementSibling.textContent.includes("Ann"), "names shown");
+  equal(document.querySelector('#game-list button[data-index="0"]').getAttribute("aria-pressed"), "true");
+  radios[0].checked = true;
+  radios[0].dispatchEvent(new Event("change"));
+  equal(app.ui.side, "white");
+  assert($("review-button"), "Review button");
+});
+
+test("the review fills the move list with classes and symbols", async () => {
+  app.chooseGame(0, "black");
+  const review = await app.startReview();
+  assert(review, $("status").textContent);
+  equal(review.moves.length, 7);
+  const cells = document.querySelectorAll("#move-list .san[data-ply]");
+  equal(cells.length, 7);
+  equal(document.querySelectorAll("#move-list li").length, 4);
+  const blunder = cells[5];
+  assert(blunder.classList.contains("blunder"), blunder.className);
+  equal(blunder.textContent, "Nf6??");
+  assert(!$("moves-panel").hidden, "moves shown");
+  equal($("bottom-name").textContent, "Ben");
+  equal(app.ui.board.orientation, "black");
+  assert($("status").textContent.startsWith("Reviewed 7 moves"), $("status").textContent);
+});
+
 test("errors are shown", async () => {
   await app.loadGames("lichess", "x");
   assert($("status").textContent.includes("not a valid"), $("status").textContent);

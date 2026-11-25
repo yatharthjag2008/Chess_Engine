@@ -85,7 +85,12 @@ def api_server(default_config: Config, tmp_path_factory: pytest.TempPathFactory)
     data = tmp_path_factory.mktemp("web_data")
     cfg = default_config.model_copy(update={"paths": default_config.paths.model_copy(
         update={"data_dir": data, "processed_dir": data / "processed", "reports_dir": data / "reports"})})
-    app = create_app(cfg, small_predictor(), review_analyzer=ScriptedAnalyzer())
+    # One scripted blunder for the review page tests: 1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6?? (3...g6 holds).
+    from review_helpers import position_key
+
+    script = {position_key("e4", "e5", "Qh5", "Nc6", "Bc4"): ("g7g6", 0, {"g8f6": -900}),
+              position_key("e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6"): ("h5f7", 900, {})}
+    app = create_app(cfg, small_predictor(), review_analyzer=ScriptedAnalyzer(script))
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -126,4 +131,4 @@ def test_play_page_end_to_end(api_server: str, tmp_path: Path) -> None:
 
 def test_review_page_end_to_end(api_server: str, tmp_path: Path) -> None:
     dom = dump_dom(browser_or_skip(), f"{api_server}/tests/review.html", tmp_path / "profile", budget_ms=20000)
-    check_results(dom, 4)
+    check_results(dom, 6)

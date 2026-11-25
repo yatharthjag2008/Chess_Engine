@@ -17,6 +17,7 @@ export const ui = {
   review: null,       // the review from the API
   coach: null,        // the coach report from the API
   ply: 0,             // 0 = start position, n = after move n
+  pgn: null,          // the PGN that was reviewed
 };
 
 export function setStatus(text, isError = false, busy = false) {
@@ -115,7 +116,110 @@ export function renderGameList() {
 export function chooseGame(index, side = null) {
   ui.game = ui.games[index];
   ui.side = side || sideOf(ui.game, ui.username) || "white";
+  for (const button of $("game-list").querySelectorAll("button[data-index]")) {
+    button.setAttribute("aria-pressed", String(button.dataset.index === String(index)));
+  }
+  renderSideChoice();
   return ui.game;
+}
+
+/** "I played White / Black" and the Review button, under the game list. */
+export function renderSideChoice() {
+  let box = document.querySelector("#source-panel .side-choice");
+  if (!box) {
+    box = document.createElement("div");
+    box.className = "side-choice";
+    $("game-list").after(box);
+  }
+  box.replaceChildren();
+  const label = document.createElement("span");
+  label.textContent = "I played";
+  box.append(label);
+  const group = document.createElement("div");
+  group.className = "segmented";
+  for (const side of ["white", "black"]) {
+    const option = document.createElement("label");
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = "side";
+    radio.value = side;
+    radio.checked = ui.side === side;
+    radio.addEventListener("change", () => { ui.side = side; });
+    const text = document.createElement("span");
+    text.textContent = `${side === "white" ? "White" : "Black"} (${ui.game[side]})`;
+    option.append(radio, text);
+    group.append(option);
+  }
+  const go = document.createElement("button");
+  go.type = "button";
+  go.className = "primary";
+  go.id = "review-button";
+  go.textContent = "Review";
+  go.addEventListener("click", () => startReview());
+  box.append(group, go);
+}
+
+// ------------------------------------------------------------------ the review
+
+export const SYMBOLS = { inaccuracy: "?!", mistake: "?", blunder: "??" };
+
+/** Review the chosen game (or ``pgn``) and show it from the start. */
+export async function startReview(pgn = ui.game && ui.game.pgn) {
+  setStatus("Stockfish is reviewing the game (this takes a few seconds per move)...", false, true);
+  try {
+    ui.review = await api.review(pgn);
+  } catch (err) {
+    showError(err);
+    return null;
+  }
+  ui.pgn = pgn;
+  showReview();
+  return ui.review;
+}
+
+export function showReview() {
+  const review = ui.review;
+  ui.board.setOrientation(ui.side);
+  const headers = review.headers || {};
+  const name = (color) => `${headers[color === "white" ? "White" : "Black"] || (color === "white" ? "White" : "Black")}`;
+  $("top-name").textContent = name(ui.side === "white" ? "black" : "white");
+  $("bottom-name").textContent = name(ui.side);
+  renderMoveList();
+  $("moves-panel").hidden = false;
+  setStatus(`Reviewed ${review.moves.length} moves at depth ${review.depth}.`);
+}
+
+/** The move list, one cell per move, each with its class (and symbol for the errors). */
+export function renderMoveList() {
+  const list = $("move-list");
+  const moves = ui.review.moves;
+  const items = [];
+  let row = null;
+  moves.forEach((move, index) => {
+    if (!row || move.color === "white") {
+      row = document.createElement("li");
+      const num = document.createElement("span");
+      num.className = "num";
+      num.textContent = `${move.move_number}.`;
+      row.append(num);
+      if (move.color === "black") row.append(document.createElement("span"));   // Black to move first
+      items.push(row);
+    }
+    const cell = document.createElement("span");
+    cell.className = `san ${move.classification}`;
+    cell.dataset.ply = String(index + 1);
+    cell.textContent = move.san;
+    const symbol = SYMBOLS[move.classification];
+    if (symbol) {
+      const sym = document.createElement("span");
+      sym.className = "sym";
+      sym.textContent = symbol;
+      cell.append(sym);
+    }
+    cell.title = move.classification;
+    row.append(cell);
+  });
+  list.replaceChildren(...items);
 }
 
 export function init() {
