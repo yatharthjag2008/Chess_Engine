@@ -68,3 +68,33 @@ def test_estimate_follows_the_best_explaining_bucket() -> None:
     assert (wider.high - wider.low) > (est.high - est.low)
     prior = np.where(rating_grid(CFG) < 1000, 0.0, -1e9)  # a prior that rules out everything above 1000
     assert estimate_from_bucket_ll(per_move, RATINGS, CFG, log_prior=prior).estimate < 1000
+
+
+def test_data_prior_follows_the_rating_distribution() -> None:
+    from chess_engine.eval.rating_estimation import PRIOR_FLOOR, data_log_prior
+
+    grid = rating_grid(CFG)
+    rng = np.random.default_rng(0)
+    players = rng.normal(1600, 250, 20_000)
+    prior = np.exp(data_log_prior(players, grid, smoothing=50))
+    assert prior.sum() == pytest.approx(1)
+    assert abs(grid[prior.argmax()] - 1600) <= 60
+    assert prior.min() >= PRIOR_FLOOR / len(grid) * 0.999  # nothing is ruled out
+    assert prior[grid == 1600][0] > 20 * prior[grid == 2700][0]
+    rough = np.exp(data_log_prior(players, grid, smoothing=0))
+    assert np.abs(np.diff(rough)).sum() > np.abs(np.diff(prior)).sum()  # smoothing smooths
+    with pytest.raises(ValueError):
+        data_log_prior(np.array([]), grid)
+
+
+def test_prior_from_a_dataset(tiny_dataset) -> None:
+    from chess_engine.eval.rating_estimation import make_log_prior, training_player_ratings
+
+    ratings = training_player_ratings(tiny_dataset)
+    assert len(ratings) > 100 and ratings.min() >= 800
+    prior = make_log_prior(CFG, tiny_dataset)
+    assert prior.shape == rating_grid(CFG).shape and np.exp(prior).sum() == pytest.approx(1)
+    flat = make_log_prior(CFG.model_copy(update={"prior": "flat"}))
+    assert (flat == 0).all()
+    with pytest.raises(ValueError, match="dataset"):
+        make_log_prior(CFG)

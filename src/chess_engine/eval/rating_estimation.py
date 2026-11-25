@@ -18,8 +18,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 from chess_engine.config import RatingEstimationConfig, RatingsConfig
 
@@ -62,6 +64,48 @@ def posterior(log_likelihood: np.ndarray, log_prior: np.ndarray, temper: float =
     logp = logp - logp.max(axis=-1, keepdims=True)
     p = np.exp(logp)
     return p / p.sum(axis=-1, keepdims=True)
+
+
+# --------------------------------------------------------------------------- prior
+
+#: Share of the prior spread evenly over the whole grid, so no rating is ever ruled out completely.
+PRIOR_FLOOR = 0.01
+
+
+def data_log_prior(player_ratings: np.ndarray, grid: np.ndarray, smoothing: float = 75.0) -> np.ndarray:
+    """Log of the smoothed rating distribution of ``player_ratings`` on ``grid`` (plus a uniform floor)."""
+    player_ratings = np.asarray(player_ratings, dtype=np.float64)
+    if len(player_ratings) == 0:
+        raise ValueError("no player ratings for the prior")
+    step = grid[1] - grid[0] if len(grid) > 1 else 1.0
+    edges = np.append(grid - step / 2, grid[-1] + step / 2)
+    counts = np.histogram(np.clip(player_ratings, grid[0], grid[-1]), bins=edges)[0].astype(np.float64)
+    if smoothing > 0:
+        half = int(np.ceil(4 * smoothing / step))
+        offsets = np.arange(-half, half + 1) * step
+        kernel = np.exp(-0.5 * (offsets / smoothing) ** 2)
+        counts = np.convolve(counts, kernel / kernel.sum(), mode="same")
+    density = counts / counts.sum()
+    density = (1 - PRIOR_FLOOR) * density + PRIOR_FLOOR / len(grid)
+    return np.log(density)
+
+
+def training_player_ratings(dataset_dir: str | Path, split: str = "train") -> np.ndarray:
+    """Both players' ratings of every game of ``split`` in a built dataset (from its ``games.parquet``)."""
+    games = pd.read_parquet(Path(dataset_dir) / "games.parquet", columns=["split", "white_elo", "black_elo",
+                                                                          "positions"])
+    games = games[(games["split"] == split) & (games["positions"] > 0)]
+    return np.concatenate([games["white_elo"].to_numpy(), games["black_elo"].to_numpy()]).astype(np.float64)
+
+
+def make_log_prior(cfg: RatingEstimationConfig, dataset_dir: str | Path | None = None) -> np.ndarray:
+    """The configured prior on the grid: ``flat``, or ``data`` (needs the dataset's training games)."""
+    grid = rating_grid(cfg)
+    if cfg.prior == "flat":
+        return np.zeros_like(grid)
+    if dataset_dir is None:
+        raise ValueError("the data prior needs the dataset directory (or set rating_estimation.prior: flat)")
+    return data_log_prior(training_player_ratings(dataset_dir), grid, cfg.prior_smoothing)
 
 
 @dataclass(frozen=True)
