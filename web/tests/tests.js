@@ -1,16 +1,8 @@
-// Unit tests for the web UI, run in a real browser. Each test is a function that throws on failure.
-// The summary line "RESULT passed=N failed=M" is what tests/test_web_js.py looks for.
+// Unit tests of board.js, run in a real browser (see harness.js and tests/test_web_js.py).
 
 import { Board, START_FEN, glyph, isLightSquare, parseFen, squareOrder } from "../js/board.js";
+import { assert, equal, run, test } from "./harness.js";
 
-const tests = [];
-export function test(name, fn) { tests.push({ name, fn }); }
-
-function assert(condition, message) { if (!condition) throw new Error(message || "assertion failed"); }
-function equal(actual, expected, message) {
-  const a = JSON.stringify(actual), e = JSON.stringify(expected);
-  if (a !== e) throw new Error(`${message || "not equal"}: got ${a}, expected ${e}`);
-}
 function fixture() {
   // A fresh element per test, so listeners of earlier boards cannot react to this test's clicks.
   const old = document.getElementById("fixture");
@@ -155,26 +147,5 @@ test("promotion asks which piece and plays the choice", async () => {
   equal(played, ["e7e8n"]);
   promotionEl.remove();
 });
-
-// ------------------------------------------------------------------ runner
-
-export async function run() {
-  // Other test modules register themselves before the runner starts.
-  await Promise.all((window.__extraTests || []).map((url) => import(url)));
-  const lines = [];
-  let passed = 0, failed = 0;
-  for (const { name, fn } of tests) {
-    try {
-      await fn();
-      passed += 1;
-      lines.push(`ok   ${name}`);
-    } catch (err) {
-      failed += 1;
-      lines.push(`FAIL ${name}: ${err.message}`);
-    }
-  }
-  lines.push(`RESULT passed=${passed} failed=${failed}`);
-  document.getElementById("results").textContent = lines.join("\n");
-}
 
 run();

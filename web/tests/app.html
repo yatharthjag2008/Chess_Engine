@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Play page tests</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <!-- End-to-end tests of the play page against a running API server (tests/test_web_js.py starts one).
+       app_tests.js copies index.html's markup into #page, then drives app.js. -->
+  <pre id="results">running</pre>
+  <div id="page"></div>
+  <script>window.__noAutoInit = true;</script>
+  <script type="module" src="app_tests.js"></script>
+</body>
+</html>

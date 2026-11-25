@@ -1,8 +1,12 @@
-"""Run the web UI's JavaScript unit tests (web/tests/) in headless Chrome or Edge.
+"""Run the web UI's JavaScript tests (web/tests/) in headless Chrome or Edge.
 
-The page is served over a local HTTP server (browsers refuse ES modules from
-``file://``); the browser runs the tests and the DOM is dumped back. Skipped
-when no Chrome / Edge is installed.
+* ``tests/index.html``: unit tests of the board, served by a plain local HTTP server
+  (browsers refuse ES modules from ``file://``).
+* ``tests/app.html``: the play page end to end, against the real FastAPI app (small
+  in-memory model) running on a local port.
+
+The browser runs the tests and its DOM is dumped back. Skipped when no Chrome /
+Edge is installed.
 """
 
 from __future__ import annotations
@@ -14,11 +18,15 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 from pathlib import Path
 
 import pytest
+import uvicorn
 
-from chess_engine.config import PROJECT_ROOT
+from chess_engine.api.app import create_app
+from chess_engine.config import PROJECT_ROOT, Config
+from bot_helpers import small_predictor
 
 WEB = PROJECT_ROOT / "web"
 CANDIDATES = (
@@ -68,13 +76,43 @@ def dump_dom(browser: str, url: str, profile: Path, budget_ms: int = 5000) -> st
     return result.stdout
 
 
-def test_web_ui_javascript_unit_tests(web_server: str, tmp_path: Path) -> None:
+@pytest.fixture(scope="module")
+def api_server(default_config: Config):
+    """The real app (API + web UI) with a small model, served by uvicorn on a free port."""
+    app = create_app(default_config, small_predictor())
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.time() + 20
+    while not server.started:
+        if time.time() > deadline:
+            raise RuntimeError("uvicorn did not start")
+        time.sleep(0.05)
+    port = server.servers[0].sockets[0].getsockname()[1]
+    yield f"http://127.0.0.1:{port}"
+    server.should_exit = True
+    thread.join(timeout=10)
+
+
+def browser_or_skip() -> str:
     browser = find_browser()
     if browser is None:
         pytest.skip("no Chrome / Edge found for the JavaScript tests (set CHROME_PATH)")
-    dom = dump_dom(browser, f"{web_server}/tests/index.html", tmp_path / "profile")
+    return browser
+
+
+def check_results(dom: str, minimum: int) -> None:
     match = re.search(r"RESULT passed=(\d+) failed=(\d+)", dom)
     assert match, f"the test page did not finish:\n{dom[-2000:]}"
     failures = [line for line in dom.splitlines() if line.startswith("FAIL")]
     assert int(match.group(2)) == 0, "\n".join(failures)
-    assert int(match.group(1)) >= 9
+    assert int(match.group(1)) >= minimum
+
+
+def test_web_ui_javascript_unit_tests(web_server: str, tmp_path: Path) -> None:
+    check_results(dump_dom(browser_or_skip(), f"{web_server}/tests/index.html", tmp_path / "profile"), 9)
+
+
+def test_play_page_end_to_end(api_server: str, tmp_path: Path) -> None:
+    dom = dump_dom(browser_or_skip(), f"{api_server}/tests/app.html", tmp_path / "profile", budget_ms=20000)
+    check_results(dom, 5)
