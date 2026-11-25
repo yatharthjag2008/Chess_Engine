@@ -15,7 +15,6 @@ The range width uses the tempering fitted by scripts/evaluate_rating_estimation.
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -25,15 +24,8 @@ from chess_engine.config import ConfigError, load_config
 from chess_engine.data.dataset_builder import dataset_output_dir
 from chess_engine.eval.evaluate import model_name
 from chess_engine.eval.player_games import player_games_from_pgn
-from chess_engine.eval.rating_estimation import estimate_rating, make_log_prior
+from chess_engine.eval.rating_estimation import estimate_rating, fitted_temper, make_log_prior
 from chess_engine.model.inference import ModelFileError, load_model
-
-
-def fitted_temper(results: Path) -> float | None:
-    try:
-        return float(json.loads(results.read_text(encoding="utf-8"))["temper"]["temper"])
-    except (OSError, KeyError, ValueError, TypeError):
-        return None
 
 
 def main(argv: list[str] | None = None, stdin=sys.stdin) -> int:

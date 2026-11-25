@@ -237,3 +237,25 @@ def test_import_by_username(default_config: Config, tmp_path) -> None:
             assert site.status_code == 422 and site.json()["error"] == "invalid_username"
             down = c.get("/api/import/lichess/broken")
             assert down.status_code == 502 and down.json()["error"] == "source_unavailable"
+
+
+# --------------------------------------------------------------------------- rating estimate
+
+
+def test_rating_estimate_endpoint(client: TestClient) -> None:
+    from chess_engine.data.game_import import parse_pgn_text
+
+    name = parse_pgn_text(FIXTURE_PGN)[0].white
+    response = client.post("/api/rating-estimate", json={"pgn": FIXTURE_PGN, "player": name})
+    body = response.json()
+    assert response.status_code == 200
+    o = body["overall"]
+    assert o["low"] <= o["estimate"] <= o["high"] and o["moves"] > 0 and body["temper"] > 0
+    assert body["games"] and all(name.lower() in (g["white"].lower(), g["black"].lower()) for g in body["games"])
+    by_colour = client.post("/api/rating-estimate", json={"pgn": FIXTURE_PGN, "color": "black",
+                                                           "use_opponent_rating": False}).json()
+    assert len(by_colour["games"]) == 16 and all(g["color"] == "black" for g in by_colour["games"])
+    for bad in ({"pgn": FIXTURE_PGN}, {"pgn": FIXTURE_PGN, "player": "x", "color": "white"},
+                {"pgn": FIXTURE_PGN, "player": "nobody-at-all"}):
+        r = client.post("/api/rating-estimate", json=bad)
+        assert r.status_code == 422 and r.json()["error"] == "invalid_request", bad

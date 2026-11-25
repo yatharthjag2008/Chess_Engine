@@ -18,6 +18,7 @@ POST     /api/games/{id}/takeback        undo your last move (and the bot's repl
 GET      /api/games/{id}/pgn             the game as PGN text
 POST     /api/import/pgn                 import pasted PGN games (summaries + PGN of each)
 GET      /api/import/{site}/{username}   a player's recent games from ``lichess`` or ``chess.com``
+POST     /api/rating-estimate            a player's rating (and likely range) from PGN games
 =======  ==============================  ===================================================
 
 The model is loaded once when the app starts (from ``bot.model`` in the config),
@@ -53,10 +54,14 @@ from chess_engine.api.schemas import (
     ImportedGameInfo,
     ImportPgnRequest,
     ImportResponse,
+    GameRatingEstimate,
     LegalMove,
     MoveRequest,
     MoveResponse,
     NewGameRequest,
+    RatingEstimateRequest,
+    RatingEstimateResponse,
+    RatingRange,
     legal_moves,
 )
 from chess_engine.api.service import GameRuleError, GameService
@@ -67,10 +72,17 @@ from chess_engine.data.game_import import (
     ImportCache,
     ImportResult,
     InvalidUsernameError,
+    SourceUnavailableError,
     UserNotFoundError,
     import_games,
 )
+import chess
+
 from chess_engine.config import PROJECT_ROOT, Config, load_config
+from chess_engine.data.dataset_builder import dataset_output_dir
+from chess_engine.eval.evaluate import model_name
+from chess_engine.eval.player_games import player_games_from_pgn
+from chess_engine.eval.rating_estimation import estimate_rating, setup_from_config
 from chess_engine.model.inference import MovePredictor, load_model
 
 
@@ -131,8 +143,10 @@ def create_app(cfg: Config | None = None, predictor: MovePredictor | None = None
             status, code = 422, "invalid_username"
         elif isinstance(exc, UserNotFoundError):
             status, code = 404, "user_not_found"
-        else:
+        elif isinstance(exc, SourceUnavailableError):
             status, code = 502, "source_unavailable"
+        else:
+            status, code = 422, "invalid_request"
         return JSONResponse(status_code=status, content={"error": code, "detail": str(exc)})
 
     @app.exception_handler(IllegalMoveError)
@@ -199,6 +213,37 @@ def create_app(cfg: Config | None = None, predictor: MovePredictor | None = None
                     speed: list[str] | None = Query(default=None), rated: bool = False) -> ImportResponse:
         return import_response(import_games(cfg.game_import, site, username=username, max_games=max_games,
                                             speeds=speed, rated_only=rated or None, cache=import_cache))
+
+    estimation: dict = {}
+
+    def estimation_setup() -> tuple:
+        if not estimation:  # read the prior and the fitted temper once, on first use
+            results = cfg.paths.reports_dir / "rating" / model_name(cfg.bot.model) / "results.json"
+            estimation["setup"] = setup_from_config(cfg.rating_estimation, dataset_output_dir(cfg), results)
+        return estimation["setup"]
+
+    @app.post("/api/rating-estimate", response_model=RatingEstimateResponse)
+    def rating_estimate(body: RatingEstimateRequest, request: Request) -> RatingEstimateResponse:
+        if (body.player is None) == (body.color is None):
+            raise GameImportError("give either a player name or a colour")
+        color = {"white": chess.WHITE, "black": chess.BLACK}.get(body.color) if body.color else None
+        games = player_games_from_pgn(body.pgn, player=body.player, color=color)
+        if not games:
+            raise GameImportError("no games with moves by that player in the PGN")
+        r, log_prior, temper = estimation_setup()
+        note = None if temper is not None else "ranges not calibrated (run scripts/evaluate_rating_estimation.py)"
+        result = estimate_rating(service(request).predictor, games, r, log_prior, temper or 1.0,
+                                 body.use_opponent_rating)
+
+        def rng(est) -> dict:
+            return {"estimate": est.estimate, "median": est.median, "low": est.low, "high": est.high,
+                    "interval": est.interval, "moves": est.moves}
+
+        per_game = [GameRatingEstimate(**rng(est), white=g.headers.get("White", "?"), black=g.headers.get("Black", "?"),
+                                       color="white" if g.color == chess.WHITE else "black", rating_in_game=g.rating)
+                    for g, est in zip(games, result.per_game)]
+        return RatingEstimateResponse(overall=RatingRange(**rng(result.overall)), games=per_game,
+                                      temper=temper or 1.0, note=note)
 
     if web is not None and (web / "index.html").is_file():
         # Mounted last, so every /api route and /docs is matched first.

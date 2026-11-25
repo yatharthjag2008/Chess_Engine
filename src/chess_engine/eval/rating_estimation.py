@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+import json
 from pathlib import Path
 
 import chess
@@ -270,3 +271,23 @@ def estimate_rating(
     per_game = [estimate_from_bucket_ll(ll, ratings, cfg, log_prior, temper) for ll in per_game_ll if len(ll)]
     overall = estimate_from_bucket_ll(np.concatenate(per_game_ll), ratings, cfg, log_prior, temper)
     return PlayerEstimate(overall, per_game)
+
+
+# --------------------------------------------------------------------------- setup from a config
+
+
+def fitted_temper(results_path: str | Path) -> float | None:
+    """The temper fitted by ``scripts/evaluate_rating_estimation.py`` (its ``results.json``), if any."""
+    try:
+        return float(json.loads(Path(results_path).read_text(encoding="utf-8"))["temper"]["temper"])
+    except (OSError, KeyError, ValueError, TypeError):
+        return None
+
+
+def setup_from_config(cfg: RatingEstimationConfig, dataset_dir: str | Path,
+                      results_path: str | Path) -> tuple[RatingEstimationConfig, np.ndarray, float | None]:
+    """The config, prior and temper to estimate with: the data prior if the dataset is there (else flat),
+    and ``cfg.temper`` or else the fitted one (None if neither exists)."""
+    if cfg.prior == "data" and not (Path(dataset_dir) / "games.parquet").is_file():
+        cfg = cfg.model_copy(update={"prior": "flat"})
+    return cfg, make_log_prior(cfg, dataset_dir), cfg.temper or fitted_temper(results_path)

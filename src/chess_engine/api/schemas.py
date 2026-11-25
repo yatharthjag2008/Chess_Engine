@@ -205,3 +205,38 @@ class ImportResponse(BaseModel):
     username: str | None
     count: int
     games: list[ImportedGameInfo]
+
+
+# --------------------------------------------------------------------------- rating estimate (step 12 over the API)
+
+
+class RatingEstimateRequest(_Body):
+    """Estimate the rating of one player from PGN games: name them, or pick a colour."""
+
+    pgn: str = Field(min_length=1, max_length=5_000_000)
+    player: str | None = Field(default=None, max_length=50)
+    color: Literal["white", "black"] | None = None
+    use_opponent_rating: bool = True
+
+
+class RatingRange(BaseModel):
+    estimate: float
+    median: float
+    low: float
+    high: float
+    interval: float
+    moves: int
+
+
+class GameRatingEstimate(RatingRange):
+    white: str
+    black: str
+    color: Color
+    rating_in_game: int | None
+
+
+class RatingEstimateResponse(BaseModel):
+    overall: RatingRange
+    games: list[GameRatingEstimate]
+    temper: float
+    note: str | None = None
