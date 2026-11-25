@@ -120,7 +120,8 @@ test("the form sends the chosen rating, side and time control", () => {
   equal($("rating-value").textContent, "1350");
   document.querySelector('input[name="color"][value="black"]').checked = true;
   $("time-control").value = "5+3";
-  equal(app.readForm($("new-game")), { rating: 1350, color: "black", time_control: "5+3", hint_limit: 3 });
+  equal(app.readForm($("new-game")), { rating: 1350, color: "black", time_control: "5+3", hint_limit: 3,
+                                        adaptive: "off" });
   $("time-control").value = "";
   equal(app.readForm($("new-game")).time_control, undefined);
 });
@@ -240,15 +241,16 @@ test("the hint button runs out, and is hidden when hints are off", async () => {
 });
 
 test("new-game settings are remembered in this browser", () => {
-  app.saveSettings({ rating: 1750, color: "black", time_control: "10+0", hint_limit: 0 });
+  app.saveSettings({ rating: 1750, color: "black", time_control: "10+0", hint_limit: 0, adaptive: "live" });
   const form = $("new-game");
   form.elements.rating.value = "1500";
   app.loadSettings(form);
-  equal(app.readForm(form), { rating: 1750, color: "black", time_control: "10+0", hint_limit: 0 });
+  equal(app.readForm(form), { rating: 1750, color: "black", time_control: "10+0", hint_limit: 0, adaptive: "live" });
   app.saveSettings({ rating: 1750, color: "black", time_control: "10+0", hint_limit: 7 });
   app.loadSettings(form);
   equal(form.elements.hint_limit.value, "0", "an unknown hint setting is ignored");
   form.elements.hint_limit.value = "3";
+  form.querySelector('input[name="adaptive"][value="off"]').checked = true;
   localStorage.setItem("human-chess-bot.settings", "{broken");
   app.loadSettings(form);                             // ignored, no error
   localStorage.removeItem("human-chess-bot.settings");

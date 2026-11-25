@@ -36,6 +36,8 @@ export const api = {
   botMove: (id) => request("POST", `/api/games/${encodeURIComponent(id)}/bot-move`),
   resign: (id) => request("POST", `/api/games/${encodeURIComponent(id)}/resign`),
   takeback: (id) => request("POST", `/api/games/${encodeURIComponent(id)}/takeback`),
+  adaptive: () => request("GET", "/api/adaptive"),
+  resetAdaptive: (rating = null) => request("POST", "/api/adaptive/reset", rating ? { rating } : {}),
   hint: (id, tier = null) => request("POST", `/api/games/${encodeURIComponent(id)}/hint`, tier ? { tier } : {}),
   pgnUrl: (id) => `/api/games/${encodeURIComponent(id)}/pgn`,
   pgn: async (id) => {

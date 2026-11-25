@@ -16,6 +16,7 @@ export const ui = {
   clock: null,       // { white, black, running, at }: the server's clock and when it was received
   flagCheck: false,  // a state refresh after a flag fall is in flight
   hint: null,        // { id, fen, data }: the latest hint, shown while that game and position are on the board
+  adaptive: null,    // your adaptive-difficulty profile from the server
 };
 
 const LOW_TIME = 20; // seconds: the clock turns red below this
@@ -343,6 +344,8 @@ export function loadSettings(form) {
   if (color) color.checked = true;
   const select = form.elements.time_control;
   if ([...select.options].some((o) => o.value === (saved.time_control || ""))) select.value = saved.time_control || "";
+  const adaptive = form.querySelector(`input[name="adaptive"][value="${saved.adaptive}"]`);
+  if (adaptive) adaptive.checked = true;
   const hints = form.elements.hint_limit;
   if (hints && [...hints.options].some((o) => o.value === String(saved.hint_limit))) hints.value = String(saved.hint_limit);
 }
@@ -353,7 +356,43 @@ export function readForm(form) {
   const time = data.get("time_control");
   if (time) options.time_control = time;
   if (data.get("hint_limit") !== null) options.hint_limit = Number(data.get("hint_limit"));
+  if (data.get("adaptive")) options.adaptive = data.get("adaptive");
   return options;
+}
+
+// ------------------------------------------------------------------ adaptive difficulty
+
+const ADAPTIVE_NOTES = {
+  off: "The bot plays at the rating you choose.",
+  between: "The bot plays at your rating, updated after every game without hints.",
+  live: "The bot starts at the rating you choose and adapts during the game (at most 200 points).",
+};
+
+/** Your adaptive rating, from the server (null if it cannot be read). */
+export async function loadAdaptive() {
+  try {
+    ui.adaptive = await api.adaptive();
+  } catch {
+    ui.adaptive = null;
+  }
+  renderDifficulty();
+  return ui.adaptive;
+}
+
+/** The difficulty note, and the rating slider: in "between games" it shows your rating and is not used. */
+export function renderDifficulty() {
+  const form = $("new-game");
+  const mode = new FormData(form).get("adaptive") || "off";
+  const rating = $("rating");
+  const between = mode === "between";
+  rating.disabled = between;
+  let note = ADAPTIVE_NOTES[mode];
+  if (between && ui.adaptive) {
+    rating.value = String(ui.adaptive.next_bot_rating);
+    $("rating-value").textContent = String(ui.adaptive.next_bot_rating);
+    note += ` Your rating: ${Math.round(ui.adaptive.rating)} (${ui.adaptive.games} rated game${ui.adaptive.games === 1 ? "" : "s"}).`;
+  }
+  $("adaptive-note").textContent = note;
 }
 
 export async function startGame(options) {
@@ -428,6 +467,11 @@ export function init() {
   showRating();
   loadSettings($("new-game"));
   showRating();
+  for (const radio of document.querySelectorAll('#new-game input[name="adaptive"]')) {
+    radio.addEventListener("change", () => renderDifficulty());
+  }
+  renderDifficulty();
+  loadAdaptive();
   $("new-game").addEventListener("submit", (event) => {
     event.preventDefault();
     const options = readForm(event.target);
