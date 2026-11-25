@@ -347,6 +347,37 @@ def test_play_script_adaptive(tmp_path: Path) -> None:
     assert "Your adaptive rating: 1730 -> " in text
 
 
+def test_adaptive_simulation(tmp_path: Path) -> None:
+    import chess
+
+    from bot_helpers import small_predictor
+    from chess_engine.bot.adaptive import AdaptiveGame
+    from chess_engine.bot.player import BotPlayer
+    from chess_engine.config import AdaptiveConfig
+    from chess_engine.eval.players import BotAgent
+
+    script = _load("adaptive_sim")
+    predictor = small_predictor()
+    player = BotAgent(BotPlayer(predictor, 1100, seed=1))
+    out: list[str] = []
+    ratings = script.simulate(predictor, player, AdaptiveConfig(), "between", 3, 1500, tmp_path / "p.json",
+                              max_plies=6, write=out.append)
+    assert len(out) == 3 and all("player scores 0.5 (move limit (6 plies))" in line for line in out)
+    assert ratings == [1500, 1500, 1500], "draws against an equal rating change nothing"
+    with pytest.raises(ValueError, match="--player"):
+        script.make_player("human:1200", predictor, None)
+
+    # live: the bot that thinks it is losing moves up inside the game
+    from test_api_service import LosingBotPredictor
+
+    losing = LosingBotPredictor()
+    cfg = AdaptiveConfig(live_after=0, live_every=1)
+    bot = BotPlayer(losing, 1500, seed=0)
+    adaptive = AdaptiveGame("live", 1500, cfg)
+    outcome = script.play_adaptive_game(bot, adaptive, player, chess.WHITE, max_plies=8)
+    assert outcome.termination == "move limit (8 plies)" and bot.rating == 1700 and len(adaptive.live.changes) == 4
+
+
 def test_hint_script(tmp_path: Path) -> None:
     from review_helpers import ScriptedAnalyzer
 
