@@ -181,6 +181,31 @@ for p in predictor.predict(chess.Board(), rating=1500)[:3]:
 python scripts/model_summary.py        # parameters, speed on this machine, estimated epoch time
 ```
 
+## Training
+
+Training is driven by the `training:` section of the config: AdamW with linear warmup and cosine decay,
+gradient clipping, mixed precision on GPUs, and rating-bucket balancing so the rarer low and high ratings
+are not under-learned. Batches are decoded on a background thread.
+
+```bash
+python scripts/train.py --config configs/laptop.yaml --run-name laptop_64x6   # the ~2 h CPU reference run
+python scripts/train.py --max-minutes 60 --threads 4                         # any run, stopped after an hour
+python scripts/train.py --config configs/full.yaml --run-name full_v1        # GPU / Colab
+python scripts/train.py --resume laptop_64x6                                 # continue exactly where it stopped
+python scripts/plot_training.py laptop_64x6                                 # curves -> reports/training/
+```
+
+Each run gets a directory `checkpoints/<run>/` with the config it was started with, a `metrics.jsonl` log
+(train and validation lines, readable while the run is going), step checkpoints for resuming,
+`best_model.pt` (lowest validation loss) and `final_model.pt`. A run stops cleanly, with a checkpoint,
+when its epochs are done, at `max_steps`, after `max_minutes`, or on the first Ctrl+C. Resuming
+continues bit-for-bit as if the run had never stopped (this is tested).
+
+```python
+from chess_engine.model import load_model
+predictor = load_model("checkpoints/laptop_64x6/best_model.pt").predictor()
+```
+
 ## Project structure
 
 ```
@@ -191,8 +216,8 @@ src/chess_engine/
   data/               Lichess streaming + filtering, Parquet game store, dataset builder
   encoding/           board -> tensor, move <-> index
   model/              rating-conditioned policy network
-  training/           training loop
-  eval/               accuracy, baselines, Elo validation, rating estimation
+  training/           training loop, checkpoints, metrics log
+  eval/               move-match accuracy, baselines, calibration (later: Elo validation, rating estimation)
   bot/                move selection, hints, adaptive difficulty, styles
   review/             Stockfish game review, level comparison
   api/                FastAPI backend

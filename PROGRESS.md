@@ -9,7 +9,7 @@ See [PLAN.md](PLAN.md) for details on each step.
 - [x] 3. Board + move encoding
 - [x] 4. Dataset builder
 - [x] 5. Model
-- [ ] 6. Training pipeline
+- [x] 6. Training pipeline
 - [ ] 7. Evaluation + baselines
 - [ ] 8. Bot move selection + CLI
 - [ ] 9. Backend API
@@ -342,3 +342,82 @@ For comparison: 48 channels × 4 blocks trains at ~780 positions/s and 32 × 4 a
   into NaN, also in float16.
 - **Model files are self-describing and safe**: weights + config + bucket edges + encoding info, loaded with
   `weights_only=True` (an untrusted file cannot run code), and rejected if the encoding differs.
+
+## Step 6: Training pipeline (done 2026-11-24)
+
+**Built** (`chess_engine.training`)
+- `device`: device choice (CUDA > MPS > CPU), seeding of every random generator, CPU threads, mixed precision
+  (bf16 or fp16 on GPUs, fp32 on CPU).
+- `schedule`: linear warmup, then constant / cosine / linear decay to `min_lr_fraction`, as a pure function of the step.
+- `balancing`: rating-bucket weights `(n_b / mean)^-power`, normalized so the average weight per position is 1.
+- `order`: the epoch's position order from `(seed, epoch)` only: a shuffle, or resampling by bucket.
+- `loader`: dataset split -> `TrainBatch` tensors, decoded ahead on a background thread (pinned memory on CUDA).
+- `losses`: weighted cross-entropy of the human move over the legal moves (label smoothing over legal moves
+  only) + `value_loss_weight` x win/draw/loss cross-entropy.
+- `metrics` / `validation`: running means, top-1/3/5 and value accuracy per rating bucket on fixed validation positions.
+- `checkpoint`: model + optimizer + scheduler + grad-scaler + counters, written atomically, loaded with
+  `weights_only=True`, newest `keep_checkpoints` kept.
+- `run_log`: one directory per run (config snapshot, `run.json`, crash-safe `metrics.jsonl`).
+- `train`: `Trainer` (validation every `eval_every_steps` and at each epoch end, `best_model.pt` export,
+  checkpoints, resume, stop on `max_steps` / `max_minutes` / Ctrl+C) and `history` (curves from the log).
+- `chess_engine.plotting`: the shared chart style for report PNGs.
+- Scripts: `scripts/train.py`, `scripts/plot_training.py`. Config: the `training:` section, `configs/laptop.yaml`.
+- Tests (about 100 new): every module, plus whole-pipeline checks: training lowers the loss and saves a usable model;
+  **a run paused mid-epoch or at an epoch boundary and resumed gives bit-identical weights** to an uninterrupted
+  run; and games -> dataset -> `Trainer` -> saved model learns that low-rated players open 1.e4 and high-rated
+  ones 1.d4 from the identical start position, with both balancing modes.
+
+**Reference run** (`python scripts/train.py --config configs/laptop.yaml --run-name laptop_64x6`, the default
+64x6 model, 633k parameters, on the laptop CPU with 4 threads)
+
+| | |
+|---|---|
+| Training | 10,000 steps x 256 = 2.56M positions (80% of one epoch of the 50k-game sample) |
+| Schedule | AdamW, peak learning rate 1e-3 after 500 warmup steps, cosine decay to 5e-5 |
+| Balancing | loss weights, power 0.5 (800-999 positions weigh 1.95, 1600-1799 positions 0.80) |
+| Speed | 290-500 positions/s, about 2 hours of computing time |
+| Sessions | 3: stopped by the time limit at step 1,969, by the session ending at step ~3,100 (resumed from step 3,000) |
+| Validation (20k positions) | **top-1 41.4%, top-3 68.6%, top-5 79.6%**, move log-loss 1.931, result guessed 60.1% |
+| Best model | the last step: validation loss improved at every check from step 2,000 on |
+
+![Training curves](reports/training/laptop_64x6.png)
+
+| Validation, step 10,000 | 800-999 | 1000-1199 | 1200-1399 | 1400-1599 | 1600-1799 | 1800-1999 | 2000-2199 | 2200+ |
+|---|---|---|---|---|---|---|---|---|
+| top-1 | 39.8% | 40.6% | 42.0% | 41.6% | 42.2% | 41.8% | 40.1% | 37.8% |
+| top-5 | 78.2% | 78.6% | 79.7% | 79.3% | 80.7% | 79.8% | 79.4% | 77.0% |
+
+- **No overfitting, and not converged:** training and validation loss lie on top of each other, and validation
+  loss was still falling at the end (2.15 -> 2.13 over the last 2,000 steps, at a tiny learning rate). Less than
+  one epoch of 50k games is the limit here, not the model: more data and steps (the GPU config) should keep improving it.
+- **The rarest buckets are the hardest:** 2200+ (4.8% of the data) is lowest at 37.8% and 800-999 (3.5%) next.
+  Balancing gives them 1.7-2x weight per position, but they still see far fewer positions. The step-7 evaluation
+  looks at this on the test set with confidence intervals.
+- Validation top-1 rose 32.1% (step 1,000) -> 35.0% (2,000) -> 38.2% (4,000) -> 40.0% (7,000) -> 41.4% (10,000).
+
+**Decisions**
+- **The data order is a function of `(seed, epoch)`**, so a checkpoint only needs the step counter to rebuild
+  the exact batches still to come; there is no data-loader state to save. Together with checkpointing the
+  optimizer, scheduler, grad scaler and RNG, a resumed run is bit-identical to an uninterrupted one (tested).
+  This mattered in practice: the reference run was resumed twice.
+- **A background decoding thread instead of DataLoader worker processes.** A batch decodes in ~2 ms, while a
+  training step takes ~700 ms on this CPU, so one thread is plenty. Worker processes would each need a copy of the
+  0.6 GB in-memory split, and starting processes is slow on Windows.
+- **Bucket balancing by loss weights, power 0.5** (default). Power 1 would weigh an 800-999 position 3.5x;
+  0.5 is a middle ground between "as in the data" and "every bucket equal", and normalizing the weights to an
+  average of 1 keeps the loss scale and learning rate unchanged. Resampling (`sample`) is available; it changes
+  which positions are seen rather than how much each counts.
+- **No weight decay on embeddings, biases or batch-norm parameters.** Decaying a rating embedding would pull a
+  rarely seen bucket towards "no rating" between its updates.
+- **The best model is chosen by validation loss, not top-1.** The bot samples from the probabilities (step 8), so
+  how well the whole distribution fits matters more than the favourite move alone.
+- **Validation uses the first 20,000 validation positions**, always the same ones, so every check in every
+  run is comparable; a pass takes ~15 s.
+- **`max_minutes` counts wall-clock time of the session.** The first session lost three hours while the laptop
+  slept and stopped at step 1,969 instead of 10,000. The resulting checkpoint made that harmless.
+- **The first Ctrl+C stops at the end of the current step** (checkpoint + final model); the second aborts. A
+  plain KeyboardInterrupt could land between the optimizer step and the step counter and save an inconsistent state.
+- **Mixed precision only on GPUs** (`auto`): bf16 training is not supported by this CPU's oneDNN build, and
+  fp16 on CPU is slower than fp32.
+- **Tests train real (tiny) models on real (tiny) datasets**, with 2 torch threads and no worker processes, so
+  the ~100 training tests take about 2 minutes.

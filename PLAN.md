@@ -61,7 +61,7 @@ tracked in [PROGRESS.md](PROGRESS.md).
 | 4 | `src/chess_engine/data/splits.py`, `samples.py`, `shards.py`, `dataset_builder.py`, `dataset.py`, `src/chess_engine/encoding/compact.py`, `scripts/build_dataset.py`, `scripts/inspect_dataset.py` |
 | 13 | `src/chess_engine/data/game_import.py` |
 | 5 | `src/chess_engine/model/` (`features.py`, `layers.py`, `policy_map.py`, `heads.py`, `network.py`, `masking.py`, `inference.py`), `scripts/model_summary.py` |
-| 6 | `src/chess_engine/training/` |
+| 6 | `src/chess_engine/training/`, `src/chess_engine/plotting.py`, `scripts/train.py`, `scripts/plot_training.py`, `configs/laptop.yaml` |
 | 7, 11, 12 | `src/chess_engine/eval/` |
 | 8, 17, 18, 19 | `src/chess_engine/bot/` |
 | 14, 15 | `src/chess_engine/review/` |

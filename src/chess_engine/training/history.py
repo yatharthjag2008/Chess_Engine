@@ -62,7 +62,7 @@ def plot_training_curves(history: History, path: str | Path) -> Path:
     """Save the four-panel training-curve figure as a PNG."""
     if history.empty:
         raise ValueError(f"run {history.run} has no training records to plot")
-    fig, axes = plotting.new_figure(2, 2, width=6.0, height=3.6)
+    fig, axes = plotting.new_figure(2, 2, width=11.0, height=3.8)
     (loss_ax, top1_ax), (bucket_ax, lr_ax) = axes
     train_color, val_color = plotting.SERIES[0], plotting.SERIES[1]
     t, v = history.train, history.val
@@ -90,7 +90,7 @@ def plot_training_curves(history: History, path: str | Path) -> Path:
     plotting.style_axes(bucket_ax, "Validation top-1 by rating", "step", "positions")
     plotting.percent_axis(bucket_ax)
     if labels:
-        plotting.legend(bucket_ax, ncol=2)
+        plotting.legend(bucket_ax, ncol=2, loc="lower right")
 
     lr_ax.plot(t["step"], t["lr"], color=train_color, lw=lw)
     plotting.style_axes(lr_ax, "Learning rate", "step", "learning rate")
