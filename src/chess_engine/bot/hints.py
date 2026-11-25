@@ -162,8 +162,11 @@ _SHOW_REASON = {
 
 
 def nudge_text(themes: list[Theme], piece_type: chess.PieceType, detail: Detail, only_move: bool = False,
-               threatened: chess.PieceType | None = None) -> str:
-    """The first hint: what kind of move to look for, giving more away for rarely found moves."""
+               threatened: chess.PieceType | None = None, winning: bool = False) -> str:
+    """The first hint: what kind of move to look for, giving more away for rarely found moves.
+
+    ``only_move`` adds a warning: "only one move makes the most of it" when ``winning``, else "only one move keeps
+    your position together" (not for a mate, which needs no warning)."""
     main = themes[0]
     if detail is Detail.VAGUE:
         if main in _FORCING:
@@ -180,8 +183,9 @@ def nudge_text(themes: list[Theme], piece_type: chess.PieceType, detail: Detail,
             text = f"You can attack their {piece_name(threatened)}."
         if detail is Detail.PIECE:
             text += f" It's a {piece_name(piece_type)} move."
-    if only_move:
-        text += " Careful: only one move keeps your position together."
+    if only_move and main is not Theme.MATE:
+        text += (" Only one move makes the most of it." if winning
+                 else " Careful: only one move keeps your position together.")
     return text
 
 
@@ -191,7 +195,10 @@ def point_text(board: chess.Board, move: chess.Move) -> str:
 
 
 def show_text(board: chess.Board, move: chess.Move, themes: list[Theme]) -> str:
-    reasons = [_SHOW_REASON[t] for t in themes if t in _SHOW_REASON]
+    # Checkmate says it all; "a capture" only when it is the main point.
+    reasons = [_SHOW_REASON[t] for t in themes if t in _SHOW_REASON and (t is not Theme.CAPTURE or t is themes[0])]
+    if Theme.MATE in themes:
+        reasons = [_SHOW_REASON[Theme.MATE]]
     san = board.san(move)
     return f"Play {san}" + (f": {', and '.join(reasons[:2])}." if reasons else ".")
 
@@ -218,12 +225,12 @@ class Hint:
 
 
 def make_hint(board: chess.Board, move: chess.Move, tier: Tier, rate: float, cfg: HintsConfig,
-              only_move: bool = False) -> Hint:
+              only_move: bool = False, winning: bool = False) -> Hint:
     """The hint of ``tier`` about ``move`` (the best move) in ``board``."""
     themes = move_themes(board, move)
     detail = detail_for(rate, cfg)
     piece = board.piece_at(move.from_square).piece_type
-    nudge = nudge_text(themes, piece, detail, only_move, threatened_piece(board, move))
+    nudge = nudge_text(themes, piece, detail, only_move, threatened_piece(board, move), winning)
     if tier is Tier.NUDGE:
         text, frm, to, san = nudge, None, None, None
     elif tier is Tier.POINT:
@@ -248,6 +255,11 @@ class BestMove:
     move: chess.Move
     find_rate: float
     only_move: bool
+    cp: int = 0                 # the side to move's evaluation with the move (centipawns)
+
+    @property
+    def winning(self) -> bool:
+        return win_percent(self.cp) >= 60
 
 
 class HintEngine:
@@ -281,7 +293,8 @@ class HintEngine:
         top = analysis.lines[0]
         only = (len(analysis.lines) > 1
                 and win_percent(top.cp) - win_percent(analysis.lines[1].cp) >= self.cfg.only_move_gap)
-        found = BestMove(top.move, find_rate(self.predictor, board, top.move, rating, opp_rating, **clock), only)
+        found = BestMove(top.move, find_rate(self.predictor, board, top.move, rating, opp_rating, **clock), only,
+                         top.cp)
         self._cache[key] = found
         if len(self._cache) > self.cache_size:
             self._cache.popitem(last=False)
@@ -290,7 +303,7 @@ class HintEngine:
     def hint(self, board: chess.Board, tier: Tier, rating: int, opp_rating: int | None = None, **clock: Any) -> Hint:
         """The hint of ``tier`` for the side to move in ``board``, a player rated ``rating``."""
         best = self.best(board, rating, opp_rating, **clock)
-        return make_hint(board, best.move, tier, best.find_rate, self.cfg, best.only_move)
+        return make_hint(board, best.move, tier, best.find_rate, self.cfg, best.only_move, best.winning)
 
 
 # --------------------------------------------------------------------------- the per-game limit

@@ -329,6 +329,26 @@ def test_play_script_hints_setting(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert len(looked) == 1 and "Hints are off: Stockfish was not found" in text
 
 
+def test_hint_script(tmp_path: Path) -> None:
+    from review_helpers import ScriptedAnalyzer
+
+    script = _load("hint")
+    model = _small_model_file(tmp_path)
+    out: list[str] = []
+    assert script.main(["--model", str(model), "--fen", "4k3/8/8/3r4/8/4N3/8/4K3 w - - 0 1", "--rating", "1200"],
+                       write=out.append, analyzer=ScriptedAnalyzer()) == 0
+    assert out[0].startswith("Players rated ~1200 find ") and [line.split()[0] for line in out[1:]] == [
+        "nudge", "point", "show"]
+    pgn = tmp_path / "g.pgn"
+    pgn.write_text("1. e4 e5 2. Nf3 Nc6 *\n", encoding="utf-8")
+    out.clear()
+    assert script.main(["--model", str(model), "--pgn", str(pgn), "--color", "black"], write=out.append,
+                       analyzer=ScriptedAnalyzer()) == 0
+    assert out[0].startswith("1...  e5") and "2 positions; found Stockfish's move in 0" in "\n".join(out)
+    assert script.main(["--model", str(tmp_path / "missing.pt"), "--fen", "8/8/8/8/8/8/8/K6k w - - 0 1"],
+                       analyzer=ScriptedAnalyzer()) == 1
+
+
 def test_bot_match_script(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     script = _load("bot_match")
     model = _small_model_file(tmp_path)

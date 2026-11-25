@@ -113,6 +113,9 @@ def test_nudge_wording_by_theme() -> None:
     assert nudge_text([Theme.MATE], chess.ROOK, Detail.PIECE) == "There is a checkmate! It's a rook move."
     assert nudge_text([Theme.QUIET], chess.PAWN, Detail.THEME, only_move=True).endswith(
         "Careful: only one move keeps your position together.")
+    assert nudge_text([Theme.WIN_MATERIAL], chess.PAWN, Detail.THEME, only_move=True, winning=True).endswith(
+        "Only one move makes the most of it.")
+    assert nudge_text([Theme.MATE], chess.QUEEN, Detail.THEME, only_move=True) == "There is a checkmate!"
     for theme in Theme:      # every theme has words at every detail
         for detail in Detail:
             assert nudge_text([theme], chess.QUEEN, detail)
@@ -151,6 +154,7 @@ def test_engine_hints_about_stockfishs_move_at_your_level() -> None:
     nudge = engine.hint(board, Tier.NUDGE, 1200, opp_rating=1400)
     assert nudge.detail is Detail.PIECE and nudge.text.startswith("One of your opponent's pieces can be won. It's a knight")
     assert nudge.only_move, "500 cp against 0 is far more than 15 win-% points"
+    assert nudge.text.endswith("Only one move makes the most of it."), "+5 is winning"
     show = engine.hint(board, Tier.SHOW, 1200, opp_rating=1400)
     assert show.san == "Nxd5"
     assert analyzer.calls == 1 and len(predictor.calls) == 1, "the next tier reuses the analysis"
@@ -216,3 +220,8 @@ def test_budget_off_and_position_identity() -> None:
     for uci in ["g1f3", "g8f6", "f3g1", "f6g8"]:     # back to the start position, move counters differ
         same.push_uci(uci)
     assert budget.next_tier(same) is Tier.POINT
+
+
+def test_show_for_a_mate_says_checkmate_only() -> None:
+    board, move = legal("r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR w KQkq - 4 4", "f3f7")
+    assert make_hint(board, move, Tier.SHOW, 0.5, HintsConfig()).text == "Play Qxf7#: checkmate."
