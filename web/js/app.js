@@ -229,6 +229,14 @@ export function renderResult(state) {
   heading.textContent = title;
   const text = document.createElement("p");
   text.textContent = outcome.description;
+  const rating = adaptiveSummary(state);
+  if (rating) {
+    const line = document.createElement("span");
+    line.className = "adaptive-result";
+    line.textContent = rating;
+    text.append(document.createElement("br"), line);
+    loadAdaptive();          // the form shows your new rating for the next game
+  }
   const actions = document.createElement("div");
   actions.className = "actions";
   const again = button("New game", () => startGame(readForm($("new-game"))), "primary");
@@ -279,7 +287,7 @@ export function render(state) {
   board.setPosition(state.fen, { lastMove: state.last_move, check: state.check });
   board.setLegalMoves(humanToMove && !ui.busy ? state.legal_moves : [], humanToMove && !ui.busy ? state.turn : null);
   const bottomIsHuman = board.orientation === state.human_color;
-  const bot = `Bot ${state.bot_rating}`;
+  const bot = botLabel(state);
   const you = state.your_rating ? `You (${state.your_rating})` : "You";
   $("top-name").textContent = bottomIsHuman ? bot : you;
   $("bottom-name").textContent = bottomIsHuman ? you : bot;
@@ -352,7 +360,8 @@ export function loadSettings(form) {
 
 export function readForm(form) {
   const data = new FormData(form);
-  const options = { rating: Number(data.get("rating")), color: data.get("color") };
+  // The slider is disabled in "between games" mode, and FormData skips disabled fields.
+  const options = { rating: Number(form.elements.rating.value), color: data.get("color") };
   const time = data.get("time_control");
   if (time) options.time_control = time;
   if (data.get("hint_limit") !== null) options.hint_limit = Number(data.get("hint_limit"));
@@ -361,6 +370,22 @@ export function readForm(form) {
 }
 
 // ------------------------------------------------------------------ adaptive difficulty
+
+/** "Bot 1550", with an arrow when live adaptation has moved it from where the game started. */
+export function botLabel(state) {
+  const a = state.adaptive;
+  if (!a || a.mode !== "live" || state.bot_rating === a.start_rating) return `Bot ${state.bot_rating}`;
+  return `Bot ${state.bot_rating} ${state.bot_rating > a.start_rating ? "\u2191" : "\u2193"}`;
+}
+
+/** The sentence about your adaptive rating once a game is over. */
+export function adaptiveSummary(state) {
+  const a = state.adaptive;
+  if (!a || a.mode === "off" || state.status !== "over") return "";
+  if (!a.result) return state.hints && !state.hints.rated ? "Hints were used, so your adaptive rating is unchanged." : "";
+  const r = a.result;
+  return `Your rating: ${Math.round(r.rating_before)} \u2192 ${Math.round(r.rating_after)}. Next bot: ${r.next_bot_rating}.`;
+}
 
 const ADAPTIVE_NOTES = {
   off: "The bot plays at the rating you choose.",

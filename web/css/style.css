@@ -232,3 +232,7 @@ button.danger[data-confirm="yes"] { background: var(--danger); color: #ffffff; b
 .badge { font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; margin-left: 6px;
   border: 1px solid var(--line); color: var(--ink-2); vertical-align: 2px; }
 .hint-text { margin: 4px 0 8px; line-height: 1.5; }
+
+/* Adaptive difficulty (step 18) */
+.adaptive-result { font-weight: 600; }
+fieldset.field .hint { margin: 6px 0 0; }
