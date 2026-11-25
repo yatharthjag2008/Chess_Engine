@@ -186,6 +186,7 @@ export function showReview() {
   $("bottom-name").textContent = name(ui.side);
   renderMoveList();
   renderGraph();
+  renderSummary();
   $("moves-panel").hidden = false;
   $("stepper").hidden = false;
   setStatus(`Reviewed ${review.moves.length} moves at depth ${review.depth}.`);
@@ -384,6 +385,56 @@ export function moveGraphCursor(ply) {
 }
 
 onStep.push((ply) => moveGraphCursor(ply));
+
+// ------------------------------------------------------------------ the summary
+
+const CLASS_ORDER = ["best", "good", "inaccuracy", "mistake", "blunder"];
+
+function cell(text, className = "") {
+  return line("span", className, text);
+}
+
+/** Accuracy, average loss and moves per class for both players, then the key moments (click to jump). */
+export function renderSummary() {
+  const panel = $("summary-panel");
+  const { summary, key_moments: moments, headers = {} } = ui.review;
+  const grid = document.createElement("div");
+  grid.className = "summary-grid";
+  grid.setAttribute("role", "table");
+  grid.append(cell(""), cell(headers.White || "White", "head num"), cell(headers.Black || "Black", "head num"));
+  grid.append(cell("Accuracy"), cell(`${summary.white.accuracy.toFixed(1)}%`, "num"),
+              cell(`${summary.black.accuracy.toFixed(1)}%`, "num"));
+  grid.append(cell("Average loss"), cell(`${Math.round(summary.white.average_cp_loss)} cp`, "num"),
+              cell(`${Math.round(summary.black.average_cp_loss)} cp`, "num"));
+  for (const name of CLASS_ORDER) {
+    const label = cell(`${CLASS_NAMES[name]}${SYMBOLS[name] ? ` ${SYMBOLS[name]}` : ""}`, `class-name ${name}`);
+    grid.append(label, cell(String(summary.white.counts[name] || 0), "num"),
+                cell(String(summary.black.counts[name] || 0), "num"));
+  }
+  const children = [line("h2", null, "Summary"), grid];
+  if (moments.length) {
+    children.push(line("h2", null, "Key moments"));
+    const list = document.createElement("ul");
+    list.className = "moments";
+    for (const moment of moments) {
+      const item = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.ply = String(moment.ply + 1);
+      const name = cell(`${moment.move_number} ${moment.san}${SYMBOLS[moment.classification] || ""}`,
+                        `class-name ${moment.classification}`);
+      button.append(name, ` ${moment.text}`);
+      button.addEventListener("click", () => goTo(moment.ply + 1));
+      item.append(button);
+      list.append(item);
+    }
+    children.push(list);
+  } else {
+    children.push(line("p", "coach-stats", "No inaccuracies, mistakes or blunders: a clean game."));
+  }
+  panel.replaceChildren(...children);
+  panel.hidden = false;
+}
 
 export function step(delta) { goTo(ui.ply + delta); }
 

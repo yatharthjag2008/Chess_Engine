@@ -184,6 +184,24 @@ test("the eval graph shows the game and jumps to a clicked move", () => {
   equal(Number(cursor.getAttribute("x1")), app.GRAPH.width);
 });
 
+test("the summary shows both players and the key moments", () => {
+  const panel = $("summary-panel");
+  assert(!panel.hidden, "shown");
+  const cells = [...panel.querySelectorAll(".summary-grid > span")].map((c) => c.textContent);
+  equal(cells.slice(0, 3), ["", "Ann", "Ben"]);
+  equal(cells[3], "Accuracy");
+  assert(cells[4].endsWith("%") && cells[5].endsWith("%"), cells.slice(4, 6).join(" "));
+  const blunderRow = cells.indexOf("Blunder ??");
+  assert(blunderRow > 0, cells.join("|"));
+  equal(cells.slice(blunderRow + 1, blunderRow + 3), ["0", "1"]);
+  const moments = panel.querySelectorAll(".moments button");
+  equal(moments.length, 1);
+  assert(moments[0].textContent.startsWith("3... Nf6??"), moments[0].textContent);
+  app.goTo(0);
+  moments[0].click();
+  equal(app.ui.ply, 6, "jumps to the position after the blunder");
+});
+
 test("errors are shown", async () => {
   await app.loadGames("lichess", "x");
   assert($("status").textContent.includes("not a valid"), $("status").textContent);
