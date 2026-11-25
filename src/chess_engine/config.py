@@ -283,6 +283,16 @@ class BotConfig(_StrictModel):
     seed: int | None = None
 
 
+class ApiConfig(_StrictModel):
+    """FastAPI backend settings (see ``chess_engine.api``)."""
+
+    host: str = "127.0.0.1"
+    port: int = Field(default=8000, ge=1, le=65535)
+    max_games: PositiveInt = 200
+    idle_minutes: float = Field(default=120, gt=0)
+    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:8000", "http://127.0.0.1:8000"])
+
+
 class Config(_StrictModel):
     """The full project configuration."""
 
@@ -294,6 +304,7 @@ class Config(_StrictModel):
     training: TrainingConfig
     evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
     bot: BotConfig = Field(default_factory=BotConfig)
+    api: ApiConfig = Field(default_factory=ApiConfig)
 
 
 # --------------------------------------------------------------------------- loading

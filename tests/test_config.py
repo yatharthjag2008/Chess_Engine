@@ -86,6 +86,12 @@ def test_default_bot_settings(default_config: Config) -> None:
     assert b.model.name == "best_model.pt"
 
 
+def test_default_api_settings(default_config: Config) -> None:
+    a = default_config.api
+    assert a.host == "127.0.0.1" and a.port == 8000 and a.max_games > 0 and a.idle_minutes > 0
+    assert "http://localhost:8000" in a.cors_origins
+
+
 def test_training_limits_can_be_unset(tmp_path: Path) -> None:
     override = _write_yaml(tmp_path / "t.yaml", {"training": {"grad_clip_norm": None, "val_max_positions": None,
                                                             "max_steps": 10, "max_minutes": 1.5}})
@@ -171,6 +177,9 @@ def test_invalid_yaml_is_rejected(tmp_path: Path) -> None:
         ({"training": {"prefetch_batches": -1}}, "prefetch_batches"),
         ({"evaluation": {"split": "holdout"}}, "split"),
         ({"bot": {"temperature": -0.5}}, "temperature"),
+        ({"api": {"port": 70000}}, "port"),
+        ({"api": {"max_games": 0}}, "max_games"),
+        ({"api": {"idle_minutes": 0}}, "idle_minutes"),
         ({"bot": {"top_p": 0}}, "top_p"),
         ({"bot": {"min_prob": 1.0}}, "min_prob"),
         ({"bot": {"rating": 0}}, "rating"),

@@ -133,3 +133,10 @@ bot:                             # step 8: playing against the model
   top_p: 1.0                     # only the smallest set of likeliest moves covering this probability
   min_prob: 0.0                  # never play a move the model gives less than this probability
   seed: null                     # fixed seed for reproducible games (null = random)
+
+api:                             # step 9: FastAPI backend (the bot model and sampling come from `bot:`)
+  host: 127.0.0.1                # local only; use 0.0.0.0 to serve your network
+  port: 8000
+  max_games: 200                 # games kept in memory at once (the oldest idle game is dropped first)
+  idle_minutes: 120              # games untouched for this long are dropped
+  cors_origins: ["http://localhost:8000", "http://127.0.0.1:8000"]   # web pages allowed to call the API
