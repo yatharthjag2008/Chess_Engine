@@ -133,3 +133,36 @@ def test_rating_settings() -> None:
     assert GameSettings(match_opponent=True).rating_for(None) == 1500
     assert GameSettings(match_opponent=True).rating_for(2900) == 2400
     assert GameSettings(match_opponent=True, offset=-300).rating_for(900) == 800
+
+
+def test_run_bot_answers_challenges_and_plays() -> None:
+    from chess_engine.lichess_bot import run_bot
+
+    events = [
+        {"type": "challenge", "challenge": _challenge() | {"id": "c1", "challenger": {"id": "fan", "name": "Fan"}}},
+        {"type": "challenge", "challenge": _challenge(speed="bullet") | {"id": "c2",
+                                                                         "challenger": {"id": "fast", "name": "Fast"}}},
+        {"type": "challenge", "challenge": _challenge() | {"id": "c3", "challenger": {"id": "humanbot"}}},
+        {"type": "gameStart", "game": {"gameId": "g1"}},
+        {"type": "gameStart", "game": {"id": "g2"}},
+    ]
+    fake = FakeLichess({"/api/account": FakeResponse(body={"id": "humanbot"}),
+                        "/api/stream/event": FakeResponse(lines=events),
+                        "/api/bot/game/stream/g1": FakeResponse(lines=_game(True, ["a2a3"], "resign"))})
+    logs: list[str] = []
+    played = run_bot(LichessClient(TOKEN, session=fake), ScriptedBot, log=logs.append, max_games=1)
+    assert played == 1, "stops after max_games"
+    assert ("/api/challenge/c1/accept", {}) in fake.posts
+    assert ("/api/challenge/c2/decline", {"reason": "timeControl"}) in fake.posts
+    assert not any("c3" in path for path, _ in fake.posts), "our own challenges are left alone"
+    assert logs[:2] == ["accepting blitz challenge from Fan", "declining challenge from Fast (timeControl)"]
+    assert not any("g2" in path for path, _ in fake.posts)
+
+
+def test_run_bot_survives_a_broken_game() -> None:
+    from chess_engine.lichess_bot import run_bot
+
+    fake = FakeLichess({"/api/stream/event": FakeResponse(lines=[{"type": "gameStart", "game": {"id": "bad"}}])})
+    logs: list[str] = []
+    assert run_bot(LichessClient(TOKEN, session=fake), ScriptedBot, username="humanbot", log=logs.append) == 1
+    assert logs == ["game bad: stopped (GET /api/bot/game/stream/bad: HTTP 404 (Not found))"]

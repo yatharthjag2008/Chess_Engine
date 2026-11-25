@@ -204,3 +204,43 @@ def play_game(client: LichessClient, game_id: str, username: str, make_bot: BotF
     result = result or "aborted"
     log(f"game {game_id}: over ({result})")
     return result
+
+
+# --------------------------------------------------------------------------- the account
+
+
+def run_bot(client: LichessClient, make_bot: BotFactory, policy: ChallengePolicy | None = None,
+            settings: GameSettings | None = None, username: str | None = None, max_games: int | None = None,
+            log: Callable[[str], None] = print) -> int:
+    """Answer challenges and play games until the event stream ends or ``max_games`` games were played.
+
+    Games are played one at a time (a challenge arriving meanwhile waits in the stream and is answered after
+    the game). Returns the number of games played.
+    """
+    policy = policy or ChallengePolicy()
+    username = username or client.account()["id"]
+    played = 0
+    for event in client.stream_events():
+        kind = event.get("type")
+        if kind == "challenge":
+            challenge = event.get("challenge", {})
+            if str(challenge.get("challenger", {}).get("id", "")).lower() == username.lower():
+                continue                                   # our own challenge to someone else
+            who = challenge.get("challenger", {}).get("name", "?")
+            reason = challenge_decision(challenge, policy, active_games=0)
+            if reason is None:
+                log(f"accepting {challenge.get('speed')} challenge from {who}")
+                client.accept(challenge["id"])
+            else:
+                log(f"declining challenge from {who} ({reason})")
+                client.decline(challenge["id"], reason)
+        elif kind == "gameStart":
+            game_id = event.get("game", {}).get("gameId") or event.get("game", {}).get("id")
+            try:
+                play_game(client, game_id, username, make_bot, settings, log)
+            except LichessError as exc:
+                log(f"game {game_id}: stopped ({exc})")
+            played += 1
+            if max_games is not None and played >= max_games:
+                break
+    return played
