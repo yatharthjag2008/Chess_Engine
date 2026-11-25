@@ -198,6 +198,7 @@ test("the summary shows both players and the key moments", () => {
   const moments = panel.querySelectorAll(".moments button");
   equal(moments.length, 1);
   assert(moments[0].textContent.startsWith("3... Nf6??"), moments[0].textContent);
+  equal(moments[0].textContent.split("Nf6??").length, 2, "the move is named once");
   app.goTo(0);
   moments[0].click();
   equal(app.ui.ply, 6, "jumps to the position after the blunder");

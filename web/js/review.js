@@ -489,9 +489,8 @@ export function renderSummary() {
       const button = document.createElement("button");
       button.type = "button";
       button.dataset.ply = String(moment.ply + 1);
-      const name = cell(`${moment.move_number} ${moment.san}${SYMBOLS[moment.classification] || ""}`,
-                        `class-name ${moment.classification}`);
-      button.append(name, ` ${moment.text}`);
+      // The text already starts with the move ("4. Qxf7+?? dropped White's chances..."): only the dot is added.
+      button.append(cell(moment.text, `class-name ${moment.classification}`));
       button.addEventListener("click", () => goTo(moment.ply + 1));
       item.append(button);
       list.append(item);
