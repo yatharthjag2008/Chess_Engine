@@ -185,3 +185,10 @@ review:                          # step 14: Stockfish game review (depth comes f
   good_drop: 2                   # losing at most this many points still counts as "best" (an equally good move)
   key_moments: 5                 # how many turning points to highlight
   cache: true                    # keep finished reviews on disk (data/reviews/) to show them again instantly
+
+coach:                           # step 15: "your level vs. next level" and the mistake coach
+  level_offsets: [200, 400]      # compare your rating with these many points above it
+  min_win_gap: 8                 # a disagreement matters only if the stronger level's move keeps this many
+                                 # more win-% points than yours (by Stockfish)
+  top_moves: 3                   # likeliest moves shown per level
+  max_moments: 5                 # level-comparison moments shown per game

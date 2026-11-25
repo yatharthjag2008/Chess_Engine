@@ -368,6 +368,22 @@ class ReviewConfig(_StrictModel):
         return self
 
 
+class CoachConfig(_StrictModel):
+    """Level comparison and mistake coach (see ``chess_engine.review.level_compare`` and ``coach``)."""
+
+    level_offsets: list[PositiveInt] = Field(default_factory=lambda: [200, 400], min_length=1)
+    min_win_gap: float = Field(default=8, ge=0, le=100)
+    top_moves: PositiveInt = 3
+    max_moments: PositiveInt = 5
+
+    @field_validator("level_offsets")
+    @classmethod
+    def _check_offsets(cls, offsets: list[int]) -> list[int]:
+        if offsets != sorted(set(offsets)):
+            raise ValueError(f"level_offsets must be increasing and distinct, got {offsets}")
+        return offsets
+
+
 class Config(_StrictModel):
     """The full project configuration."""
 
@@ -384,6 +400,7 @@ class Config(_StrictModel):
     rating_estimation: RatingEstimationConfig = Field(default_factory=RatingEstimationConfig)
     game_import: GameImportConfig = Field(default_factory=GameImportConfig)
     review: ReviewConfig = Field(default_factory=ReviewConfig)
+    coach: CoachConfig = Field(default_factory=CoachConfig)
 
 
 # --------------------------------------------------------------------------- loading

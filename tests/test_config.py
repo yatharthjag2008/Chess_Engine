@@ -116,6 +116,11 @@ def test_default_review_settings(default_config: Config) -> None:
     assert r.multipv >= 1 and 3 <= r.key_moments <= 5 and default_config.stockfish.analysis_depth > 0
 
 
+def test_default_coach_settings(default_config: Config) -> None:
+    c = default_config.coach
+    assert c.level_offsets == [200, 400] and c.min_win_gap > 0 and c.top_moves >= 1 and c.max_moments >= 1
+
+
 def test_training_limits_can_be_unset(tmp_path: Path) -> None:
     override = _write_yaml(tmp_path / "t.yaml", {"training": {"grad_clip_norm": None, "val_max_positions": None,
                                                             "max_steps": 10, "max_minutes": 1.5}})
@@ -209,6 +214,8 @@ def test_invalid_yaml_is_rejected(tmp_path: Path) -> None:
         ({"game_import": {"max_games": 0}}, "max_games"),
         ({"review": {"mistake_drop": 5}}, "thresholds must increase"),
         ({"review": {"multipv": 0}}, "multipv"),
+        ({"coach": {"level_offsets": [400, 200]}}, "increasing"),
+        ({"coach": {"level_offsets": []}}, "level_offsets"),
         ({"rating_estimation": {"prior": "uniform"}}, "prior"),
         ({"elo_validation": {"bot_ratings": [1500]}}, "bot_ratings"),
         ({"elo_validation": {"self_play": "some"}}, "self_play"),
