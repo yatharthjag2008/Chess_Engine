@@ -232,3 +232,53 @@ def test_library_errors(tmp_path) -> None:
         library.load("ann", other)
     with pytest.raises(StyleError, match="no style"):
         library.delete("nobody")
+
+
+def _biased_adapter(base, uci: str = "a2a3", amount: float = 8.0):
+    import chess
+
+    from chess_engine.encoding.moves import move_to_index
+    from chess_engine.style.adapter import StyleAdapter
+
+    adapter = StyleAdapter.for_model(base)
+    with torch.no_grad():
+        adapter.policy_bias[move_to_index(chess.Move.from_uci(uci), chess.WHITE)] = amount
+    return adapter
+
+
+def test_style_predictor_blends_with_the_base() -> None:
+    import chess
+    import pytest
+
+    from chess_engine.style.predictor import StylePredictor
+
+    base = small_predictor()
+    board = chess.Board()
+    plain = base.predict(board, 1500).as_dict()
+    adapter = _biased_adapter(base.model)
+    full = StylePredictor(base, adapter, 1.0).predict(board, 1500).as_dict()
+    half = StylePredictor(base, adapter, 0.5).predict(board, 1500)
+    assert full["a2a3"] > 0.9, "the style loves a3"
+    assert half.as_dict()["a2a3"] == pytest.approx(0.5 * full["a2a3"] + 0.5 * plain["a2a3"], abs=1e-5)
+    assert sum(p.prob for p in half.moves) == pytest.approx(1.0, abs=1e-5) and half.moves[0].san == "a3"
+    assert half.wdl is not None and sum(half.wdl) == pytest.approx(1.0, abs=1e-5)
+    none = StylePredictor(base, adapter, 0.0).predict(board, 1500).as_dict()
+    assert none == pytest.approx(plain, abs=1e-6)
+    with pytest.raises(ValueError, match="weight"):
+        StylePredictor(base, adapter, 1.5)
+
+
+def test_a_bot_plays_in_a_style() -> None:
+    import chess
+
+    from chess_engine.bot.player import BotPlayer
+    from chess_engine.bot.sampling import SamplingSettings
+    from chess_engine.style.predictor import StylePredictor
+
+    base = small_predictor()
+    styled = StylePredictor(base, _biased_adapter(base.model), 1.0)
+    bot = BotPlayer(styled, 1500, SamplingSettings(temperature=0), seed=0)
+    assert bot.choose_move(chess.Board()).san == "a3"
+    assert "1400-1599" in bot.describe()
+    many = styled.predict_many([chess.Board(), chess.Board()], [1200, 1800])
+    assert len(many) == 2 and all(p.moves[0].san == "a3" for p in many)
