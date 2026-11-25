@@ -9,6 +9,12 @@ ratings (how ratings are spread among players) this gives a posterior:
     log p(rating | moves)  =  sum over moves of log p(move | rating) / temper  +  log prior(rating)  + const
 
 The estimate is the posterior mean, the range its central ``interval`` (e.g. 80%).
+Several games of one player multiply their likelihoods (their log-likelihoods add up)::
+
+    games = player_games_from_pgn(pgn_text, player="someone")
+    result = estimate_rating(predictor, games, cfg.rating_estimation, log_prior)
+    result.overall.describe()          # "about 1430 (80% range 1250-1620, from 112 moves)"
+    result.per_game[0].estimate
 ``temper`` > 1 widens the posterior: the moves of one game are not independent
 pieces of evidence (one opening, one style, one time scramble), so the raw sum
 is overconfident; the right value is fitted on held-out games.
@@ -28,6 +34,7 @@ import torch
 from chess_engine.config import RatingEstimationConfig, RatingsConfig
 from chess_engine.encoding.board import encode_boards
 from chess_engine.encoding.moves import legal_move_mask, move_to_index
+from chess_engine.eval.player_games import PlayerGame
 from chess_engine.model.features import buckets_from_ratings, context_features, make_inputs
 from chess_engine.model.inference import MovePredictor
 from chess_engine.model.masking import legal_log_probs
@@ -217,3 +224,49 @@ def estimate_from_bucket_ll(
     prior = np.zeros_like(grid) if log_prior is None else log_prior
     temper = temper if temper is not None else (cfg.temper or 1.0)
     return summarize(grid, posterior(total, prior, temper), cfg.interval, moves=len(bucket_ll))
+
+
+# --------------------------------------------------------------------------- games -> estimate
+
+
+def game_bucket_ll(predictor: MovePredictor, game: PlayerGame, use_opponent_rating: bool = True) -> np.ndarray:
+    """``(moves, K)`` bucket log-likelihoods of one player's moves in one game.
+
+    With ``use_opponent_rating`` the opponent's rating from the PGN is given to the model
+    (when present); otherwise the opponent is assumed to be as strong as each candidate rating.
+    """
+    opp = game.opp_rating if use_opponent_rating else None
+    return move_bucket_log_likelihoods(predictor, game.boards, game.moves, opp, game.clocks, game.opp_clocks,
+                                       game.base_seconds, game.increment)
+
+
+@dataclass(frozen=True)
+class PlayerEstimate:
+    """The combined estimate over all games, and each game's own."""
+
+    overall: RatingEstimate
+    per_game: list[RatingEstimate]
+
+
+def estimate_rating(
+    predictor: MovePredictor,
+    games: Sequence[PlayerGame],
+    cfg: RatingEstimationConfig,
+    log_prior: np.ndarray | None = None,
+    temper: float | None = None,
+    use_opponent_rating: bool = True,
+) -> PlayerEstimate:
+    """Estimate a player's rating from their moves in ``games`` (see the module docstring).
+
+    Raises:
+        ValueError: no games, or the games contain no moves of the player.
+    """
+    if not games:
+        raise ValueError("no games to estimate from")
+    per_game_ll = [game_bucket_ll(predictor, g, use_opponent_rating) for g in games]
+    if sum(len(ll) for ll in per_game_ll) == 0:
+        raise ValueError("the games contain no moves of the player")
+    ratings = predictor.ratings
+    per_game = [estimate_from_bucket_ll(ll, ratings, cfg, log_prior, temper) for ll in per_game_ll if len(ll)]
+    overall = estimate_from_bucket_ll(np.concatenate(per_game_ll), ratings, cfg, log_prior, temper)
+    return PlayerEstimate(overall, per_game)

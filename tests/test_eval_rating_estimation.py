@@ -128,3 +128,27 @@ def test_move_bucket_log_likelihoods_match_the_predictor() -> None:
     assert move_bucket_log_likelihoods(predictor, [], []).shape == (0, 8)
     with pytest.raises(ValueError, match="not legal"):
         move_bucket_log_likelihoods(predictor, [chess.Board()], [chess.Move.from_uci("e2e5")])
+
+
+def test_estimate_rating_from_pgn_games() -> None:
+    from bot_helpers import small_predictor
+    from chess_engine.eval.player_games import player_games_from_pgn
+    from chess_engine.eval.rating_estimation import estimate_rating, game_bucket_ll
+
+    pgn = (FIXTURE_DIR / "lichess_real.pgn").read_text(encoding="utf-8")
+    games = player_games_from_pgn(pgn)[:4]
+    predictor = small_predictor()
+    result = estimate_rating(predictor, games, CFG)
+    assert len(result.per_game) == 4
+    assert result.overall.moves == sum(len(g) for g in games)
+    assert CFG.rating_min <= result.overall.low <= result.overall.estimate <= result.overall.high <= CFG.rating_max
+    # more games -> at least as narrow a range as the first game alone (likelihoods add up)
+    one = result.per_game[0]
+    assert (result.overall.high - result.overall.low) <= (one.high - one.low) + 1e-6
+    # the opponent's rating changes the evidence (it is a model input)
+    assert not np.allclose(game_bucket_ll(predictor, games[0], True), game_bucket_ll(predictor, games[0], False))
+    with pytest.raises(ValueError):
+        estimate_rating(predictor, [], CFG)
+
+
+FIXTURE_DIR = __import__("pathlib").Path(__file__).parent / "fixtures"
