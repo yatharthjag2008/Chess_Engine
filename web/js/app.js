@@ -280,6 +280,8 @@ export function loadSettings(form) {
   if (color) color.checked = true;
   const select = form.elements.time_control;
   if ([...select.options].some((o) => o.value === (saved.time_control || ""))) select.value = saved.time_control || "";
+  const hints = form.elements.hint_limit;
+  if (hints && [...hints.options].some((o) => o.value === String(saved.hint_limit))) hints.value = String(saved.hint_limit);
 }
 
 export function readForm(form) {
@@ -287,6 +289,7 @@ export function readForm(form) {
   const options = { rating: Number(data.get("rating")), color: data.get("color") };
   const time = data.get("time_control");
   if (time) options.time_control = time;
+  if (data.get("hint_limit") !== null) options.hint_limit = Number(data.get("hint_limit"));
   return options;
 }
 
