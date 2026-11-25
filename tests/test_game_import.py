@@ -95,3 +95,47 @@ def test_unknown_source() -> None:
 
     with pytest.raises(InvalidUsernameError, match="unknown source"):
         check_username("chess24", "someone")
+
+
+# --------------------------------------------------------------------------- HTTP client
+
+
+def _client(**kwargs):
+    from chess_engine.data.game_import import HttpClient
+
+    waits: list[float] = []
+    return HttpClient(timeout=5, sleep=waits.append, **kwargs), waits
+
+
+def test_http_client_retries_rate_limits_and_server_errors() -> None:
+    from chess_engine.data.game_import import USER_AGENT
+    from fake_api import FakeApi, Reply
+
+    with FakeApi() as api:
+        api.routes["/x"] = [Reply(429, headers={"Retry-After": "7"}), Reply(503), Reply(200, "ok")]
+        client, waits = _client(retries=3, backoff=0.5)
+        response = client.get(api.url + "/x", params={"max": 3}, accept="application/x-chess-pgn")
+        assert response.text == "ok" and waits == [7.0, 1.0]   # Retry-After honoured, then 0.5 * 2**1
+        path, query, headers = api.requests[0]
+        assert query == {"max": ["3"]} and headers["accept"] == "application/x-chess-pgn"
+        assert headers["user-agent"] == USER_AGENT
+
+
+def test_http_client_errors() -> None:
+    from chess_engine.data.game_import import SourceUnavailableError, UserNotFoundError
+    from fake_api import FakeApi, Reply
+
+    with FakeApi() as api:
+        api.routes["/down"] = Reply(502)
+        api.routes["/forbidden"] = Reply(403)
+        client, waits = _client(retries=2)
+        with pytest.raises(UserNotFoundError):
+            client.get(api.url + "/missing", what="Lichess")
+        with pytest.raises(SourceUnavailableError, match="HTTP 502.*3 attempts"):
+            client.get(api.url + "/down")
+        assert len(waits) == 2
+        with pytest.raises(SourceUnavailableError, match="HTTP 403"):
+            client.get(api.url + "/forbidden")
+    client, _ = _client(retries=0)
+    with pytest.raises(SourceUnavailableError, match="cannot reach"):
+        client.get("http://127.0.0.1:9/")                       # nothing listens on port 9

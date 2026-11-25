@@ -13,12 +13,18 @@ from __future__ import annotations
 import hashlib
 import io
 import re
+import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
+from typing import Any
 
 import chess.pgn
+import requests
 
 from chess_engine.data.pgn_stream import game_id_from_site, speed_from_seconds
 
+#: Sent with every request. Deliberately generic: it identifies the software, never the person using it.
+USER_AGENT = "human-chess-engine/0.1 (game import)"
 STANDARD_VARIANTS = {"", "standard", "from position"}
 SOURCES = ("lichess", "chess.com")
 
@@ -31,11 +37,11 @@ _USERNAME = {
 }
 
 
-class ImportError_(Exception):
+class GameImportError(Exception):
     """A game import failed (bad username, unknown user, network trouble); the message is shown to the user."""
 
 
-class InvalidUsernameError(ImportError_):
+class InvalidUsernameError(GameImportError):
     """The username cannot exist on that site."""
 
 
@@ -163,3 +169,59 @@ def dedupe(games: list[ImportedGame]) -> list[ImportedGame]:
             seen.add(game.id)
             out.append(game)
     return out
+
+
+# --------------------------------------------------------------------------- HTTP
+
+
+class UserNotFoundError(GameImportError):
+    """The site has no player with that name."""
+
+
+class SourceUnavailableError(GameImportError):
+    """The site could not be reached or refused the request (after retries)."""
+
+
+class HttpClient:
+    """GET requests with retries.
+
+    Network errors, HTTP 429 (rate limited) and 5xx answers are retried up to ``retries``
+    times, waiting ``backoff * 2**attempt`` seconds or the server's ``Retry-After`` (at most
+    60 s). A 404 means the user does not exist.
+    """
+
+    def __init__(self, timeout: float = 30, retries: int = 3, backoff: float = 1.0,
+                 session: requests.Session | None = None, sleep: Callable[[float], None] = time.sleep) -> None:
+        self.timeout = timeout
+        self.retries = retries
+        self.backoff = backoff
+        self.session = session or requests.Session()
+        self.sleep = sleep
+
+    def get(self, url: str, params: dict[str, Any] | None = None, accept: str | None = None,
+            what: str = "the site") -> requests.Response:
+        headers = {"User-Agent": USER_AGENT}
+        if accept:
+            headers["Accept"] = accept
+        problem = ""
+        for attempt in range(self.retries + 1):
+            wait = self.backoff * 2**attempt
+            try:
+                response = self.session.get(url, params=params, headers=headers, timeout=self.timeout)
+            except (requests.ConnectionError, requests.Timeout) as exc:
+                problem = f"cannot reach {what}: {type(exc).__name__}"
+            else:
+                if response.status_code == 404:
+                    raise UserNotFoundError(f"{what} has no such player")
+                if response.status_code == 429 or response.status_code >= 500:
+                    problem = f"{what} answered HTTP {response.status_code}"
+                    retry_after = response.headers.get("Retry-After", "")
+                    if retry_after.isdigit():
+                        wait = float(retry_after)
+                elif response.status_code >= 400:
+                    raise SourceUnavailableError(f"{what} refused the request (HTTP {response.status_code})")
+                else:
+                    return response
+            if attempt < self.retries:
+                self.sleep(min(wait, 60.0))
+        raise SourceUnavailableError(f"{problem} (gave up after {self.retries + 1} attempts)")
