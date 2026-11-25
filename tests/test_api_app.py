@@ -333,3 +333,50 @@ def test_review_styles(client: TestClient) -> None:
     css = client.get("/css/review.css").text
     for rule in (".graph .marker.blunder", ".square.best-from", ".review-moves .san.current", "prefers-color-scheme"):
         assert rule in css, rule
+
+
+def test_hint_endpoint(default_config: Config) -> None:
+    from review_helpers import ScriptedAnalyzer
+
+    with TestClient(create_app(default_config, small_predictor(), review_analyzer=ScriptedAnalyzer())) as c:
+        game = c.post("/api/games", json={"seed": 5, "hint_limit": 1}).json()
+        url = f"/api/games/{game['id']}/hint"
+        nudge = c.post(url).json()
+        assert nudge["tier"] == "nudge" and nudge["text"] and nudge["from_square"] is None
+        assert nudge["next_tier"] == "point" and nudge["hints"] == {"limit": 1, "used": 1, "left": 0, "rated": False}
+        assert c.post(url, json={}).json()["tier"] == "point"
+        show = c.post(url).json()
+        assert show["tier"] == "show" and show["san"] == "a3" and (show["from_square"], show["to_square"]) == ("a2", "a3")
+        assert show["next_tier"] is None, "the scripted engine's best move is the first legal one"
+        c.post(f"/api/games/{game['id']}/moves", json={"move": "e4"})
+        r = c.post(url)
+        assert r.status_code == 409 and r.json()["error"] == "no_hints_left"
+        state = c.get(f"/api/games/{game['id']}").json()
+        assert state["hints"]["rated"] is False
+        assert '[Hints "1"]' in c.get(f"/api/games/{game['id']}/pgn").text
+        bad = c.post(url, json={"tier": "everything"})
+        assert bad.status_code == 422
+        black = c.post("/api/games", json={"color": "black", "seed": 5}).json()
+        c.post(f"/api/games/{black['id']}/resign")
+        r = c.post(f"/api/games/{black['id']}/hint")
+        assert r.status_code == 409 and r.json()["error"] == "game_over"
+        timed = c.post("/api/games", json={"time_control": "5+0"}).json()
+        assert c.post(f"/api/games/{timed['id']}/hint").status_code == 200, "clock times go to the model"
+        off = c.post("/api/games", json={"hint_limit": 0}).json()
+        r = c.post(f"/api/games/{off['id']}/hint")
+        assert r.status_code == 409 and "off" in r.json()["detail"]
+
+
+def test_hint_without_stockfish(default_config: Config, monkeypatch) -> None:
+    from chess_engine.stockfish import StockfishError
+    import chess_engine.api.app as app_module
+
+    def missing(path):
+        raise StockfishError("Stockfish was not found")
+
+    monkeypatch.setattr(app_module, "find_stockfish", missing)
+    with TestClient(create_app(default_config, small_predictor())) as c:
+        game = c.post("/api/games", json={}).json()
+        r = c.post(f"/api/games/{game['id']}/hint")
+        assert r.status_code == 503 and r.json()["error"] == "stockfish_unavailable"
+        assert c.get(f"/api/games/{game['id']}").json()["hints"]["used"] == 0, "a failed hint is not counted"

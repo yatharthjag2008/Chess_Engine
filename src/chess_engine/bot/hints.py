@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from enum import Enum, IntEnum
+import threading
 from collections import OrderedDict
 from typing import Any
 
@@ -261,8 +262,13 @@ class HintEngine:
         self.cfg = cfg
         self.cache_size = cache_size
         self._cache: OrderedDict[tuple[str, int], BestMove] = OrderedDict()
+        self._lock = threading.Lock()      # one engine, shared by the API's worker threads
 
     def best(self, board: chess.Board, rating: int, opp_rating: int | None = None, **clock: Any) -> BestMove:
+        with self._lock:
+            return self._best(board, rating, opp_rating, **clock)
+
+    def _best(self, board: chess.Board, rating: int, opp_rating: int | None = None, **clock: Any) -> BestMove:
         key = (board.fen(), rating)
         if key in self._cache:
             self._cache.move_to_end(key)
@@ -315,6 +321,10 @@ class HintBudget:
     @property
     def rated(self) -> bool:
         return self.used == 0
+
+    def can_take(self, board: chess.Board) -> bool:
+        """Whether a hint may be given here (an already hinted position, or hints left)."""
+        return position_key(board) in self.given or self.used < self.limit
 
     def next_tier(self, board: chess.Board) -> Tier:
         """The tier the next request in this position gets."""

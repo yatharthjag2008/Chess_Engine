@@ -24,6 +24,7 @@ import chess
 from chess_engine.api.schemas import (
     ClockState,
     GameState,
+    HintResponse,
     HintsState,
     MoveResponse,
     NewGameRequest,
@@ -35,7 +36,7 @@ from chess_engine.api.schemas import (
 from chess_engine.api.store import GameStore, Session
 from chess_engine.bot.clock import ChessClock, TimeControl
 from chess_engine.bot.game import Game, IllegalMoveError
-from chess_engine.bot.hints import HintBudget
+from chess_engine.bot.hints import HintBudget, HintEngine, HintError, Tier
 from chess_engine.bot.player import BotPlayer, sampling_from_config
 from chess_engine.bot.sampling import SamplingSettings
 from chess_engine.config import Config
@@ -194,6 +195,39 @@ class GameService:
             session.last_bot_move = None
             return self._state(session)
 
+    def hint(self, session: Session, engine: HintEngine, tier: str | None = None) -> HintResponse:
+        """A hint for your move. A new position uses one of the game's hints; asking again there goes a tier
+        further for free. Rated as yourself (your rating, else the bot's) against the bot's rating."""
+        with session.lock:
+            self._check_time(session)
+            game, board, budget = session.game, session.game.board, session.hints
+            _require(not game.is_over, "game_over", "the game is over")
+            _require(board.turn == session.human_color, "not_your_turn", "hints are for your own move")
+            _require(budget.can_take(board), "no_hints_left",
+                     "no hints left in this game" if budget.limit else "hints are off for this game")
+            chosen = Tier(tier) if tier else budget.next_tier(board)
+            clock = {}
+            if session.clock is not None:
+                c = session.clock
+                clock = {"clocks": max(0.0, c.remaining(session.human_color)),
+                         "opp_clocks": max(0.0, c.remaining(not session.human_color)),
+                         "base_seconds": c.control.base_seconds, "increment": c.control.increment}
+            rating = session.your_rating or session.bot.rating
+            try:
+                hint = engine.hint(board, chosen, rating, session.bot.rating, **clock)
+            except HintError as exc:
+                raise GameRuleError("no_hint", str(exc)) from exc
+            budget.take(board, chosen)          # counted only once the hint is ready
+            data = hint.to_dict()
+            following = budget.next_tier(board)
+            return HintResponse(**data, next_tier=None if following is chosen else following.value,
+                                hints=self._hints_state(session))
+
+    @staticmethod
+    def _hints_state(session: Session) -> HintsState:
+        h = session.hints
+        return HintsState(limit=h.limit, used=h.used, left=h.left, rated=h.rated)
+
     def pgn(self, session: Session) -> str:
         """The game as PGN; a game with hints says so (and how many) in its headers."""
         with session.lock:
@@ -231,8 +265,7 @@ class GameService:
             legal_moves=[] if outcome else legal_moves(board),
             clock=self._clock_state(session),
             last_bot_move=bot_move_info(session.last_bot_move) if session.last_bot_move else None,
-            hints=HintsState(limit=session.hints.limit, used=session.hints.used, left=session.hints.left,
-                             rated=session.hints.rated),
+            hints=self._hints_state(session),
         )
 
 

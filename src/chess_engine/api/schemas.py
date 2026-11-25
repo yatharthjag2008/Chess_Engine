@@ -144,6 +144,26 @@ class GameState(BaseModel):
     hints: HintsState
 
 
+class HintRequest(_Body):
+    """Ask for a hint: a tier, or (by default) the next one for this position (nudge -> point -> show)."""
+
+    tier: Literal["nudge", "point", "show"] | None = None
+
+
+class HintResponse(BaseModel):
+    tier: Literal["nudge", "point", "show"]
+    text: str
+    from_square: str | None = Field(description="the piece to move (point and show)")
+    to_square: str | None = Field(description="where it goes (show)")
+    san: str | None = Field(description="the move (show)")
+    themes: list[str]
+    find_rate: float = Field(description="how often players at your rating play this move")
+    detail: Literal["vague", "theme", "piece"]
+    only_move: bool
+    next_tier: Literal["nudge", "point", "show"] | None = Field(description="what asking again here gives")
+    hints: HintsState
+
+
 class MoveResponse(BaseModel):
     played: str = Field(description="your move in SAN")
     bot_move: BotMoveInfo | None = Field(description="the bot's reply, if it moved")

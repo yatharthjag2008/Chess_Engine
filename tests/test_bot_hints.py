@@ -194,8 +194,10 @@ def test_budget_counts_positions_and_escalates_within_one() -> None:
     board.push_uci("e7e5")
     assert budget.take(board, Tier.SHOW) is Tier.SHOW, "a tier can be asked for directly"
     assert budget.next_tier(board) is Tier.SHOW and budget.left == 0
+    assert budget.can_take(board)
     board.push_uci("g1f3")
     board.push_uci("b8c6")
+    assert not budget.can_take(board)
     with pytest.raises(HintLimitError, match="no hints left"):
         budget.take(board)
     board.pop()
