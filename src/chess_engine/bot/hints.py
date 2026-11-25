@@ -12,9 +12,13 @@ at your rating): a move most players find gets the vaguest nudge, a rarely found
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import Enum, IntEnum
+from typing import Any
 
 import chess
+
+from chess_engine.config import HintsConfig
+from chess_engine.model.inference import MovePredictor
 
 from chess_engine.review.features import (
     PIECE_VALUES,
@@ -88,3 +92,30 @@ def threatened_piece(board: chess.Board, move: chess.Move) -> chess.PieceType | 
     targets = [h for h in hanging_pieces(nxt, them) if h.square not in before
                and move.to_square in nxt.attackers(board.turn, h.square)]
     return max(targets, key=lambda h: PIECE_VALUES[h.piece_type]).piece_type if targets else None
+
+
+# --------------------------------------------------------------------------- how vague
+
+
+class Detail(IntEnum):
+    """How much the nudge gives away (more for moves that players at your rating rarely find)."""
+
+    VAGUE = 0       # usually found: only the kind of move ("there is a forcing move")
+    THEME = 1       # the theme ("there is a way to win material")
+    PIECE = 2       # rarely found: the theme and the piece type ("a knight move wins material")
+
+
+def find_rate(predictor: MovePredictor, board: chess.Board, move: chess.Move, rating: int,
+              opp_rating: int | None = None, **clock: Any) -> float:
+    """How often players rated ``rating`` play ``move`` here: the model's probability for it."""
+    prediction = predictor.predict(board, rating, opp_ratings=opp_rating, **clock)
+    return prediction.as_dict().get(move.uci(), 0.0)
+
+
+def detail_for(rate: float, cfg: HintsConfig) -> Detail:
+    """The nudge's detail for a move found with probability ``rate`` at your rating."""
+    if rate >= cfg.easy_find_rate:
+        return Detail.VAGUE
+    if rate < cfg.hard_find_rate:
+        return Detail.PIECE
+    return Detail.THEME

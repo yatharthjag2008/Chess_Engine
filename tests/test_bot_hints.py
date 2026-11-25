@@ -5,7 +5,8 @@ from __future__ import annotations
 import chess
 import pytest
 
-from chess_engine.bot.hints import Theme, move_themes, threatened_piece
+from chess_engine.bot.hints import Detail, Theme, detail_for, find_rate, move_themes, threatened_piece
+from chess_engine.config import HintsConfig
 
 
 def legal(fen: str, uci: str) -> tuple[chess.Board, chess.Move]:
@@ -48,3 +49,32 @@ def test_threatened_piece() -> None:
     assert threatened_piece(board, move) == chess.ROOK
     board, move = legal(chess.STARTING_FEN, "e2e4")
     assert threatened_piece(board, move) is None
+
+
+class FixedPredictor:
+    """Stands in for the model: a fixed probability per move (UCI) at every rating; remembers the calls."""
+
+    def __init__(self, probs: dict[str, float]) -> None:
+        self.probs = probs
+        self.calls: list[tuple[str, int, object]] = []
+
+    def predict(self, board: chess.Board, rating: int, **kwargs: object):
+        from chess_engine.model.inference import MoveProbability, Prediction
+
+        self.calls.append((board.fen(), rating, kwargs.get("opp_ratings")))
+        moves = [MoveProbability(self.probs.get(m.uci(), 0.0), m, board.san(m)) for m in board.legal_moves]
+        return Prediction(sorted(moves, reverse=True), None)
+
+
+def test_find_rate_is_the_models_probability_at_your_rating() -> None:
+    predictor = FixedPredictor({"e2e4": 0.4, "d2d4": 0.3})
+    board = chess.Board()
+    assert find_rate(predictor, board, chess.Move.from_uci("e2e4"), 1300, opp_rating=1500) == 0.4
+    assert find_rate(predictor, board, chess.Move.from_uci("h2h4"), 1300) == 0.0
+    assert predictor.calls[0][1:] == (1300, 1500)
+
+
+@pytest.mark.parametrize(("rate", "detail"), [(0.9, Detail.VAGUE), (0.35, Detail.VAGUE), (0.34, Detail.THEME),
+                                              (0.10, Detail.THEME), (0.09, Detail.PIECE), (0.0, Detail.PIECE)])
+def test_detail_follows_the_find_rate(rate: float, detail: Detail) -> None:
+    assert detail_for(rate, HintsConfig()) is detail
