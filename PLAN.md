@@ -63,7 +63,7 @@ tracked in [PROGRESS.md](PROGRESS.md).
 | 5 | `src/chess_engine/model/` (`features.py`, `layers.py`, `policy_map.py`, `heads.py`, `network.py`, `masking.py`, `inference.py`), `scripts/model_summary.py` |
 | 6 | `src/chess_engine/training/`, `src/chess_engine/plotting.py`, `scripts/train.py`, `scripts/plot_training.py`, `configs/laptop.yaml` |
 | 7, 11, 12 | `src/chess_engine/eval/`, `scripts/evaluate.py`, `scripts/compare_models.py`, `scripts/elo_validation.py`, `scripts/estimate_rating.py`, `scripts/evaluate_rating_estimation.py`, `reports/eval/`, `reports/elo/`, `reports/rating/` |
-| 8, 17, 18, 19 | `src/chess_engine/bot/` (`hints.py` for step 17), `scripts/play.py`, `scripts/bot_match.py`, `scripts/hint.py`, hint endpoint and hint panel |
+| 8, 17, 18, 19 | `src/chess_engine/bot/` (`hints.py` for step 17, `adaptive.py` for step 18), `scripts/play.py`, `scripts/bot_match.py`, `scripts/hint.py`, `scripts/adaptive_sim.py`, hint and adaptive endpoints, the play page's hint panel and Difficulty setting |
 | 14, 15 | `src/chess_engine/review/`, `scripts/review_game.py`, `scripts/coach_game.py`, review and coach endpoints in `src/chess_engine/api/app.py` |
 | 9 | `src/chess_engine/api/` (`schemas`, `store`, `service`, `app`), `scripts/serve.py` |
 | 10, 16 | `web/` (`index.html`, `review.html`, `css/`, `js/board.js`, `js/api.js`, `js/app.js`, `js/review.js`, `tests/`), `tests/test_web_js.py` |

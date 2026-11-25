@@ -21,7 +21,7 @@ See [PLAN.md](PLAN.md) for details on each step.
 - [x] 15. "Your level vs. next level" + mistake coach
 - [x] 16. Review UI
 - [x] 17. Tiered hints
-- [ ] 18. Adaptive difficulty
+- [x] 18. Adaptive difficulty
 - [ ] 19. Style imitation + ghost mode
 - [ ] 20. Polish
 
@@ -1028,3 +1028,57 @@ Nudge detail: vague 8, theme 8, piece 15
 - **Any hint makes the game unrated**, even an unused nudge: simple, visible (badge, PGN header), and it keeps
   adaptive difficulty honest.
 - **Quicker analysis than a review** (depth 12, 2 lines): a hint should arrive in about a second.
+
+## Step 18: Adaptive difficulty (done 2026-11-25)
+
+**Built** (`chess_engine.bot.adaptive`)
+- **Three modes per game**: *off* (the bot plays at the rating you choose), *between games* (the bot plays at your
+  rating, which is updated like Elo after every rated game) and *live* (the bot starts at the chosen rating and
+  adapts during the game, at most 200 points either way).
+- **Between games**: your rating moves by K × (score − expected score) against the bot's rating, with K = 80 for
+  your first 5 games and 40 after; the next bot is your rating rounded to 50, within 800-2400. Only rated games
+  count: a game with hints (step 17) does not.
+- **Live**: after each bot move the model's value head gives the bot's expected score in the position it moved
+  from; averaged over its last 3 moves, below 0.35 makes the bot 50 points stronger and above 0.65 50 points
+  weaker, at most every 4 bot moves and not during its first 6. A live game counts against the bot's mean rating.
+- **Your profile** (`data/adaptive.json`): rating, games, the last 50 rated games; atomic writes, an unreadable
+  file starts fresh. `GET /api/adaptive`, `POST /api/adaptive/reset`.
+- API: `adaptive` when starting a game; the state has `adaptive {mode, start_rating, changes, your_rating,
+  result}` and `bot_rating` is the bot's current rating; the PGN gets `[Adaptive "live"]` and the bot's ratings
+  (`[BotRatings "1500 1550"]`). Terminal: `scripts/play.py --adaptive between|live` prints each change and your
+  new rating. Web: a Difficulty choice (Fixed / Your level / Live), your rating in the form, the bot's current
+  rating with an arrow when live mode has moved it, your new rating in the result banner.
+- `scripts/adaptive_sim.py`: a stand-in player of known strength (Stockfish at an Elo, or the bot at a fixed
+  rating) plays the adaptive bot, adjudicated by Stockfish, with a throwaway profile.
+- Tests (about 30 new): Elo updates, the profile file, every live rule (opening, window, interval, cap, range, no
+  value head), recording only rated finished games once, the API and terminal end to end (a stand-in model that
+  always thinks it is losing makes live mode exact), the simulation, and the web page (between games from the
+  form to the result line, the bot's label).
+
+![The Difficulty setting](reports/web/difficulty.png)
+
+**Simulations** (`scripts/adaptive_sim.py`, the step-6 model, alternating colours, Stockfish adjudication):
+
+| Stand-in player | Mode | Games | What happened |
+|---|---|---|---|
+| bot fixed at 1000 | between, starting at 1600 | 30 | fell to 1400-1450 by game 9 and stayed there; the player scored 9/15 in the last 15 games |
+| Stockfish 1500 | between, starting at 1200 | 30 | the player won all 30; the bot climbed steadily, 1200 → 1900 |
+| Stockfish 1500 | live, starting at 1200 | 8 | the bot raised itself in every game (1-3 steps, up to +150), and still lost every game |
+
+- **The mechanism works**: between games, the bot's rating goes to where the results are even and stays there,
+  moving by one step at a time; live mode reacts within a game when the bot is losing.
+- **The level it finds is in the model's units, not in Elo.** The bot at "1000" and the bot at "1425" play about
+  evenly, and Stockfish 1500 beats the bot at "1900". This is the weak rating conditioning of steps 7, 11, 12, 15
+  and 17 again: the rating dial changes the bot's style more than its strength. Adaptive difficulty still does
+  its job (it finds the setting where you score about half), but the number it shows should not be read as your
+  Elo until the model is trained longer on more data.
+- Two fixes came from the checks: FormData leaves out disabled fields, so the "Your level" mode (which disables
+  the rating slider) would have sent rating 0; and the Difficulty labels were shortened so they fit on one line.
+
+**Decisions**
+- **Elo, not a custom rule**: well understood, symmetric, and with a larger K at first it reaches your level in a
+  handful of games.
+- **Live mode uses the model's own value head**, not Stockfish: it is free (computed with every bot move) and
+  needs no engine; the cap and the interval keep the bot from swinging within a game.
+- **Only games without hints count**, and a game counts once, when it ends (by a move, resignation or time).
+- **One local profile**: this is a single-player app on your machine; the file is easy to reset or delete.

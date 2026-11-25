@@ -393,7 +393,7 @@ export function adaptiveSummary(state) {
 
 const ADAPTIVE_NOTES = {
   off: "The bot plays at the rating you choose.",
-  between: "The bot plays at your rating, updated after every game without hints.",
+  between: "The bot plays at your level: your rating, updated after every game without hints.",
   live: "The bot starts at the rating you choose and adapts during the game (at most 200 points).",
 };
 

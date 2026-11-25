@@ -365,6 +365,23 @@ python scripts/hint.py --pgn game.pgn --color black --rating 1100     # what eac
 
 ![A hint on the play page](reports/web/hint_panel.png)
 
+## Adaptive difficulty
+
+Choose **Your level** in the new-game form (or `python scripts/play.py --adaptive between`) and the bot plays at
+your rating, updated like Elo after every game without hints, so you should win about half your games. **Live**
+(`--adaptive live`) starts at the rating you pick and adapts during the game, at most 200 points either way. The
+bot's current rating is always shown next to its name. Your rating is kept in `data/adaptive.json` (reset it from
+`POST /api/adaptive/reset`, or delete the file).
+
+```bash
+python scripts/adaptive_sim.py --player stockfish:1500 --mode between --games 30   # try it on a known player
+```
+
+With the current model the rating it settles on is in the bot's own units: the dial changes the bot's style more
+than its strength (see PROGRESS.md, steps 11 and 18).
+
+![The Difficulty setting](reports/web/difficulty.png)
+
 ## API server
 
 The same server also exposes the JSON API (interactive docs at `/docs`):
