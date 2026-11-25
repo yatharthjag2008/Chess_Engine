@@ -17,6 +17,7 @@ export const ui = {
   flagCheck: false,  // a state refresh after a flag fall is in flight
   hint: null,        // { id, fen, data }: the latest hint, shown while that game and position are on the board
   adaptive: null,    // your adaptive-difficulty profile from the server
+  adaptiveFor: null, // the finished game whose result was last loaded into it
 };
 
 const LOW_TIME = 20; // seconds: the clock turns red below this
@@ -235,7 +236,10 @@ export function renderResult(state) {
     line.className = "adaptive-result";
     line.textContent = rating;
     text.append(document.createElement("br"), line);
-    loadAdaptive();          // the form shows your new rating for the next game
+    if (ui.adaptiveFor !== state.id) {      // once per game: the form shows your new rating for the next one
+      ui.adaptiveFor = state.id;
+      ui.adaptiveLoading = loadAdaptive();
+    }
   }
   const actions = document.createElement("div");
   actions.className = "actions";

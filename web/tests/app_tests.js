@@ -1,6 +1,7 @@
 // End-to-end tests of the play page (app.js + board.js + api.js) against the real API server.
 
 import { assert, equal, run, test, until } from "./harness.js";
+import { api } from "../js/api.js";
 
 async function loadPage() {
   const html = await (await fetch("/index.html")).text();
@@ -238,6 +239,53 @@ test("the hint button runs out, and is hidden when hints are off", async () => {
   assert($("unrated").hidden, "a new game is rated");
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "h", bubbles: true }));
   equal(app.ui.hint.id === app.ui.game.id, false, "the h key does nothing when hints are off");
+});
+
+test("adapt between games: the bot plays at your rating and the result moves it", async () => {
+  await api.resetAdaptive(1630);
+  await app.loadAdaptive();
+  const form = $("new-game");
+  const between = form.querySelector('input[name="adaptive"][value="between"]');
+  between.checked = true;
+  between.dispatchEvent(new Event("change"));
+  assert($("rating").disabled, "the slider is not used");
+  equal($("rating").value, "1650");
+  assert($("adaptive-note").textContent.includes("Your rating: 1630 (0 rated games)"), $("adaptive-note").textContent);
+  const options = app.readForm(form);
+  equal(options.rating, 1650, "a disabled slider is still read");
+  equal(options.adaptive, "between");
+  await app.startGame({ ...options, color: "white", hint_limit: 0, seed: 21 });
+  equal(app.ui.game.bot_rating, 1650);
+  equal($("top-name").textContent, "Bot 1650");
+  $("resign").click();
+  $("resign").click();
+  await until(() => app.ui.game.status === "over", "resigned");
+  await until(() => app.ui.adaptiveLoading, "profile reload started");
+  await app.ui.adaptiveLoading;
+  const line = $("result-banner").querySelector(".adaptive-result");
+  assert(line && line.textContent.startsWith("Your rating: 1630 \u2192 1592. Next bot: 1600."), line && line.textContent);
+  equal(app.ui.adaptive.games, 1);
+  equal($("rating").value, "1600", "the form is ready for the next game");
+  const before = app.ui.adaptiveLoading;
+  $("flip").click();
+  equal(app.ui.adaptiveLoading, before, "the profile is loaded once per game, not on every re-render");
+  const off = form.querySelector('input[name="adaptive"][value="off"]');
+  off.checked = true;
+  off.dispatchEvent(new Event("change"));
+  assert(!$("rating").disabled, "fixed difficulty uses the slider again");
+  await api.resetAdaptive();
+});
+
+test("the bot's label and the adaptive summary", () => {
+  const live = { mode: "live", start_rating: 1500, changes: [], result: null };
+  equal(app.botLabel({ bot_rating: 1500, adaptive: live }), "Bot 1500");
+  equal(app.botLabel({ bot_rating: 1600, adaptive: live }), "Bot 1600 \u2191");
+  equal(app.botLabel({ bot_rating: 1450, adaptive: live }), "Bot 1450 \u2193");
+  equal(app.botLabel({ bot_rating: 1450, adaptive: { ...live, mode: "off", start_rating: 1500 } }), "Bot 1450");
+  const over = { status: "over", hints: { rated: false }, adaptive: { mode: "between", result: null } };
+  equal(app.adaptiveSummary(over), "Hints were used, so your adaptive rating is unchanged.");
+  equal(app.adaptiveSummary({ ...over, status: "ongoing" }), "");
+  equal(app.adaptiveSummary({ ...over, adaptive: { mode: "off", result: null } }), "");
 });
 
 test("new-game settings are remembered in this browser", () => {
