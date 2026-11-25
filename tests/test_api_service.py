@@ -153,3 +153,57 @@ def test_between_games_uses_your_profile_rating(adaptive_service: GameService) -
     live = adaptive_service.create(NewGameRequest(rating=1800, adaptive="live", your_rating=1600))
     assert adaptive_service.state(live).bot_rating == 1800 and live.your_rating == 1600
     assert live.adaptive.live is not None and live.adaptive.current == 1800
+
+
+class LosingBotPredictor:
+    """The small model, but the bot always thinks it is losing (for live-mode tests)."""
+
+    def __init__(self) -> None:
+        self.inner = small_predictor()
+        self.ratings = self.inner.ratings
+
+    def predict(self, board, rating, **kwargs):
+        from chess_engine.model.inference import Prediction
+
+        prediction = self.inner.predict(board, rating, **kwargs)
+        return Prediction(prediction.moves, (0.05, 0.1, 0.85))
+
+    def predict_many(self, *args, **kwargs):
+        return self.inner.predict_many(*args, **kwargs)
+
+
+def test_live_mode_raises_the_rating_and_records_the_result(default_config: Config, tmp_path) -> None:
+    profiles = ProfileStore(tmp_path / "a.json", default_config.adaptive)
+    service = GameService(LosingBotPredictor(), default_config, profiles=profiles)
+    session = service.create(NewGameRequest(rating=1500, adaptive="live", your_rating=1500, seed=1))
+    a = default_config.adaptive
+    for _ in range(a.live_after + 1):            # we play the first legal move; the bot "is losing" every time
+        board = session.game.board
+        service.play(session, min(m.uci() for m in board.legal_moves))
+    state = service.state(session)
+    assert state.status == "ongoing" and len(state.moves_san) == 2 * (a.live_after + 1)
+    assert state.bot_rating == 1550 and [c.rating for c in state.adaptive.changes] == [1550]
+    assert state.adaptive.changes[0].bot_move == a.live_after + 1
+    service.resign(session)
+    result = service.state(session).adaptive.result
+    assert result is not None and result.score == 0 and result.rating_after < result.rating_before
+    assert result.bot_rating == 1500, "measured against the bot's mean rating (every move so far at 1500)"
+    assert profiles.load().games == 1 and profiles.load().history[-1].mode == "live"
+    pgn = service.pgn(session)
+    assert '[Adaptive "live"]' in pgn and '[BotRatings "1500 1550"]' in pgn
+
+
+def test_between_games_records_rated_games_only(adaptive_service: GameService) -> None:
+    profiles = adaptive_service.profiles
+    profiles.reset(1500)
+    rated = adaptive_service.create(NewGameRequest(adaptive="between", seed=2))
+    adaptive_service.resign(rated)
+    result = adaptive_service.state(rated).adaptive.result
+    assert result.rating_before == 1500 and result.rating_after == 1500 - 80 / 2 and result.next_bot_rating == 1450
+    hinted = adaptive_service.create(NewGameRequest(adaptive="between", seed=3))
+    hinted.hints.take(hinted.game.board)
+    adaptive_service.resign(hinted)
+    assert adaptive_service.state(hinted).adaptive.result is None, "a game with hints does not count"
+    off = adaptive_service.create(NewGameRequest(adaptive="off", seed=4))
+    adaptive_service.resign(off)
+    assert profiles.load().games == 1

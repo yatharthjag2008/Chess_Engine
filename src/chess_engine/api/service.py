@@ -135,6 +135,8 @@ class GameService:
                                          **self._clock_args(session))
         game.push(choice.move)
         session.last_bot_move = choice
+        if session.adaptive is not None:
+            session.adaptive.after_bot_move(session.bot, choice.wdl)   # live mode: maybe a new rating
         self._after_move(session, not session.human_color)
 
     def _after_move(self, session: Session, mover: chess.Color) -> None:
@@ -143,6 +145,12 @@ class GameService:
             session.clock.press(mover)
             if session.game.is_over:
                 session.clock.stop()
+        self._finish(session)
+
+    def _finish(self, session: Session) -> None:
+        """Count a finished game for adaptive difficulty (rated games only; once)."""
+        if session.game.is_over and session.adaptive is not None:
+            session.adaptive.finish(self.profiles, session.game.outcome, session.human_color, session.hints.rated)
 
     def _check_time(self, session: Session) -> None:
         """End the game by time forfeit if a clock has run out."""
@@ -153,6 +161,7 @@ class GameService:
         if flagged is not None:
             session.game.forfeit_on_time(flagged)
             clock.stop()
+            self._finish(session)
 
     def play(self, session: Session, move: str, reply: bool = True) -> MoveResponse:
         """Play your move; with ``reply`` the bot answers in the same call.
@@ -193,6 +202,7 @@ class GameService:
             session.game.resign(session.human_color)
             if session.clock is not None:
                 session.clock.stop()
+            self._finish(session)
             return self._state(session)
 
     def takeback(self, session: Session) -> GameState:
@@ -250,6 +260,11 @@ class GameService:
             if not hints.rated:
                 game.extra_headers["Hints"] = str(hints.used)
                 game.extra_headers["Annotator"] = "unrated: hints used"
+            a = session.adaptive
+            if a is not None and a.mode != "off":
+                game.extra_headers["Adaptive"] = a.mode
+            if a is not None and a.live is not None and a.live.changes:
+                game.extra_headers["BotRatings"] = " ".join(str(r) for r in [a.start] + [c.rating for c in a.live.changes])
             return game.pgn()
 
     # ------------------------------------------------------------------ state
