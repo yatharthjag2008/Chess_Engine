@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 
 import chess
 
+from chess_engine.bot.adaptive import AdaptiveGame
 from chess_engine.bot.clock import ChessClock
 from chess_engine.bot.game import Game
 from chess_engine.bot.hints import HintBudget
@@ -41,6 +42,7 @@ class Session:
     clock: ChessClock | None = None
     last_bot_move: BotMove | None = None
     hints: HintBudget = field(default_factory=lambda: HintBudget(0))
+    adaptive: AdaptiveGame | None = None
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     last_used: float = 0.0
 

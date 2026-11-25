@@ -23,10 +23,13 @@ import chess
 
 from chess_engine.api.schemas import (
     ClockState,
+    AdaptiveResult,
+    AdaptiveState,
     GameState,
     HintResponse,
     HintsState,
     MoveResponse,
+    RatingChangeInfo,
     NewGameRequest,
     bot_move_info,
     color_name,
@@ -34,6 +37,7 @@ from chess_engine.api.schemas import (
     outcome_info,
 )
 from chess_engine.api.store import GameStore, Session
+from chess_engine.bot.adaptive import AdaptiveGame, ProfileStore, bot_rating_for
 from chess_engine.bot.clock import ChessClock, TimeControl
 from chess_engine.bot.game import Game, IllegalMoveError
 from chess_engine.bot.hints import HintBudget, HintEngine, HintError, Tier
@@ -66,9 +70,11 @@ class GameService:
     """Creates and runs games against the bot, stored in a :class:`GameStore`."""
 
     def __init__(self, predictor: MovePredictor, cfg: Config, store: GameStore | None = None,
-                 now: Callable[[], float] = time.monotonic) -> None:
+                 now: Callable[[], float] = time.monotonic, profiles: ProfileStore | None = None) -> None:
         self.predictor = predictor
         self.cfg = cfg
+        # Your adaptive-difficulty rating (read when a game starts, written when a rated game ends).
+        self.profiles = profiles or ProfileStore(cfg.paths.data_dir / cfg.adaptive.profile_file, cfg.adaptive)
         self.store = store or GameStore(cfg.api.max_games, cfg.api.idle_minutes * 60)
         self._now = now
 
@@ -88,7 +94,15 @@ class GameService:
         human = {"white": chess.WHITE, "black": chess.BLACK}.get(request.color)
         if human is None:
             human = random.choice([chess.WHITE, chess.BLACK])
-        bot = BotPlayer(self.predictor, request.rating, self._sampling(request), request.seed)
+        mode = request.adaptive or self.cfg.adaptive.mode
+        rating, your_rating = request.rating, request.your_rating
+        if mode != "off":
+            profile = self.profiles.load()
+            your_rating = your_rating or int(round(profile.rating))
+            if mode == "between":
+                rating = bot_rating_for(profile.rating, self.cfg.adaptive)
+        request = request.model_copy(update={"your_rating": your_rating})
+        bot = BotPlayer(self.predictor, rating, self._sampling(request), request.seed)
         bot_name = f"Bot {bot.rating}"
         white, black = ("You", bot_name) if human == chess.WHITE else (bot_name, "You")
         white_elo, black_elo = ((request.your_rating, bot.rating) if human == chess.WHITE
@@ -98,7 +112,8 @@ class GameService:
         limit = request.hint_limit if request.hint_limit is not None else self.cfg.hints.limit
         _require(limit <= self.cfg.hints.max_limit, "too_many_hints",
                  f"at most {self.cfg.hints.max_limit} hints per game")
-        session = Session(GameStore.new_id(), game, bot, human, request.your_rating, clock, hints=HintBudget(limit))
+        session = Session(GameStore.new_id(), game, bot, human, request.your_rating, clock, hints=HintBudget(limit),
+                          adaptive=AdaptiveGame(mode, bot.rating, self.cfg.adaptive))
         session = self.store.add(session)
         if game.turn != human:
             self._bot_plays(session)
@@ -266,7 +281,20 @@ class GameService:
             clock=self._clock_state(session),
             last_bot_move=bot_move_info(session.last_bot_move) if session.last_bot_move else None,
             hints=self._hints_state(session),
+            adaptive=self._adaptive_state(session),
         )
+
+    def _adaptive_state(self, session: Session) -> AdaptiveState:
+        a = session.adaptive or AdaptiveGame("off", session.bot.rating, self.cfg.adaptive)
+        changes = [RatingChangeInfo(bot_move=c.bot_move, rating=c.rating) for c in a.live.changes] if a.live else []
+        result = None
+        if a.recorded is not None:
+            last = a.recorded.history[-1]
+            result = AdaptiveResult(score=last.score, bot_rating=last.bot_rating, rating_before=last.rating_before,
+                                    rating_after=last.rating_after,
+                                    next_bot_rating=bot_rating_for(a.recorded.rating, self.cfg.adaptive))
+        return AdaptiveState(mode=a.mode, start_rating=a.start, changes=changes, result=result,
+                             your_rating=None if a.mode == "off" else float(session.your_rating or a.start))
 
 
     @staticmethod

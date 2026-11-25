@@ -44,6 +44,9 @@ class NewGameRequest(_Body):
     fen: str | None = Field(default=None, description="start from this position instead of the start position")
     hint_limit: int | None = Field(default=None, ge=0, le=99,
                                    description="hints allowed in this game (0 = none); default from the config")
+    adaptive: Literal["off", "between", "live"] | None = Field(
+        default=None, description="off: the bot plays at `rating`; between: at your rating from earlier games; "
+                                  "live: starts at `rating` and adjusts during the game. Default from the config")
 
     @field_validator("time_control")
     @classmethod
@@ -123,6 +126,27 @@ class HintsState(BaseModel):
     rated: bool = Field(description="false once a hint was used (adaptive difficulty ignores the game)")
 
 
+class RatingChangeInfo(BaseModel):
+    bot_move: int = Field(description="after the bot's n-th move")
+    rating: int
+
+
+class AdaptiveResult(BaseModel):
+    score: float = Field(description="your score: 1, 0.5 or 0")
+    bot_rating: int = Field(description="the rating the result was measured against")
+    rating_before: float
+    rating_after: float
+    next_bot_rating: int
+
+
+class AdaptiveState(BaseModel):
+    mode: Literal["off", "between", "live"]
+    start_rating: int = Field(description="the bot's rating when the game started")
+    changes: list[RatingChangeInfo] = Field(description="live mode: the bot's rating changes so far")
+    your_rating: float | None = Field(description="your adaptive rating (between / live modes)")
+    result: AdaptiveResult | None = Field(description="set once the finished game was counted")
+
+
 class GameState(BaseModel):
     id: str
     fen: str
@@ -142,6 +166,7 @@ class GameState(BaseModel):
     clock: ClockState | None
     last_bot_move: BotMoveInfo | None
     hints: HintsState
+    adaptive: AdaptiveState
 
 
 class HintRequest(_Body):

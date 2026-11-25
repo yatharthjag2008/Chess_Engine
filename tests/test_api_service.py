@@ -6,6 +6,7 @@ import pytest
 
 from chess_engine.api.schemas import NewGameRequest
 from chess_engine.api.service import GameRuleError, GameService
+from chess_engine.bot.adaptive import ProfileStore
 from chess_engine.bot.game import IllegalMoveError
 from chess_engine.config import Config
 from bot_helpers import small_predictor
@@ -129,3 +130,26 @@ def test_a_game_with_hints_is_unrated_and_says_so_in_the_pgn(service: GameServic
     service.play(session, "e4")
     service.takeback(session)
     assert service.state(session).hints.used == 1, "a takeback does not give the hint back"
+
+
+@pytest.fixture()
+def adaptive_service(default_config: Config, tmp_path) -> GameService:
+    return GameService(small_predictor(), default_config,
+                       profiles=ProfileStore(tmp_path / "adaptive.json", default_config.adaptive))
+
+
+def test_adaptive_off_by_default(adaptive_service: GameService) -> None:
+    session = adaptive_service.create(NewGameRequest(rating=1700))
+    a = adaptive_service.state(session).adaptive
+    assert (a.mode, a.start_rating, a.changes, a.your_rating, a.result) == ("off", 1700, [], None, None)
+
+
+def test_between_games_uses_your_profile_rating(adaptive_service: GameService) -> None:
+    adaptive_service.profiles.reset(1433)
+    session = adaptive_service.create(NewGameRequest(rating=2000, adaptive="between"))
+    state = adaptive_service.state(session)
+    assert state.bot_rating == 1450 and state.adaptive.start_rating == 1450, "the chosen rating is ignored"
+    assert state.your_rating == 1433 and state.adaptive.your_rating == 1433
+    live = adaptive_service.create(NewGameRequest(rating=1800, adaptive="live", your_rating=1600))
+    assert adaptive_service.state(live).bot_rating == 1800 and live.your_rating == 1600
+    assert live.adaptive.live is not None and live.adaptive.current == 1800
