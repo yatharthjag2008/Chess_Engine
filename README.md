@@ -6,21 +6,48 @@ Lichess blitz games predicts a probability for each legal move: *what would a 14
 On top of that model sit practical training tools: a bot you can dial to any strength, rating
 estimation, free game review, and a "your level vs. next level" coach.
 
-> **Status:** early development. See [PROGRESS.md](PROGRESS.md) for what's done.
+> **Status:** all 20 steps of the [plan](PLAN.md) are built and tested (over 1,000 tests). The model is a
+> laptop-sized first version: it predicts human moves well, but its sense of *rating* is still weak (see
+> [Results](#results-at-a-glance)). Design decisions and every measurement are in [PROGRESS.md](PROGRESS.md);
+> to run it for yourself or others, see [DEPLOY.md](DEPLOY.md).
 
-## Features (planned)
+## Features
 
-| | Feature | What it does |
-|---|---|---|
-| 1 | Human-like move model | Probability for every legal move, conditioned on rating |
-| 2 | Custom Elo bot | Play the bot at any rating from 800 to 2200+ |
-| 3 | Rating estimation | Estimate a player's rating (with a range) from their games |
-| 4 | Game review | Best / Good / Inaccuracy / Mistake / Blunder, accuracy, key moments (Stockfish) |
-| 5 | Your level vs. next level | What players at your rating play next to what players +200/+400 play, with evals |
-| 6 | Tiered hints | Nudge → point → show move; hinted games are unrated |
-| 7 | Adaptive difficulty | Bot rating adjusts between games or live (capped) |
-| 8 | Style imitation | Bot plays like a specific player |
-| 9 | Ghost mode | Play a past version of yourself, trained on your games up to a date |
+| | Feature | Try it | Where |
+|---|---|---|---|
+| 1 | Human-like move model: a probability for every legal move, conditioned on rating and clocks | `python scripts/evaluate.py laptop_64x6` | [Evaluation](#evaluation) |
+| 2 | A bot at any rating from 800 to 2200+ | the browser, or `python scripts/play.py --rating 1400` | [Play in the browser](#play-in-the-browser) |
+| 3 | Rating estimation, with a range, from your games | `python scripts/estimate_rating.py games.pgn --player You` | [Estimate a rating](#estimate-a-rating-from-games) |
+| 4 | Game review: best / good / inaccuracy / mistake / blunder, accuracy, key moments (Stockfish) | the Review page, or `scripts/review_game.py` | [Review a game](#review-a-game) |
+| 5 | Your level vs. next level, and a mistake coach | the Review page's coach, or `scripts/coach_game.py` | [Your level vs. next level](#your-level-vs-next-level) |
+| 6 | Tiered hints: nudge, then the piece, then the move; hinted games are unrated | the Hint button, or `hint` in the terminal | [Hints](#hints) |
+| 7 | Adaptive difficulty: between games (Elo) or live within a game (capped) | Difficulty in the browser, or `--adaptive` | [Adaptive difficulty](#adaptive-difficulty) |
+| 8 | Style imitation: the bot plays like a specific player | `scripts/train_style.py`, then Style in the browser | [Styles and ghosts](#styles-and-ghosts) |
+| 9 | Ghost mode: play yourself as you were up to a date | `scripts/train_style.py --until 2025-05-31` | [Styles and ghosts](#styles-and-ghosts) |
+| 10 | Import games from Lichess and Chess.com | the Review page, or `scripts/import_games.py` | [Import your games](#import-your-games) |
+| 11 | Play on Lichess as a BOT account (optional) | `scripts/lichess_bot.py` | [DEPLOY.md](DEPLOY.md#4-on-lichess-optional) |
+
+## Results at a glance
+
+Measured on the laptop model (64 channels × 6 residual blocks, about 2 hours of CPU training on 2.56M positions
+from one month of Lichess blitz). Each row links to the full report or to the step in PROGRESS.md.
+
+| Question | Result |
+|---|---|
+| Does it predict the human move? | **41.7%** top-1 / 79.6% top-5 on 172k held-out positions; Stockfish's best move 37.6%, the most common move 12.6%, random 6.3% ([report](reports/eval/laptop_64x6_best_model/report.md)) |
+| Is it better than Stockfish at imitating people? | yes below 2000: +9 to +10 points at 800-1199, a tie around 2000 |
+| Does the rating dial change its strength? | yes, in steps: rank correlation 0.94, but 800 ≈ 1100 and 2000 ≈ 1700 ([report](reports/elo/laptop_64x6_best_model/report.md)) |
+| Can it estimate a rating from one game? | weakly: 253 Elo average error, pulled towards the middle ([report](reports/rating/laptop_64x6_best_model/report.md)) |
+| Do hints adapt to how hard a move is? | yes: moves the player found had a median 54% find rate at their rating, missed ones 6.5% (step 17) |
+| Does adaptive difficulty find a balance? | yes, in the model's own units: a bot fixed at 1000 balances the adaptive bot at 1400-1450 (step 18) |
+| Do styles imitate a player better? | a little, even from 25 games: held-out loss lower for 8 of 10 real players, top-1 +1.8 points (step 19) |
+
+**The main limitation is the model's sense of rating.** It plays and predicts like a human, but it plays nearly
+the same way at every rating, so the dial changes style more than strength, estimates are pulled to the middle
+and "next level" moves rarely differ. The fix is more training on more data: `configs/full.yaml` (a bigger model
+on a GPU) is ready for that, and every tool above improves with the model without code changes.
+
+![Top-1 accuracy by rating](reports/eval/laptop_64x6_best_model/accuracy_by_rating.png)
 
 ## Tech stack
 
@@ -235,7 +262,7 @@ common move in the training games and 6.3% for a random legal move. The model be
 800-1199 and ties it around 2000. Rating conditioning is still weak: telling the model a player's real rating
 does not yet beat telling it one rating for everyone (both 42.0%). See [PROGRESS.md](PROGRESS.md).
 
-![Top-1 accuracy by rating](reports/eval/laptop_64x6_best_model/accuracy_by_rating.png)
+![Which rating best predicts each group of players](reports/eval/laptop_64x6_best_model/cross_rating.png)
 
 ## Does the rating dial work?
 
@@ -440,7 +467,9 @@ data/, checkpoints/   local only (git-ignored)
 
 ## Roadmap
 
-The full 20-step build plan is in [PLAN.md](PLAN.md); progress and design decisions are in [PROGRESS.md](PROGRESS.md).
+The 20-step build plan is in [PLAN.md](PLAN.md) (all done); progress, measurements and design decisions are in
+[PROGRESS.md](PROGRESS.md). The next step is not more features: it is training the full model
+(`configs/full.yaml`) so that the rating dial, rating estimation and "next level" advice get sharper.
 
 ## Data & license notes
 
