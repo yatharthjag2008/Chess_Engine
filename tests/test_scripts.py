@@ -378,6 +378,42 @@ def test_adaptive_simulation(tmp_path: Path) -> None:
     assert outcome.termination == "move limit (8 plies)" and bot.rating == 1700 and len(adaptive.live.changes) == 4
 
 
+def test_train_style_script(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    import yaml
+
+    from test_style import style_pgn
+
+    script = _load("train_style")
+    model = _small_model_file(tmp_path)
+    config = tmp_path / "c.yaml"
+    config.write_text(yaml.safe_dump({"paths": {"data_dir": str(tmp_path / "data")}, "style": {"epochs": 2}}),
+                      encoding="utf-8")
+    pgn = tmp_path / "ann.pgn"
+    pgn.write_text(style_pgn(12), encoding="utf-8")
+    common = ["--config", str(config), "--model", str(model)]
+    out: list[str] = []
+    assert script.main(common + ["--list"], write=out.append) == 0 and out == [
+        "No styles yet (train one with --pgn or --lichess)."]
+    out.clear()
+    assert script.main(common + ["--pgn", str(pgn), "--player", "Ann", "--name", "ann"], write=out.append) == 0
+    assert out[0].startswith("12 games of Ann") and any(line.startswith("Saved style 'ann': 12 games") for line in out)
+    assert any("predicts Ann's move" in line for line in out)
+    out.clear()
+    assert script.main(common + ["--pgn", str(pgn), "--player", "Ann", "--name", "ann-early", "--until",
+                                 "2024-03-08"], write=out.append) == 0
+    out.clear()
+    assert script.main(common + ["--list"], write=out.append) == 0
+    assert out[0].startswith("ann ") and "style" in out[0] and "weight 0.29" in out[0]
+    assert "ghost" in out[1] and "games up to 2024-03-08" in out[1]
+    out.clear()
+    assert script.main(common + ["--delete", "ann-early"], write=out.append) == 0 and out == ["Deleted ann-early."]
+    assert script.main(common + ["--delete", "ann-early"]) == 1 and "no style" in capsys.readouterr().err
+    assert script.main(common + ["--pgn", str(pgn), "--player", "Ann", "--name", "x", "--until", "2024-03-02"]) == 1
+    assert "a style needs at least" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        script.main(common + ["--pgn", str(pgn), "--name", "x"])            # --player missing
+
+
 def test_hint_script(tmp_path: Path) -> None:
     from review_helpers import ScriptedAnalyzer
 
