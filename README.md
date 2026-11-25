@@ -264,6 +264,19 @@ chances it gave away (Lichess's method): best, good, inaccuracy, mistake or blun
 and the 3-5 key moments. A typical blitz game takes about a minute on a laptop; reviews are cached. The API offers
 `POST /api/review` and `GET /api/games/{id}/review`.
 
+## Your level vs. next level
+
+```bash
+python scripts/coach_game.py game.pgn --player YourName     # mistakes explained + where stronger players differ
+python scripts/coach_game.py --lichess YourName             # your latest Lichess game
+```
+
+For each of your moves the model shows what players of your rating usually play and what players 200 and 400
+points higher play; Stockfish values both, and only positions where the levels disagree **and** the difference
+matters are shown, with a short explanation. Mistakes get template explanations (missed mate, a piece left hanging,
+missed material, or the better move with its evaluation). With the current model the levels rarely disagree, so
+most advice comes from the mistake coach; see [PROGRESS.md](PROGRESS.md). API: `POST /api/coach`.
+
 ## Import your games
 
 ```bash

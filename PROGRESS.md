@@ -18,7 +18,7 @@ See [PLAN.md](PLAN.md) for details on each step.
 - [x] 12. Rating estimation
 - [x] 13. Game import
 - [x] 14. Game review engine
-- [ ] 15. "Your level vs. next level" + mistake coach
+- [x] 15. "Your level vs. next level" + mistake coach
 - [ ] 16. Review UI
 - [ ] 17. Tiered hints
 - [ ] 18. Adaptive difficulty
@@ -871,3 +871,58 @@ The real run also showed "2 inaccuracys" in the summary line; that is fixed and 
   sentence; the step-15 coach builds on these.
 - **Reviews are cached**, because a game takes about a minute at depth 14 on a laptop and is usually looked at more
   than once (the review page, the coach).
+
+## Step 15: "Your level vs. next level" + mistake coach (done 2026-11-25)
+
+**Built** (`chess_engine.review`)
+- `level_compare`: the likeliest moves at your rating and at +200 / +400 (one batched model call, the real opponent's
+  rating kept), each valued by Stockfish (reusing the review's engine lines, analysing only moves they do not
+  cover). A position is flagged only when a higher level's favourite move **differs** from your level's **and** keeps
+  at least 8 more win-% points. Per game: every move compared, the biggest flagged gaps (at most 5, in game order),
+  and how often you played your level's favourite and the next level's favourite ("next-level match %").
+- `features`: one-move facts that can be checked on the board: what a move captures (en passant included), mate,
+  pieces attacked and undefended or attacked by a cheaper piece, pieces a move leaves hanging.
+- `coach`: template explanations. Mistakes: missed mate -> allowed mate -> left a piece hanging -> missed material ->
+  "X was stronger (+0.3 instead of -0.2)", then the drop in winning chances. Level moments: "Players around 1300
+  usually play Nf6 here (40%). Players around 1500 prefer g6 (35%), which keeps 46% winning chances instead of 0%",
+  then what you played. `coach_game` merges both per move into a report (summary, match rates, notes), as JSON or text.
+- `run_coach` (review + coach in one call; the rating comes from the caller, else the PGN, else the step-12 estimate),
+  `scripts/coach_game.py`, `POST /api/coach`.
+- Tests (about 20 new): stand-in predictors with fixed per-rating choices and scripted evaluations make every rule
+  exact (agreement, disagreement below and above the gap, merged notes); real board positions for every explanation
+  template (each move checked for legality).
+
+**A real run** (`python scripts/coach_game.py tests/fixtures/lichess_real.pgn --index 2 --color black`: the step-6
+model, Stockfish depth 14, the game reviewed in step 14, Black rated 1109; 21 seconds with the cached review):
+
+```
+Coach report for Black (rated about 1109)
+  Black: accuracy 85%, average loss 59 cp, 4 inaccuracies
+  You played your level's favourite move 50% of the time, and the 1309-level move 52%.
+
+19... Rae8?!  Ne6 was stronger (-0.4 instead of -1.6). Your winning chances dropped from 46% to 35%.
+23... Qb6?!  Qd7 was stronger (-1.1 instead of -3.8). Your winning chances dropped from 40% to 20%.
+...
+```
+
+- **The mistake coach works; the level comparison rarely has anything to say yet.** In this game the levels
+  (1109, 1309, 1509) picked the same favourite move in 42 of Black's 44 positions (and in 42 of White's 45), and only
+  one disagreement crossed the 8-point threshold. That is the weak rating conditioning found in steps 7, 11 and 12
+  showing up again: the model plays nearly the same at every rating, so "what would the next level play?" usually
+  has the answer "the same move". The feature is in place and will say more as soon as the model separates
+  ratings better.
+- None of these inaccuracies was a hanging piece or a missed tactic, so the generic template ("X was stronger")
+  explained all four; the specific templates are exercised by the tests on positions built for them.
+
+**Decisions**
+- **Two conditions, not one**: the levels must disagree *and* the stronger move must matter by Stockfish. Disagreements
+  that do not change the evaluation are style, not lessons; engine improvements that stronger humans would not find
+  either are not shown as "next level" (they appear as mistakes instead, if they cost enough).
+- **Compare favourite moves**, not whole distributions: "players at your level usually play X, stronger players Y" is
+  the message a player can act on.
+- **The opponent's real rating stays fixed** across levels, so the comparison asks what a stronger player would do
+  against this same opponent.
+- **Template explanations from board facts only**, in a fixed priority order; when no specific fact applies, the
+  explanation says so plainly with numbers instead of inventing a reason.
+- **Reuse the review**: level moves are valued from the review's engine lines when possible, and the whole review is
+  cached, so coaching an already reviewed game takes seconds.

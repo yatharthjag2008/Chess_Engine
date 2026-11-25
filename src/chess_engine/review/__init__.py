@@ -8,6 +8,8 @@ Step 14 modules:
     annotate       annotated PGN ([%eval], ?! ? ??, better moves)
     run            run_review: one call with the configured Stockfish and a disk cache
 
-Planned:
-    level_compare  (step 15) "your level vs. next level" comparison and mistake coach
+Step 15 modules:
+    level_compare  the likeliest moves at your rating and +200 / +400, valued by Stockfish; the moments that matter
+    features       one-move facts for explanations (captures, mate, hanging pieces)
+    coach          template explanations of mistakes and level differences; the coach report
 """

@@ -64,6 +64,6 @@ tracked in [PROGRESS.md](PROGRESS.md).
 | 6 | `src/chess_engine/training/`, `src/chess_engine/plotting.py`, `scripts/train.py`, `scripts/plot_training.py`, `configs/laptop.yaml` |
 | 7, 11, 12 | `src/chess_engine/eval/`, `scripts/evaluate.py`, `scripts/compare_models.py`, `scripts/elo_validation.py`, `scripts/estimate_rating.py`, `scripts/evaluate_rating_estimation.py`, `reports/eval/`, `reports/elo/`, `reports/rating/` |
 | 8, 17, 18, 19 | `src/chess_engine/bot/`, `scripts/play.py`, `scripts/bot_match.py` |
-| 14, 15 | `src/chess_engine/review/`, `scripts/review_game.py`, review endpoints in `src/chess_engine/api/app.py` |
+| 14, 15 | `src/chess_engine/review/`, `scripts/review_game.py`, `scripts/coach_game.py`, review and coach endpoints in `src/chess_engine/api/app.py` |
 | 9 | `src/chess_engine/api/` (`schemas`, `store`, `service`, `app`), `scripts/serve.py` |
 | 10, 16 | `web/` (`index.html`, `css/`, `js/board.js`, `js/api.js`, `js/app.js`, `tests/`), `tests/test_web_js.py` |
