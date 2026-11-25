@@ -391,3 +391,37 @@ def test_estimate_rating_script(tmp_path: Path, capsys: pytest.CaptureFixture[st
     assert "no games" in capsys.readouterr().err
     with pytest.raises(SystemExit):
         script.main([str(FIXTURE)])                         # --player or --color is required
+
+
+def test_import_games_script(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from fake_api import FakeApi, Reply
+
+    script = _load("import_games")
+    model = _small_model_file(tmp_path)
+    pgn = FIXTURE.read_text(encoding="utf-8")
+    with FakeApi() as api:
+        api.routes["/api/games/user/someone"] = Reply(200, pgn)
+        override = tmp_path / "import.yaml"
+        override.write_text(yaml.safe_dump({
+            "paths": {"data_dir": str(tmp_path / "data"), "processed_dir": str(tmp_path / "none")},
+            "game_import": {"lichess_url": api.url, "retries": 0},
+            "bot": {"model": str(model)},
+        }), encoding="utf-8")
+        assert script.main(["--lichess", "someone", "--max", "3", "--config", str(override)]) == 0
+        out = capsys.readouterr().out
+        assert "3 games from someone on lichess" in out and "saved" in out
+        assert (tmp_path / "data" / "imports" / "lichess_someone.pgn").is_file()
+        assert script.main(["--lichess", "someone", "--max", "3", "--config", str(override)]) == 0
+        assert len(api.requests) == 1                               # the second import came from the cache
+        capsys.readouterr()
+        name = __import__("chess_engine.data.game_import", fromlist=["x"]).parse_pgn_text(pgn)[0].white
+        api.routes[f"/api/games/user/{name}"] = Reply(200, pgn)
+        assert script.main(["--lichess", name, "--estimate", "--no-cache", "--config", str(override)]) == 0
+        assert "rating estimate from" in capsys.readouterr().out
+        assert script.main(["--lichess", "nobody", "--config", str(override), "--no-cache"]) == 1
+        assert "no such player" in capsys.readouterr().err
+    out_file = tmp_path / "clean.pgn"
+    assert script.main(["--pgn", str(FIXTURE), "--speed", "blitz", "--out", str(out_file)]) == 0
+    assert "games from" in capsys.readouterr().out and out_file.is_file()
+    assert script.main(["--pgn", str(FIXTURE), "--estimate", "--out", str(tmp_path / "x.pgn")]) == 1
+    assert script.main(["--lichess", "bad/name"]) == 1
