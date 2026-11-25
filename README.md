@@ -237,6 +237,33 @@ does not yet beat telling it one rating for everyone (both 42.0%). See [PROGRESS
 
 ![Top-1 accuracy by rating](reports/eval/laptop_64x6_best_model/accuracy_by_rating.png)
 
+## Play the bot
+
+```bash
+python scripts/play.py --rating 1200                       # untimed, you are White
+python scripts/play.py --rating 1800 --color black --time 3+2 --show-thinking
+python scripts/play.py --temperature 0.5                   # the bot sticks closer to the most common moves
+python scripts/bot_match.py --ratings 900 1500 2100        # bots of different ratings play each other
+```
+
+The bot plays each move as often as humans at its rating play it in that position (the `bot:` section of the
+config sets the model file, rating and sampling: temperature, top-k, top-p, a minimum probability). It is
+also told the opponent's rating and both clocks, like the human games it learned from. Type moves in SAN
+(`Nf3`) or UCI (`g1f3`); `help`, `undo`, `flip`, `moves`, `resign` and `quit` work during the game, and
+`--save-pgn` keeps the game. With `--show-thinking` the bot shows what players of its rating usually play:
+
+```
+Bot plays 3... h6
+  (players rated ~1200 here: Nf6 36%, Bc5 29%, d6 12%; it played a move they choose 6% of the time)
+```
+
+```python
+from chess_engine.bot import load_bot
+from chess_engine.config import load_config
+bot = load_bot(load_config(), rating=1400)
+choice = bot.choose_move(board)          # choice.move, choice.san, choice.prob, choice.candidates
+```
+
 ## Project structure
 
 ```
@@ -249,7 +276,7 @@ src/chess_engine/
   model/              rating-conditioned policy network
   training/           training loop, checkpoints, metrics log
   eval/               move-match accuracy, baselines, calibration (later: Elo validation, rating estimation)
-  bot/                move selection, hints, adaptive difficulty, styles
+  bot/                move sampling, games + clocks, terminal play, self-play (later: hints, adaptive, styles)
   review/             Stockfish game review, level comparison
   api/                FastAPI backend
 web/                  frontend

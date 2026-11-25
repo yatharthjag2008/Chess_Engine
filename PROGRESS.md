@@ -11,7 +11,7 @@ See [PLAN.md](PLAN.md) for details on each step.
 - [x] 5. Model
 - [x] 6. Training pipeline
 - [x] 7. Evaluation + baselines
-- [ ] 8. Bot move selection + CLI
+- [x] 8. Bot move selection + CLI
 - [ ] 9. Backend API
 - [ ] 10. Web UI for playing
 - [ ] 11. Elo dial validation
@@ -505,3 +505,60 @@ test games, 8.7 minutes; full report: [reports/eval/laptop_64x6_best_model/repor
   relative to the project; the 10 MB `predictions.npz` next to them is git-ignored and can be regenerated.
 - **Charts use one fixed colour per predictor** (the model is always blue) and a light-to-dark ramp for rating
   buckets, from `chess_engine.plotting`.
+
+## Step 8: Bot move selection + CLI (done 2026-11-24)
+
+**Built** (`chess_engine.bot`)
+- `sampling`: the bot's probabilities from the model's: filters (`top_k`, `top_p`, `min_prob`, never removing the
+  likeliest move), then `temperature` (`p^(1/T)`; 0 = always the likeliest move).
+- `player`: `BotPlayer.choose_move(board, opp_rating, clocks, time control)` returns the move, the model's probability
+  for it, the chance the bot had of choosing it, every candidate and the win/draw/loss estimate; `load_bot` builds
+  one from the config (`bot:` section) or a model file; ratings 400-3000 are accepted.
+- `game`: `Game` with SAN/UCI input (a bare `e7e8` promotes to a queen), checkmate / stalemate / insufficient
+  material, threefold repetition and fifty-move draws applied automatically, resignation, time forfeit (a draw if the
+  opponent cannot mate), takebacks, move list and PGN.
+- `clock`: `ChessClock` / `TimeControl` (`3+2`), clocks start after both first moves and add the increment, as on
+  Lichess; the time source is injectable for tests.
+- `cli`: `TerminalGame`, the terminal game loop (board with the last move marked, Unicode pieces when the terminal
+  can show them, `help` / `undo` / `flip` / `moves` / `resign` / `quit`, clocks, optional bot "thinking").
+- `selfplay`: bot-vs-bot games and match scores with intervals and an Elo estimate.
+- Scripts: `scripts/play.py` (play the bot), `scripts/bot_match.py` (bots of different ratings play each other).
+- Tests (41 new + 4 script tests): sampled moves follow the adjusted probabilities, seeded bots repeat, the rating
+  and clocks reach the model, every game ending, clock arithmetic with a fake time source, whole scripted terminal
+  games (including a time forfeit), and the scripts with a small model file.
+
+**Playing it** (`python scripts/play.py --rating 1200 --show-thinking`, the step-6 model): the bot opens like a
+club player (1. e4 e5 2. Nf3 Nc6, the moves 1200s choose 48% and 69% of the time) and sometimes plays the
+less common moves they also play, e.g. 3. Bc4 h6, a move players rated ~1200 choose 6% of the time.
+
+**Bot vs. bot** (`python scripts/bot_match.py --ratings 900 1500 2100 --games 40`, no clocks, colours alternating,
+about a minute per 40 games)
+
+| Pairing | Result for the higher-rated bot | Score (95% interval) | Elo difference |
+|---|---|---|---|
+| 1500 vs. 900 | +8 =23 -9 | 48.8% (39-59%) | -9 |
+| 2100 vs. 1500 | +9 =23 -8 | 51.2% (41-61%) | +9 |
+| 2100 vs. 900 | +10 =30 -0 | **62.5% (56-69%)** | **+89** |
+
+- **The rating dial works only at the extremes so far**, exactly as the step-7 cross-rating matrix predicted: the 2100
+  bot never lost to the 900 bot, but 600-point gaps in the middle make no measurable difference. The model needs
+  more training before the dial is useful (step 11 measures it properly, also against Stockfish levels).
+- **Most games end in draws by stalemate or bare kings** (10 stalemates and 11-18 insufficient-material draws per
+  40 games). The bots imitate human moves but never resign, and human blitz games that reach a won endgame usually
+  end by resignation or on time, so the model has seen few endgames played out to mate. A resignation rule (e.g.
+  from the value head) would make bot games more human; it belongs with the adaptive features later.
+
+**Decisions**
+- **Default: play moves exactly as often as humans of that rating do** (`temperature: 1`). That is what makes the bot
+  human-like, mistakes included; `temperature < 1` makes it play its rating's *typical* move more often, and 0 makes
+  it deterministic (strongest, least human). Step 11 will measure how temperature moves its strength.
+- **Filters before temperature, and the likeliest move always survives**, so no combination of settings can leave the
+  bot without a move, and `min_prob` refers to the model's own probabilities, not to sharpened ones.
+- **The bot is told the opponent's rating and both clocks**, so a bot in time trouble plays like a human in time
+  trouble. In untimed games both sides are told they have the full base time (3+0 by default).
+- **Draws by repetition and the fifty-move rule end the game when they happen**, as on Lichess, not one move early
+  as python-chess's `claim_draw` would; a game against the bot cannot go on forever.
+- **Game and clock logic live in the library, not the script**, so the API (step 9) and the web UI (step 10) reuse
+  `Game`, `ChessClock` and `BotPlayer` unchanged.
+- **The bot is charged its real thinking time** on the clock (a few milliseconds per move); simulating human
+  thinking time is not part of the model yet.
