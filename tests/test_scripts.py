@@ -303,3 +303,14 @@ def test_play_script_as_black_prints_pgn_and_errors(tmp_path: Path, capsys: pyte
     assert "not found" in capsys.readouterr().err
     assert script.main(["--model", str(model), "--rating", "9999"]) == 1
     assert script.main(["--model", str(model), "--time", "soon"]) == 1
+
+
+def test_bot_match_script(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    script = _load("bot_match")
+    model = _small_model_file(tmp_path)
+    assert script.main(["--model", str(model), "--ratings", "900", "1500", "2100", "--games", "2",
+                        "--max-plies", "20"]) == 0
+    out = capsys.readouterr().out
+    assert out.count(" vs ") == 3 and "endings:" in out and "2 games per pairing" in out
+    with pytest.raises(SystemExit):
+        script.main(["--ratings", "1500"])
