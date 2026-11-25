@@ -4,6 +4,7 @@ Type moves in SAN (``Nf3``, ``exd5``, ``O-O``) or UCI (``g1f3``). Commands:
 
     help     this list            board    show the board again      moves   the move list
     undo     take back your last move (and the bot's reply)           flip    turn the board around
+    hint     a hint: again for more (nudge -> point -> show); "hint show" for the move at once
     resign   give up              quit     leave without finishing
 
 Input and output are injectable, so the whole loop is tested without a terminal.
@@ -18,6 +19,7 @@ import chess
 
 from chess_engine.bot.clock import ChessClock, format_seconds
 from chess_engine.bot.game import Game, IllegalMoveError, Outcome
+from chess_engine.bot.hints import HintBudget, HintEngine, HintError, Tier
 from chess_engine.bot.player import BotMove, BotPlayer
 
 UNICODE_PIECES = {"P": "♙", "N": "♘", "B": "♗", "R": "♖", "Q": "♕", "K": "♔",
@@ -74,8 +76,11 @@ class TerminalGame:
 
     def __init__(self, bot: BotPlayer, human_color: chess.Color, game: Game, clock: ChessClock | None = None,
                  read: Callable[[str], str] = input, write: Callable[[str], None] = print,
-                 unicode: bool = False, show_thinking: bool = False) -> None:
+                 unicode: bool = False, show_thinking: bool = False, hints: HintEngine | None = None,
+                 hint_limit: int = 0) -> None:
         self.bot, self.human, self.game, self.clock = bot, human_color, game, clock
+        self.hints = hints
+        self.budget = HintBudget(hint_limit if hints is not None else 0)
         self.read, self.write = read, write
         self.unicode, self.show_thinking = unicode, show_thinking
         self.perspective = human_color
@@ -150,6 +155,8 @@ class TerminalGame:
                 self.show_board()
             elif command in ("undo", "takeback"):
                 self._undo()
+            elif command in ("hint", "hint show"):
+                self._hint(Tier.SHOW if command == "hint show" else None)
             elif command == "resign":
                 self.game.resign(self.human)
                 return
@@ -166,6 +173,31 @@ class TerminalGame:
                     self.clock.press(self.human)
                 self.write(f"You play {san}")
                 return
+
+    def _hint(self, tier: Tier | None) -> None:
+        board = self.game.board
+        if self.hints is None or self.budget.limit == 0:
+            self.write("Hints are off (start with --hints N; they need Stockfish).")
+            return
+        if not self.budget.can_take(board):
+            self.write("No hints left in this game.")
+            return
+        chosen = tier or self.budget.next_tier(board)
+        clock = {}
+        if self.clock is not None:
+            c = self.clock.control
+            clock = {"clocks": max(0.0, self.clock.remaining(self.human)),
+                     "opp_clocks": max(0.0, self.clock.remaining(not self.human)),
+                     "base_seconds": c.base_seconds, "increment": c.increment}
+        try:
+            hint = self.hints.hint(board, chosen, self.human_rating, self.bot.rating, **clock)
+        except HintError as exc:
+            self.write(f"No hint: {exc}.")
+            return
+        self.budget.take(board, chosen)
+        left = self.budget.left
+        self.write(f"Hint ({chosen.value}): {hint.text}  [{left} hint{'s' if left != 1 else ''} left; "
+                   f"this game is now unrated]")
 
     def _undo(self) -> None:
         plies = 2 if self.game.turn == self.human else 1
@@ -192,6 +224,9 @@ class TerminalGame:
                 self.show_board()
         if self.clock is not None:
             self.clock.stop()
+        if not self.budget.rated:
+            self.game.extra_headers["Hints"] = str(self.budget.used)
+            self.game.extra_headers["Annotator"] = "unrated: hints used"
         outcome = self.game.outcome
         if outcome is not None:
             self.show_board()

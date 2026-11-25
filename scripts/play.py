@@ -9,6 +9,7 @@ Usage:
     python scripts/play.py --rating 1800 --time 3+2 --show-thinking
     python scripts/play.py --temperature 0.5              # the bot sticks closer to the most common moves
     python scripts/play.py --save-pgn my_game.pgn
+    python scripts/play.py --hints 5                      # up to 5 hints (type 'hint'; needs Stockfish)
 
 Type moves in SAN (Nf3, exd5, O-O) or UCI (g1f3); type 'help' during the game for commands.
 """
@@ -25,9 +26,12 @@ import chess
 from chess_engine.bot.cli import TerminalGame, supports_unicode
 from chess_engine.bot.clock import ChessClock, TimeControl
 from chess_engine.bot.game import Game
+from chess_engine.bot.hints import HintEngine
 from chess_engine.bot.player import BotError, load_bot, sampling_from_config
 from chess_engine.bot.sampling import SamplingSettings
 from chess_engine.config import ConfigError, load_config
+from chess_engine.review.engine import StockfishAnalyzer
+from chess_engine.stockfish import StockfishError, find_stockfish
 
 
 def main(argv: list[str] | None = None, read=input, write=print) -> int:
@@ -45,6 +49,8 @@ def main(argv: list[str] | None = None, read=input, write=print) -> int:
     parser.add_argument("--show-thinking", action="store_true", help="show the bot's likeliest moves after each move")
     parser.add_argument("--ascii", action="store_true", help="letters instead of piece symbols")
     parser.add_argument("--save-pgn", default=None, help="write the game to this PGN file at the end")
+    parser.add_argument("--hints", type=int, default=None,
+                        help="hints allowed in the game (default: hints.limit in the config; 0 = none)")
     args = parser.parse_args(argv)
 
     try:
@@ -70,9 +76,23 @@ def main(argv: list[str] | None = None, read=input, write=print) -> int:
     clock = ChessClock(control) if control else None
     if control:
         write(f"Time control {control} (the clocks start after both first moves).")
+    hint_limit = cfg.hints.limit if args.hints is None else max(0, min(args.hints, cfg.hints.max_limit))
+    engine = None
+    if hint_limit:
+        try:
+            analyzer = StockfishAnalyzer(str(find_stockfish(cfg.stockfish.path)), cfg.hints.depth, cfg.hints.multipv,
+                                         cfg.stockfish.threads, cfg.stockfish.hash_mb)
+            engine = HintEngine(bot.predictor, analyzer, cfg.hints)
+        except StockfishError:
+            write("Hints are off: Stockfish was not found (see the README).")
     terminal = TerminalGame(bot, color, game, clock, read=read, write=write,
-                            unicode=not args.ascii and supports_unicode(), show_thinking=args.show_thinking)
-    terminal.play()
+                            unicode=not args.ascii and supports_unicode(), show_thinking=args.show_thinking,
+                            hints=engine, hint_limit=hint_limit)
+    try:
+        terminal.play()
+    finally:
+        if engine is not None:
+            engine.analyzer.close()
 
     if args.save_pgn and game.sans:
         path = Path(args.save_pgn)

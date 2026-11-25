@@ -305,6 +305,30 @@ def test_play_script_as_black_prints_pgn_and_errors(tmp_path: Path, capsys: pyte
     assert script.main(["--model", str(model), "--time", "soon"]) == 1
 
 
+def test_play_script_hints_setting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from chess_engine.stockfish import StockfishError
+
+    script = _load("play")
+    model = _small_model_file(tmp_path)
+    looked: list[object] = []
+
+    def missing(path):
+        looked.append(path)
+        raise StockfishError("Stockfish was not found")
+
+    monkeypatch.setattr(script, "find_stockfish", missing)
+    out: list[str] = []
+    assert script.main(["--model", str(model), "--ascii", "--hints", "0"], read=lambda p: "hint" if not out[-1:] or
+                       "Hints are off" not in out[-1] else "quit", write=out.append) == 0
+    assert looked == [] and "Hints are off (start with --hints N" in "\n".join(out)
+    out.clear()
+    lines = iter(["hint", "quit"])
+    assert script.main(["--model", str(model), "--ascii", "--hints", "2"], read=lambda p: next(lines),
+                       write=out.append) == 0
+    text = "\n".join(out)
+    assert len(looked) == 1 and "Hints are off: Stockfish was not found" in text
+
+
 def test_bot_match_script(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     script = _load("bot_match")
     model = _small_model_file(tmp_path)

@@ -108,3 +108,36 @@ def test_game_to_the_end_and_time_forfeit(bot: BotPlayer) -> None:
     outcome = TerminalGame(bot, chess.WHITE, game2, clock=clock, read=slow_read, write=lambda _: None).play()
     assert outcome.termination == "time forfeit" and outcome.winner == chess.BLACK
     assert len(game2.sans) == 5  # a3 (free), bot, h3 (10 s left), bot, b3 (flag)
+
+
+def test_hints_in_the_terminal(bot: BotPlayer) -> None:
+    from chess_engine.bot.hints import HintEngine
+    from chess_engine.config import HintsConfig
+    from review_helpers import ScriptedAnalyzer
+
+    engine = HintEngine(bot.predictor, ScriptedAnalyzer(), HintsConfig())
+    io = Script("hint", "hint", "hint", "a3", "hint show", "hint", "quit")
+    game = Game("You", "Bot")
+    TerminalGame(bot, chess.WHITE, game, read=io.read, write=io.write, hints=engine, hint_limit=2).play()
+    hints = [line for line in io.out if line.startswith("Hint (")]
+    assert [h.split(")")[0] for h in hints] == ["Hint (nudge", "Hint (point", "Hint (show", "Hint (show", "Hint (show"]
+    assert "Play a3." in hints[2] and "[1 hint left; this game is now unrated]" in hints[0]
+    assert "[0 hints left" in hints[3]
+    assert game.extra_headers == {"Hints": "2", "Annotator": "unrated: hints used"}
+    assert '[Hints "2"]' in game.pgn()
+
+
+def test_hints_off_and_limit(bot: BotPlayer) -> None:
+    io = Script("hint", "quit")
+    TerminalGame(bot, chess.WHITE, Game("You", "Bot"), read=io.read, write=io.write).play()
+    assert "Hints are off" in io.text
+    from chess_engine.bot.hints import HintEngine
+    from chess_engine.config import HintsConfig
+    from review_helpers import ScriptedAnalyzer
+
+    io = Script("hint", "e4", "hint", "quit")
+    game = Game("You", "Bot")
+    engine = HintEngine(bot.predictor, ScriptedAnalyzer(), HintsConfig())
+    TerminalGame(bot, chess.WHITE, game, read=io.read, write=io.write, hints=engine, hint_limit=1).play()
+    assert "No hints left in this game." in io.text and game.extra_headers["Hints"] == "1"
+    assert "hint" in HELP
