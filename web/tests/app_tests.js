@@ -76,6 +76,40 @@ test("as Black the board is flipped and the bot has opened", async () => {
   equal($("bottom-name").textContent, "You");
 });
 
+test("clock formatting and countdown", () => {
+  equal(app.formatClock(185), "3:05");
+  equal(app.formatClock(60), "1:00");
+  equal(app.formatClock(9.46), "0:09.5");
+  equal(app.formatClock(-2), "0:00.0");
+  const clock = { white: 100, black: 50, running: "black", at: 1000 };
+  equal(app.clockTimes(clock, 3500), { white: 100, black: 47.5 });
+  equal(app.clockTimes({ ...clock, running: null }, 9000), { white: 100, black: 50 });
+});
+
+test("a timed game shows both clocks, the running one highlighted", async () => {
+  await app.startGame({ rating: 1500, color: "white", time_control: "3+2", seed: 6 });
+  assert(!$("top-clock").hidden && !$("bottom-clock").hidden, "clocks shown");
+  equal($("bottom-clock").textContent, "3:00");
+  equal($("top-clock").textContent, "3:00");
+  await app.playMove("e2e4");
+  await until(() => app.ui.game.moves_san.length === 2, "bot reply");
+  assert($("bottom-clock").classList.contains("running"), "your clock runs after both first moves");
+  assert(!$("top-clock").classList.contains("running"), "the bot's clock is stopped");
+});
+
+test("an untimed game hides the clocks", async () => {
+  await app.startGame({ rating: 1500, color: "white", seed: 7 });
+  assert($("top-clock").hidden && $("bottom-clock").hidden, "clocks hidden");
+});
+
+test("when the running clock reaches zero, the page asks the server", async () => {
+  const real = { ...app.ui.game };
+  const fakeClock = { white: 0.05, black: 100, running: "white", base_seconds: 60, increment: 0 };
+  app.render({ ...real, clock: fakeClock });          // pretend White is about to flag
+  await until(() => !app.ui.flagCheck && app.ui.game.clock === null, "state refreshed from the server", 3000);
+  equal(app.ui.game.id, real.id);                      // the real (untimed) state came back
+});
+
 test("the form sends the chosen rating, side and time control", () => {
   $("rating").value = "1350";
   $("rating").dispatchEvent(new Event("input"));

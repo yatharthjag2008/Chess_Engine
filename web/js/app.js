@@ -12,7 +12,48 @@ export const ui = {
   game: null,        // the latest game state from the server
   busy: false,       // a request is in flight (the board is locked meanwhile)
   board: null,
+  clock: null,       // { white, black, running, at }: the server's clock and when it was received
+  flagCheck: false,  // a state refresh after a flag fall is in flight
 };
+
+const LOW_TIME = 20; // seconds: the clock turns red below this
+
+/** "m:ss", or "0:ss.t" under 10 seconds (never negative). */
+export function formatClock(seconds) {
+  const s = Math.max(0, seconds);
+  if (s < 10) return `0:${s.toFixed(1).padStart(4, "0")}`;
+  const whole = Math.floor(s);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
+}
+
+/** Both clocks `now` (ms, performance.now()), counting down the running one since it was received. */
+export function clockTimes(clock, now) {
+  const elapsed = (now - clock.at) / 1000;
+  return {
+    white: clock.white - (clock.running === "white" ? elapsed : 0),
+    black: clock.black - (clock.running === "black" ? elapsed : 0),
+  };
+}
+
+function updateClocks() {
+  const clock = ui.clock;
+  const top = $("top-clock"), bottom = $("bottom-clock");
+  top.hidden = bottom.hidden = !clock;
+  if (!clock) return;
+  const times = clockTimes(clock, performance.now());
+  const bottomColor = ui.board.orientation;
+  const topColor = bottomColor === "white" ? "black" : "white";
+  for (const [el, color] of [[top, topColor], [bottom, bottomColor]]) {
+    el.textContent = formatClock(times[color]);
+    el.classList.toggle("running", clock.running === color);
+    el.classList.toggle("low", times[color] < LOW_TIME);
+  }
+  const flagged = clock.running && times[clock.running] <= 0;
+  if (flagged && !ui.flagCheck && ui.game && ui.game.status === "ongoing") {
+    ui.flagCheck = true;      // the server decides: it ends the game by time forfeit
+    api.state(ui.game.id).then((state) => render(state)).catch(() => {}).finally(() => { ui.flagCheck = false; });
+  }
+}
 
 export function setStatus(text, isError = false) {
   const el = $("status");
@@ -92,6 +133,8 @@ export function renderThinking(state) {
 /** Show a game state from the server. */
 export function render(state) {
   ui.game = state;
+  ui.clock = state.clock ? { ...state.clock, running: state.status === "ongoing" ? state.clock.running : null,
+                              at: performance.now() } : null;
   const board = ui.board;
   const humanToMove = state.status === "ongoing" && state.turn === state.human_color;
   board.setPosition(state.fen, { lastMove: state.last_move, check: state.check });
@@ -104,6 +147,7 @@ export function render(state) {
   $("game-panel").hidden = false;
   renderMoves(state);
   renderThinking(state);
+  updateClocks();
   if (state.status === "over") {
     setStatus(state.outcome.description);
   } else if (ui.busy) {
@@ -176,6 +220,7 @@ export function init() {
     event.preventDefault();
     startGame(readForm(event.target));
   });
+  setInterval(updateClocks, 100);
   $("flip").addEventListener("click", () => {
     ui.board.flip();
     if (ui.game) render(ui.game);
