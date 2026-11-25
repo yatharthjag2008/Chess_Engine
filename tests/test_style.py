@@ -168,3 +168,67 @@ def test_training_keeps_the_best_epoch_and_stops_early() -> None:
     assert result.styled.loss <= result.base.loss + 1e-6, "never worse than the base on held-out games"
     no_val = train_style(predictor.model, train, None, StyleConfig(epochs=2))
     assert no_val.base is None and no_val.styled is None and no_val.best_epoch == 2
+
+
+def _info(name: str = "ann", **kw):
+    from chess_engine.style.store import StyleInfo
+
+    return StyleInfo(name=name, kind=kw.get("kind", "style"), player="Ann", games=kw.get("games", 12), positions=36,
+                     rating=1500, until=kw.get("until"), metrics={"base_top1": 0.1, "styled_top1": 0.4})
+
+
+def test_blend_weight() -> None:
+    from chess_engine.config import StyleConfig
+    from chess_engine.style.store import blend_weight
+
+    cfg = StyleConfig(blend_games=200, min_weight=0.25)
+    assert blend_weight(0, cfg) == 0.25 and blend_weight(100, cfg) == 0.625
+    assert blend_weight(200, cfg) == 1.0 and blend_weight(5000, cfg) == 1.0
+
+
+def test_library_round_trip(tmp_path) -> None:
+    from chess_engine.style.adapter import StyleAdapter
+    from chess_engine.style.store import StyleLibrary
+
+    base = small_predictor().model
+    adapter = StyleAdapter.for_model(base)
+    with torch.no_grad():
+        adapter.policy_bias[7] = 3.0
+    library = StyleLibrary(tmp_path / "styles")
+    assert library.list() == []
+    path = library.save(adapter, _info(), base)
+    library.save(StyleAdapter.for_model(base), _info("me-2024", kind="ghost", until="2024-06-30"), base)
+    assert path.name == "ann.style.pt" and not list((tmp_path / "styles").glob("*.tmp"))
+    loaded, info = library.load("ann", base)
+    assert float(loaded.policy_bias[7]) == 3.0 and info.player == "Ann" and info.metrics["styled_top1"] == 0.4
+    assert [i.name for i in library.list()] == ["ann", "me-2024"] and library.info("me-2024").until == "2024-06-30"
+    library.delete("me-2024")
+    assert [i.name for i in library.list()] == ["ann"]
+
+
+def test_library_errors(tmp_path) -> None:
+    import pytest
+
+    from chess_engine.config import load_config
+    from chess_engine.model.network import build_model
+    from chess_engine.style.adapter import StyleAdapter
+    from chess_engine.style.store import StyleError, StyleLibrary
+
+    library = StyleLibrary(tmp_path)
+    base = small_predictor().model
+    for bad in ("Ann", "../x", "", "a" * 41, "has space"):
+        with pytest.raises(StyleError, match="style names"):
+            library.path(bad)
+    with pytest.raises(StyleError, match="no style called 'nobody'"):
+        library.load("nobody", base)
+    (tmp_path / "junk.style.pt").write_bytes(b"not a model")
+    with pytest.raises(StyleError, match="not a readable style"):
+        library.info("junk")
+    assert library.list() == [], "unreadable files are skipped"
+    library.save(StyleAdapter.for_model(base), _info(), base)
+    cfg = load_config()
+    other = build_model(cfg.model_copy(update={"model": cfg.model.model_copy(update={"residual_blocks": 2})}))
+    with pytest.raises(StyleError, match="different model"):
+        library.load("ann", other)
+    with pytest.raises(StyleError, match="no style"):
+        library.delete("nobody")
