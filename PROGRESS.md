@@ -14,7 +14,7 @@ See [PLAN.md](PLAN.md) for details on each step.
 - [x] 8. Bot move selection + CLI
 - [x] 9. Backend API
 - [x] 10. Web UI for playing
-- [ ] 11. Elo dial validation
+- [x] 11. Elo dial validation
 - [ ] 12. Rating estimation
 - [ ] 13. Game import
 - [ ] 14. Game review engine
@@ -657,3 +657,60 @@ caught square colours being swapped (a1 must be dark).
 - **Testing in a real browser without Node.js:** pytest serves the page and the API and reads the results from
   headless Chrome's DOM; screenshots were used to look at the result (headless Chrome will not go below a 504 px
   viewport, so phone width was checked inside a 375 px iframe).
+
+## Step 11: Elo dial validation (done 2026-11-24)
+
+**Built** (`chess_engine.eval`)
+- `players`: one interface for match players: `BotAgent` (the human-like bot) and `StockfishPlayer` (Stockfish 19
+  limited with `UCI_LimitStrength` / `UCI_Elo`, one process kept open), plus a `Judge` (full Stockfish at a fixed
+  node count) that evaluates positions.
+- `arena`: one game between any two players; the judge ends clearly decided games (one side ahead by 800 centipawns
+  for 8 plies in a row) and decides games that reach the move limit.
+- `elo_validation`: the schedule (every bot setting against every Stockfish level, and bot against bot), a
+  resumable JSON-lines game log, and `analyze` (scores per pairing, measured strength per dial setting).
+- `elo_fit`: maximum-likelihood Elo ratings anchored to the Stockfish levels, bootstrap intervals (games resampled
+  within each pairing), rank correlation, Elo per dial point and the chance each step up is really stronger.
+- `elo_report`: the dial-vs-measured chart, the score matrix and the Markdown report.
+- Script: `scripts/elo_validation.py` (run or resume, then report; `--analyze-only`). Config: `elo_validation:`.
+- Tests (about 30 new): scripted players and judges for every adjudication rule, the fit recovering known ratings
+  from simulated games, resuming an interrupted log, and the script end to end with a fake engine.
+
+**Results** (`python scripts/elo_validation.py`, the step-6 model, bots at 800/1100/1400/1700/2000/2300 sampling at
+temperature 1; 460 games in 29 minutes; full report:
+[reports/elo/laptop_64x6_best_model/report.md](reports/elo/laptop_64x6_best_model/report.md))
+
+![Dial vs. measured strength](reports/elo/laptop_64x6_best_model/dial_vs_measured.png)
+
+| Dial | 800 | 1100 | 1400 | 1700 | 2000 | 2300 |
+|---|---|---|---|---|---|---|
+| measured (Stockfish scale) | 311 | 319 | 656 | 912 | 833 | 981 |
+| 95% interval | -49 to 496 | 13 to 495 | 431 to 793 | 726 to 1043 | 660 to 938 | 821 to 1116 |
+| score vs. Stockfish 1320 | 0% | 0% | 0% | 10% | 5% | 10% |
+| score vs. the next setting up | 48% | 10% | 18% | 60% | 30% | |
+
+- **Strength does rise with the dial** (rank correlation 0.94; about 49 Elo of measured strength per 100 points on the
+  dial), but in steps, not smoothly. 1100 -> 1400 (+337) and 1400 -> 1700 (+256) are clear in every bootstrap
+  resample, and 2000 -> 2300 (+148) in 99%. 800 and 1100 play alike (+8), and 2000 measured *below* 1700 (-78; the
+  1700 bot won their match 12-8). This matches the step-7 cross-rating finding: the model separates ratings
+  mainly at the ends and around the middle of its range.
+- **The bots are far weaker than Stockfish's weakest setting.** Even the 2300 bot scored 10% against Stockfish 1320
+  (50 ms per move), and every bot lost every game to Stockfish 1900. So the absolute numbers are extrapolated from
+  lopsided scores and mean little; the bot-vs-bot games carry the real information. Stockfish's UCI_Elo scale is
+  also not the Lichess blitz scale (it was calibrated against engines at longer time controls). Two reasons the
+  bots are weak in absolute terms: at temperature 1 they play the occasional rare move humans play (the mistakes
+  included), and a 42%-move-match model after 2 hours of CPU training is still far from human-level understanding.
+- **85% of games were decided by the judge**: without adjudication most would have dragged on (the bots never
+  resign), which step 8 already showed.
+
+**Decisions**
+- **Stockfish levels as fixed anchors, plus bot-vs-bot games.** Anchors put every bot on one known scale; neighbouring
+  bots playing each other measure the dial directly, which turned out to be the informative part.
+- **A judge instead of resignation rules inside the bot.** The bot imitates humans move by move; deciding when a game is
+  lost is a measurement concern here, so it lives in the arena, not in `BotPlayer`.
+- **Maximum likelihood with a weak prior**, because whitewashes (0/20) would otherwise push ratings to infinity; the
+  prior (800 Elo wide) only matters for those players, whose intervals stay wide.
+- **Every game is logged as it finishes**, with a recovery from half-written lines, so a 30-minute run survives
+  interruptions (the log is committed as the raw evidence next to the report).
+- **What this means for the project:** the dial works enough to give clearly different opponents at 1100, 1400,
+  1700 and 2300, but not a smooth 100-point resolution. The fix is the same as step 7's: a model trained longer on
+  more games (the GPU config), then re-run this check (`python scripts/elo_validation.py`, ~30 minutes).

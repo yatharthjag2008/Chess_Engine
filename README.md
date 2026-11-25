@@ -237,6 +237,20 @@ does not yet beat telling it one rating for everyone (both 42.0%). See [PROGRESS
 
 ![Top-1 accuracy by rating](reports/eval/laptop_64x6_best_model/accuracy_by_rating.png)
 
+## Does the rating dial work?
+
+```bash
+python scripts/elo_validation.py      # bots at 800-2300 vs. Stockfish levels and each other (~30 min, resumable)
+```
+
+Bots set to different ratings play Stockfish at fixed `UCI_Elo` levels and each other; a Stockfish judge ends
+decided games, and the results are fitted to Elo ratings with confidence intervals. With the current model,
+**strength rises with the dial** (rank correlation 0.94), but in steps: 1100 -> 1400 -> 1700 are clearly
+different, 800 and 1100 play alike, and 2000 measured no stronger than 1700. All bots are much weaker than
+Stockfish's weakest setting. [Report](reports/elo/laptop_64x6_best_model/report.md).
+
+![Dial vs. measured strength](reports/elo/laptop_64x6_best_model/dial_vs_measured.png)
+
 ## Play the bot
 
 ```bash

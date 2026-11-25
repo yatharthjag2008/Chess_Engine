@@ -14,8 +14,14 @@ Step 7 modules:
     evaluate            evaluate_model: everything above for one model file
     compare             several models on the same positions, paired confidence intervals
 
+Step 11 modules:
+    players             match players: the bot, Stockfish at a UCI_Elo level, and a Stockfish judge
+    arena               one game between two players, with adjudication of decided games
+    elo_validation      the match schedule, a resumable game log, analysis of the results
+    elo_fit             Elo ratings from results (anchored, bootstrap intervals), dial monotonicity
+    elo_report          dial-vs-strength chart, score matrix, Markdown report
+
 Planned:
-    elo_validation     (step 11) check bot strength increases with the rating dial
     rating_estimation  (step 12) estimate a player rating (and range) from games
 """
 
