@@ -1,9 +1,10 @@
 // The public play page: the bot runs in the browser (engine.js), the rules come from chess.js.
 
 import { Chess } from "../vendor/chess.js";
-import { Board } from "./board.js";
+import { Board, pieceEl } from "./board.js";
 import { loadModel, sampleMove } from "./engine.js";
 import { Sounds, soundFor } from "./sounds.js";
+import { START, captured } from "./material.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -11,6 +12,7 @@ export const ui = {
   model: null,
   board: null,
   chess: null,
+  startFen: START,     // where the game began (captures are counted from here)
   human: "w",          // "w" or "b"
   rating: 1500,
   busy: false,
@@ -92,6 +94,7 @@ export function render() {
   $("bottom-name").textContent = bottomIsHuman ? "You" : `Bot ${ui.rating}`;
   $("game-panel").hidden = false;
   renderMoves(history);
+  renderCaptured(c.fen());
   renderThinking();
   const humanMoves = history.filter((m) => m.color === ui.human).length;
   $("takeback").disabled = ui.over || ui.busy || humanMoves === 0;
@@ -126,6 +129,16 @@ function renderMoves(history) {
     items.push(li);
   }
   $("move-list").replaceChildren(...items);
+}
+
+/** Next to each player, the pieces they have captured. */
+function renderCaptured(fen) {
+  const taken = captured(ui.startFen, fen);
+  const top = ui.board.orientation === "white" ? "b" : "w";
+  for (const [id, side] of [["top-captured", top], ["bottom-captured", top === "w" ? "b" : "w"]]) {
+    const opponent = side === "w" ? "black" : "white";
+    $(id).replaceChildren(...taken[side].map((type) => pieceEl(opponent, type)));
+  }
 }
 
 function renderThinking() {
@@ -228,6 +241,7 @@ export function readForm() {
 
 export async function newGame({ rating, color }) {
   ui.chess = new Chess();
+  ui.startFen = ui.chess.fen();
   ui.rating = rating;
   ui.human = color === "black" ? "b" : "w";
   ui.over = false;

@@ -188,4 +188,20 @@ test("the volume slider sets the volume and is remembered", () => {
   site.setVolume(70);
 });
 
+test("each player's captures are shown next to their name", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1500, color: "white" });
+  site.ui.chess.load("rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2");
+  site.render();
+  equal($("bottom-captured").children.length, 0);
+  site.ui.chess.move("exd5");
+  site.render();
+  const mine = [...$("bottom-captured").children].map((el) => el.dataset.piece);
+  equal(mine, ["bp"], "you (White, at the bottom) took a black pawn");
+  site.ui.board.flip();
+  site.render();
+  equal([...$("top-captured").children].map((el) => el.dataset.piece), ["bp"], "flipped: you are at the top");
+  site.ui.board.flip();
+});
+
 run();
