@@ -91,4 +91,44 @@ test("the bot castles too", async () => {
   equal(castles.map((m) => m.uci).sort().join(" "), "e8c8 e8g8");
 });
 
+test("premove: queue a move while the bot thinks, it is played when your turn comes", async () => {
+  site.ui.delay = 150;
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1500, color: "white" });
+  const reply = site.play("e2e4");                 // the bot thinks for 150 ms
+  assert(site.ui.busy && site.ui.board.el.classList.contains("premoving"), "premove mode while the bot thinks");
+  click("g1");
+  click("f3");
+  equal(site.ui.board.premove.uci, "g1f3");
+  await reply;
+  await until(() => site.ui.chess.history().length === 4, "the premove was played and the bot answered it");
+  equal(site.ui.chess.history({ verbose: true })[2].lan, "g1f3");
+  equal(site.ui.board.premove, null);
+  site.ui.delay = 0;
+});
+
+test("premove: one that is illegal when your turn comes is dropped", async () => {
+  site.ui.delay = 100;
+  await site.newGame({ rating: 1500, color: "white" });
+  site.ui.chess.load("k7/2Q5/4p3/8/4P3/8/7P/7K w - - 0 1");   // after h3, Black's only move is ...e5
+  site.render();
+  const reply = site.play("h2h3");
+  click("e4");
+  click("e5");
+  equal(site.ui.board.premove.uci, "e4e5");
+  await reply;
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  equal(site.ui.chess.history(), ["h3", "e5"], "blocked by ...e5: dropped, nothing played");
+  equal(site.ui.board.premove, null);
+  equal(site.ui.board.mover, "white", "your move");
+  site.ui.delay = 0;
+});
+
+test("premove: none once the game is over", async () => {
+  await site.newGame({ rating: 1500, color: "white" });
+  site.resign();
+  assert(!site.ui.board.el.classList.contains("premoving"));
+  assert(site.ui.board.el.classList.contains("locked"));
+});
+
 run();

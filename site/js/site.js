@@ -44,7 +44,9 @@ export function render() {
   const last = history.length ? history[history.length - 1].lan : null;
   const humanToMove = !ui.over && !ui.busy && c.turn() === ui.human;
   ui.board.setPosition(c.fen(), { lastMove: last, check: c.inCheck() });
-  ui.board.setLegalMoves(humanToMove ? legalMoves() : [], humanToMove ? colorName(ui.human) : null);
+  const botToMove = !ui.over && c.turn() !== ui.human;           // meanwhile you may premove
+  ui.board.setLegalMoves(humanToMove ? legalMoves() : [], humanToMove ? colorName(ui.human) : null,
+                         { premover: botToMove ? colorName(ui.human) : null });
   const bottomIsHuman = ui.board.orientation === colorName(ui.human);
   $("top-name").textContent = bottomIsHuman ? `Bot ${ui.rating}` : "You";
   $("bottom-name").textContent = bottomIsHuman ? "You" : `Bot ${ui.rating}`;
