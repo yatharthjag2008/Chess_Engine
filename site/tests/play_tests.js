@@ -518,4 +518,25 @@ test("timed games: the bot takes a human-like time, and it comes off its clock",
   site.ui.thinkScale = 0.01;
 });
 
+test("the network gets the clocks, so short time changes the bot's choices like a human's", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1500, color: "white", time: "3" });
+  equal(site.clockContext(), { clock: 180, oppClock: 180, base: 180, increment: 0 });
+  site.ui.clock.remaining.w = 5000;
+  site.ui.clock.remaining.b = 170000;
+  const context = site.clockContext();
+  equal([context.clock, context.oppClock], [5, 170], "White to move with 5 seconds");
+  const calm = site.ui.model.predict(site.ui.chess, 1500, { clock: 170, oppClock: 170, base: 180 }).moves[0].prob;
+  const rushed = site.ui.model.predict(site.ui.chess, 1500, context).moves[0].prob;
+  assert(Math.abs(calm - rushed) > 1e-4, `the clocks change the prediction (${calm} vs ${rushed})`);
+  let seen = null;
+  const predict = site.ui.model.predict.bind(site.ui.model);
+  site.ui.model.predict = (chess, rating, options) => { seen = options; return predict(chess, rating, options); };
+  site.botMove();
+  site.ui.model.predict = predict;
+  equal(seen.base, 180, "botMove passes them on");
+  await site.newGame({ rating: 1500, color: "white" });
+  equal(site.clockContext(), {}, "untimed: the model's default");
+});
+
 run();

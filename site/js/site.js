@@ -332,10 +332,19 @@ function finish(text, winner) {
   saved.game.save(snapshot());
 }
 
+/** The clocks as the network was trained on them (seconds left for the side to move and the other, the
+ *  time control); untimed games use the model's default of three minutes each. */
+export function clockContext() {
+  if (!ui.clock) return {};
+  const mover = ui.chess.turn();
+  const other = mover === "w" ? "b" : "w";
+  return { clock: ui.clock.left(mover) / 1000, oppClock: ui.clock.left(other) / 1000, base: ui.clock.base, increment: 0 };
+}
+
 /** The bot picks a move as often as players of its rating play it. */
 export function botMove() {
   const c = ui.chess;
-  const { moves } = ui.model.predict(c, ui.rating);
+  const { moves } = ui.model.predict(c, ui.rating, clockContext());
   const choice = sampleMove(moves, 1, ui.random);
   makeMove(choice.uci);
   ui.last = { san: choice.san, uci: choice.uci, prob: choice.prob, candidates: moves };
