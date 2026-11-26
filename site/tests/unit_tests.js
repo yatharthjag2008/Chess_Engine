@@ -5,7 +5,7 @@ import { assert, equal, run, test } from "./harness.js";
 import { RECIPES, Sounds, soundFor } from "../js/sounds.js";
 import { stored } from "../js/storage.js";
 import { Clock, TIME_CONTROLS, baseSeconds, formatClock } from "../js/clock.js";
-import { START, captured, countPieces, describeCaptures, materialOf } from "../js/material.js";
+import { START, canMate, captured, countPieces, describeCaptures, materialOf } from "../js/material.js";
 
 // ------------------------------------------------------------------ sounds
 
@@ -84,6 +84,16 @@ test("a promoted pawn is not a captured one", () => {
   const twoQueens = "rnbqkbnr/pppppppp/8/8/8/8/2PPPPPP/RNBQKBNR w KQkq - 0 1".replace("RNBQKBNR w", "RNBQKQQR w");
   equal(captured(START, twoQueens), { w: [], b: ["n", "b"], diff: 10 },
         "two pawns became queens; the knight and bishop they replace were taken");
+});
+
+test("who could still checkmate (for a flag fall)", () => {
+  assert(canMate(START, "w") && canMate(START, "b"));
+  assert(!canMate("4k3/8/8/8/8/8/8/4K3 w - - 0 1", "w"), "a lone king");
+  assert(!canMate("4k3/8/8/8/8/8/8/3NK3 w - - 0 1", "w"), "king and knight against a lone king");
+  assert(!canMate("4k3/8/8/8/8/8/8/3BK3 w - - 0 1", "w"), "king and bishop against a lone king");
+  assert(canMate("4k3/4p3/8/8/8/8/8/3NK3 w - - 0 1", "w"), "with a black pawn about, a knight can mate");
+  assert(canMate("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1", "w"), "a pawn can queen");
+  assert(canMate("4k3/8/8/8/8/8/8/2NNK3 w - - 0 1", "w"), "two knights: not counted as impossible");
 });
 
 test("captures in words, for screen readers", () => {

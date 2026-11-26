@@ -4,7 +4,7 @@ import { Chess } from "../vendor/chess.js";
 import { Board, pieceEl } from "./board.js";
 import { loadModel, sampleMove } from "./engine.js";
 import { Sounds, soundFor } from "./sounds.js";
-import { START, captured, describeCaptures } from "./material.js";
+import { START, canMate, captured, describeCaptures } from "./material.js";
 import { stored } from "./storage.js";
 import { Clock, baseSeconds, formatClock } from "./clock.js";
 
@@ -226,6 +226,20 @@ export function updateClocks() {
   }
 }
 
+/** Every tenth of a second in a timed game: the clock faces, and the end of the game if a flag fell. */
+export function tickClocks() {
+  if (!ui.clock || !ui.chess) return;
+  updateClocks();
+  const flagged = ui.over ? null : ui.clock.flagged();
+  if (!flagged) return;
+  const name = (c) => (c === "w" ? "White" : "Black");
+  const other = flagged === "w" ? "b" : "w";
+  ui.busy = false;
+  if (canMate(ui.chess.fen(), other)) finish(`${name(other)} wins on time`, other);
+  else finish(`${name(flagged)} ran out of time, but ${name(other)} cannot checkmate: a draw`, null);
+  render();
+}
+
 /** Next to each player, the pieces they have captured. */
 function renderCaptured(fen) {
   const taken = captured(ui.startFen, fen);
@@ -333,6 +347,11 @@ function botTurn() {
   render();
   return new Promise((resolve) => {
     setTimeout(() => {
+      if (ui.over) {                                         // its time ran out while it was thinking
+        ui.busy = false;
+        resolve();
+        return;
+      }
       botMove();
       ui.busy = false;
       render();
@@ -475,7 +494,7 @@ export async function init(modelBase = "model/") {
     : `Warning: this browser's results differ from PyTorch's (by ${check.worst.toExponential(1)}).`;
   $("play").disabled = false;
   setStatus("Choose a rating and press Play.");
-  setInterval(() => { if (ui.clock && ui.chess) updateClocks(); }, 100);
+  setInterval(tickClocks, 100);
   restore();
 }
 

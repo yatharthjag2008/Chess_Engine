@@ -490,4 +490,21 @@ test("the clocks: shown in timed games, your time runs on your move and the bot'
   assert($("top-clock").hidden && $("bottom-clock").hidden, "untimed: no clocks");
 });
 
+test("a flag falls: the side out of time loses, unless the other cannot checkmate", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1500, color: "white", time: "1" });
+  await site.play("e2e4");
+  site.ui.clock.remaining.w = 150;                // your time runs out
+  await until(() => site.ui.over, "the flag");
+  equal(site.ui.overText, "Black wins on time");
+  equal($("result-banner").querySelector("h2").textContent, "The bot won");
+  equal(site.ui.board.mover, null);
+  await site.newGame({ rating: 1500, color: "white", time: "1" });
+  site.ui.chess.load("4k3/8/8/8/8/8/8/3NK3 w - - 0 1");
+  site.ui.clock.start("b");
+  site.ui.clock.remaining.b = 100;                // the bot runs out, but you only have a knight
+  await until(() => site.ui.over, "the flag");
+  equal(site.ui.overText, "Black ran out of time, but White cannot checkmate: a draw");
+});
+
 run();

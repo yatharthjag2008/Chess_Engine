@@ -57,3 +57,15 @@ export function describeCaptures(types, lead = 0) {
   const text = list ? `Captured ${list}` : "Nothing captured";
   return lead > 0 ? `${text}; ${lead} ahead.` : `${text}.`;
 }
+
+/** Could `color` ("w" / "b") ever checkmate in this position? (Used when the other side runs out of time:
+ *  a lone king, or a king and one minor piece against a lone king, cannot, and the game is a draw.) */
+export function canMate(fen, color) {
+  const counts = countPieces(fen);
+  const own = counts[color];
+  const other = counts[color === "w" ? "b" : "w"];
+  const extra = own.p + own.n + own.b + own.r + own.q;
+  if (extra === 0) return false;
+  const otherAlone = other.p + other.n + other.b + other.r + other.q === 0;
+  return !(extra === 1 && (own.n === 1 || own.b === 1) && otherAlone);
+}
