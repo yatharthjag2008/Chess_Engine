@@ -184,10 +184,10 @@ export class Board {
     this.shapes = [];         // arrows and circles drawn on the board (see shapesLayer)
     this.el.addEventListener("click", (event) => this.handleClick(event));
     this.el.addEventListener("pointerdown", (event) => this.dragStart(event));
-    this.el.addEventListener("contextmenu", (event) => {   // right-click cancels a premove
-      if (!this.premove && !(this.premover && this.selected)) return;
+    this.el.addEventListener("pointerdown", (event) => this.annotateStart(event));
+    this.el.addEventListener("contextmenu", (event) => {   // no browser menu on the board
       event.preventDefault();
-      this.cancelPremove();
+      if (this.premove || (this.premover && this.selected)) this.cancelPremove();   // right-click cancels a premove
     });
     this.render();
   }
@@ -199,6 +199,38 @@ export class Board {
     const row = Math.floor(((y - rect.top) / rect.height) * 8);
     if (col < 0 || col > 7 || row < 0 || row > 7) return null;
     return squareOrder(this.orientation)[row * 8 + col];
+  }
+
+  /** Right button down: start drawing a circle (released on the same square). A right-click that
+   *  cancels a premove draws nothing. */
+  annotateStart(event) {
+    if (event.button !== 2 || this.premove || (this.premover && this.selected)) return;
+    const orig = this.squareAt(event.clientX, event.clientY);
+    if (!orig) return;
+    event.preventDefault();
+    this.drawing = { orig };
+    const up = (e) => {
+      window.removeEventListener("pointerup", up);
+      this.annotateEnd(e);
+    };
+    window.addEventListener("pointerup", up);
+  }
+
+  annotateEnd(event) {
+    const drawing = this.drawing;
+    this.drawing = null;
+    if (!drawing) return;
+    const dest = this.squareAt(event.clientX, event.clientY);
+    if (dest === drawing.orig) this.toggleShape({ orig: drawing.orig });
+  }
+
+  /** Add a shape, or remove it if the same one is already drawn. */
+  toggleShape(shape) {
+    const same = (s) => s.orig === shape.orig && (s.dest || null) === (shape.dest || null);
+    const index = this.shapes.findIndex(same);
+    if (index >= 0) this.shapes = this.shapes.filter((_, i) => i !== index);
+    else this.shapes = [...this.shapes, shape];
+    this.render();
   }
 
   /** Whose pieces can be picked up now: the side to move, or the side that may premove. */

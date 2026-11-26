@@ -152,8 +152,18 @@ test("promotion asks which piece and plays the choice", async () => {
 
 // ------------------------------------------------------------------ dragging
 
-function pointer(type, target, x, y) {
-  target.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0, pointerId: 1 }));
+function pointer(type, target, x, y, extra = {}) {
+  target.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0,
+                                                pointerId: 1, ...extra }));
+}
+
+/** A right-button press on `from` released on `to` (modifier keys in `keys`). */
+function rightDrag(board, from, to = from, keys = {}) {
+  const [x0, y0] = centre(board, from);
+  const [x1, y1] = centre(board, to);
+  pointer("pointerdown", board.squareEl(from), x0, y0, { button: 2, ...keys });
+  pointer("pointermove", window, x1, y1, { button: 2, ...keys });
+  pointer("pointerup", window, x1, y1, { button: 2, ...keys });
 }
 
 function centre(board, square) {
@@ -366,6 +376,30 @@ test("arrows and circles are drawn over the board, and turn with it", () => {
   equal(Math.round(rect.width), 400, "the layer covers the board");
   board.setShapes([]);
   equal(board.el.querySelectorAll(".shapes line, .shapes circle").length, 0);
+});
+
+test("right-click a square to circle it, again to remove the circle; no browser menu on the board", () => {
+  const board = new Board(fixture());
+  rightDrag(board, "e4");
+  equal(board.shapes, [{ orig: "e4" }]);
+  assert(board.el.querySelector(".shapes circle"), "drawn");
+  rightDrag(board, "d5");
+  equal(board.shapes.length, 2);
+  rightDrag(board, "e4");
+  equal(board.shapes, [{ orig: "d5" }], "toggled off");
+  const menu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+  board.squareEl("a1").dispatchEvent(menu);
+  assert(menu.defaultPrevented, "the browser's menu is not shown over the board");
+});
+
+test("a right-click that cancels a premove draws nothing", () => {
+  const board = premoveBoard();
+  board.squareEl("g1").click();
+  board.squareEl("f3").click();
+  rightDrag(board, "c4");
+  board.el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+  equal(board.premove, null);
+  equal(board.shapes, []);
 });
 
 test("marks stay on squares across renders and can be cleared", () => {
