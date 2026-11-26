@@ -443,7 +443,7 @@ test("the new-game choices are remembered (rating and side, random included)", a
   $("new-game").querySelector('input[value="random"]').checked = true;
   $("new-game").dispatchEvent(new Event("submit", { cancelable: true }));
   await until(() => !site.ui.busy, "the game started");
-  equal(JSON.parse(localStorage.getItem("human-chess-site.settings")), { rating: 1850, color: "random", time: "none" });
+  equal(JSON.parse(localStorage.getItem("human-chess-site.settings")), { rating: 1850, color: "random", time: "none", difficulty: "off" });
   $("rating").value = "1000";
   $("new-game").querySelector('input[value="white"]').checked = true;
   site.applySettings({ rating: 1850, color: "random" });
@@ -772,6 +772,58 @@ test("a game from a position survives a reload", async () => {
   equal(site.ui.startFen, "1K1k4/1P6/8/8/8/8/r7/2R5 w - - 0 1");
   assert(site.pgn().includes('[FEN "1K1k4/1P6/8/8/8/8/r7/2R5 w - - 0 1"]'));
   standardForm();
+});
+
+/** Choose a Difficulty on the new-game form. */
+function difficulty(value) {
+  $("new-game").querySelector(`input[name="difficulty"][value="${value}"]`).checked = true;
+  $("new-game").querySelector(`input[name="difficulty"][value="${value}"]`).dispatchEvent(new Event("change"));
+}
+
+test("Follow my level: the bot plays at your rating, and a result moves it", async () => {
+  site.ui.random = () => 0.5;
+  site.resetProfile(1200);
+  difficulty("between");
+  assert($("rating").disabled, "the slider is not used");
+  equal($("rating-value").textContent, "1200");
+  assert($("adaptive-note").textContent.startsWith("Your first game starts at 1200"), $("adaptive-note").textContent);
+  await site.startFromForm();
+  equal(site.ui.rating, 1200);
+  await site.play("e2e4");
+  site.resign();
+  equal(site.profile().games, 1);
+  equal(Math.round(site.profile().rating), 1160, "a loss while new: K 80 x 0.5");
+  equal($("result-banner").querySelector(".adaptive-result").textContent, "Your rating: 1200 \u2192 1160. Next bot: 1150.");
+  site.resign();
+  equal(site.profile().games, 1, "counted once");
+  equal($("adaptive-note").textContent, "Your rating: 1160 after 1 game. The bot plays at 1150.");
+  await site.startFromForm();
+  equal(site.ui.rating, 1150, "the next bot");
+  difficulty("off");
+  assert(!$("rating").disabled);
+  await site.newGame({ rating: 1500, color: "white" });
+  site.resign();
+  equal(site.profile().games, 1, "fixed-rating games do not count");
+});
+
+test("Follow my level: games from a position do not count, and a reload keeps the mode", async () => {
+  site.ui.random = () => 0.5;
+  site.resetProfile(1400);
+  positionForm("8/8/8/4k3/8/8/4K3/4Q3 w - - 0 1");
+  difficulty("between");
+  await site.startFromForm();
+  site.resign();
+  equal(site.profile().games, 0, "not counted");
+  assert(!$("result-banner").querySelector(".adaptive-result"));
+  standardForm();
+  await site.startFromForm();
+  const snap = site.snapshot();
+  await site.newGame({ rating: 1500, color: "white" });
+  assert(site.restore(JSON.parse(JSON.stringify(snap))));
+  equal(site.ui.adaptive.mode, "between");
+  site.resign();
+  equal(site.profile().games, 1, "counted after the reload");
+  difficulty("off");
 });
 
 run();

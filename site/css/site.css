@@ -25,6 +25,8 @@
 .step-buttons button { padding: 6px 0; font-size: 0.95rem; line-height: 1; }
 .step-buttons button:disabled { opacity: 0.4; }
 .play-from-here { width: 100%; margin-top: 8px; }
+#adaptive-note { margin: 6px 0 0; }
+.result-banner .adaptive-result { font-weight: 600; }
 
 .segmented span { white-space: nowrap; }
 

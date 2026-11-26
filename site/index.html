@@ -72,6 +72,14 @@
             <label><input type="radio" name="time" value="10"><span>10 min</span></label>
           </div>
         </fieldset>
+        <fieldset class="field">
+          <legend>Difficulty</legend>
+          <div class="segmented" role="radiogroup">
+            <label title="The bot plays at the rating you choose"><input type="radio" name="difficulty" value="off" checked><span>Fixed</span></label>
+            <label title="Your rating is updated after each game, and the next bot plays at it"><input type="radio" name="difficulty" value="between"><span>Follow my level</span></label>
+          </div>
+          <p class="hint" id="adaptive-note" hidden></p>
+        </fieldset>
         <button type="submit" class="primary" id="play" disabled>Play</button>
       </form>
 

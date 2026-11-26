@@ -9,6 +9,7 @@ import { stored } from "./storage.js";
 import { Clock, baseSeconds, formatClock, thinkTime } from "./clock.js";
 import { loadOpenings, openingOf } from "./openings.js";
 import { PRESETS, parsePosition } from "./position.js";
+import { botRatingFor, readProfile, recordGame, scoreFor } from "./adaptive.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -29,14 +30,60 @@ export const ui = {
   delay: 350,          // ms before the bot moves in untimed games (so its move is visible as a move)
   thinkScale: 1,       // timed games: the bot's human-like thinking time is multiplied by this (tests shorten it)
   sounds: new Sounds(),
+  profile: null,       // your rating for adaptive difficulty: { rating, games, history }
+  adaptive: { mode: "off", start: 1500, rated: true, recorded: null },   // this game's adaptive difficulty
 };
 
 const saved = {
   sound: stored("human-chess-site.sound"),      // "on" / "off"
   volume: stored("human-chess-site.volume"),    // 0-100
   game: stored("human-chess-site.game"),        // the game in progress (or just finished), see snapshot()
-  settings: stored("human-chess-site.settings"), // the new-game form: { rating, color, time }
+  settings: stored("human-chess-site.settings"), // the new-game form: { rating, color, time, difficulty }
+  profile: stored("human-chess-site.adaptive"),  // your adaptive-difficulty rating and recent games
 };
+
+/** Your rating for adaptive difficulty (read once from this browser). */
+export function profile() {
+  if (!ui.profile) ui.profile = readProfile(saved.profile.load());
+  return ui.profile;
+}
+
+/** Under the Difficulty choice: what "Follow my level" will do (the bot's rating then comes from your profile). */
+export function renderAdaptiveNote() {
+  const following = $("new-game").elements.difficulty.value === "between";
+  const note = $("adaptive-note");
+  note.hidden = !following;
+  $("rating").disabled = following;
+  if (!following) {
+    $("rating-value").textContent = $("rating").value;
+    return;
+  }
+  const p = profile();
+  const next = botRatingFor(p.rating);
+  $("rating-value").textContent = String(next);
+  note.textContent = p.games
+    ? `Your rating: ${Math.round(p.rating)} after ${p.games} game${p.games === 1 ? "" : "s"}. The bot plays at ${next}.`
+    : `Your first game starts at ${next}; after each game the bot moves towards your level.`;
+}
+
+/** Start your adaptive-difficulty rating again (at `rating`, else the usual start). */
+export function resetProfile(rating) {
+  ui.profile = readProfile(rating === undefined ? null : { rating, games: 0, history: [] });
+  saved.profile.save(ui.profile);
+  renderAdaptiveNote();
+  return ui.profile;
+}
+
+/** A finished game counts for adaptive difficulty (once; not for games from a position). */
+function recordResult(winner) {
+  const a = ui.adaptive;
+  if (a.mode === "off" || !a.rated || a.recorded) return;
+  const before = profile().rating;
+  ui.profile = recordGame(profile(), a.start, scoreFor(winner, ui.human), a.mode);
+  saved.profile.save(ui.profile);
+  a.recorded = { before, after: ui.profile.rating, next: botRatingFor(ui.profile.rating) };
+  renderAdaptiveNote();
+}
 
 /** Fill the new-game form from saved settings (unknown values are left alone). */
 export function applySettings(settings) {
@@ -46,7 +93,7 @@ export function applySettings(settings) {
     $("rating").value = String(rating);
     $("rating-value").textContent = String(rating);
   }
-  for (const name of ["color", "time"]) {
+  for (const name of ["color", "time", "difficulty"]) {
     const radio = $("new-game").querySelector(`input[name="${name}"][value="${settings[name]}"]`);
     if (radio) radio.checked = true;
   }
@@ -68,6 +115,7 @@ export function snapshot() {
     over: ui.over ? { text: ui.overText, winner: ui.winner ?? null } : null,
     thoughts: Object.fromEntries(Object.entries(ui.thoughts).map(([ply, t]) => [ply, trim(t)])),
     time: ui.time || "none",
+    adaptive: ui.adaptive,
     clock: ui.clock ? ui.clock.toJSON() : null,           // carries on after a reload, time running as on a server
     savedAt: Date.now(),
   };
@@ -331,11 +379,20 @@ function finish(text, winner) {
   if (ui.clock) ui.clock.stop();
   setStatus(text);
   ui.sounds.play(winner === null ? "draw" : winner === ui.human ? "win" : "lose");
+  recordResult(winner);
   const banner = $("result-banner");
   const heading = document.createElement("h2");
   heading.textContent = winner === null ? "Draw" : winner === ui.human ? "You won" : "The bot won";
   const p = document.createElement("p");
   p.textContent = text;
+  const lines = [heading, p];
+  const r = ui.adaptive.recorded;
+  if (r) {
+    const rating = document.createElement("p");
+    rating.className = "adaptive-result";
+    rating.textContent = `Your rating: ${Math.round(r.before)} \u2192 ${Math.round(r.after)}. Next bot: ${r.next}.`;
+    lines.push(rating);
+  }
   const actions = document.createElement("div");
   actions.className = "actions";
   const again = document.createElement("button");
@@ -348,7 +405,7 @@ function finish(text, winner) {
   close.textContent = "Close";
   close.addEventListener("click", () => { banner.hidden = true; });
   actions.append(again, close);
-  banner.replaceChildren(heading, p, actions);
+  banner.replaceChildren(...lines, actions);
   banner.hidden = false;
   ui.board.setLegalMoves([], null);
   $("takeback").disabled = $("resign").disabled = true;
@@ -413,16 +470,21 @@ export function readForm() {
   let color = data.get("color");
   if (color === "random") color = ui.random() < 0.5 ? "white" : "black";
   return { rating: Number(data.get("rating")), color, time: data.get("time") || "none",
-           mode: data.get("mode") || "standard", position: data.get("position") || "" };
+           mode: data.get("mode") || "standard", position: data.get("position") || "",
+           difficulty: data.get("difficulty") || "off" };
 }
 
 /** A new game: `start` (a chess.js game, see position.js) to carry on from a position, else the usual start. */
-export async function newGame({ rating, color, time = "none", start = null }) {
+export async function newGame({ rating, color, time = "none", start = null, difficulty = "off" }) {
   ui.chess = start || new Chess();
+  const mode = difficulty === "between" ? difficulty : "off";
+  if (mode === "between") rating = botRatingFor(profile().rating);   // the bot plays at your level
   ui.time = baseSeconds(time) ? String(time) : "none";
   ui.clock = baseSeconds(time) ? new Clock(baseSeconds(time)) : null;   // null: an untimed game
   const history = ui.chess.history({ verbose: true });
   ui.startFen = history.length ? history[0].before : ui.chess.fen();
+  // Games from a position do not count: a won position says little about your level.
+  ui.adaptive = { mode, start: rating, rated: ui.startFen === START, recorded: null };
   ui.view = null;
   ui.thoughts = {};
   ui.rating = rating;
@@ -442,7 +504,8 @@ export async function playFromHere() {
   const history = ui.chess.history({ verbose: true });
   const start = new Chess(history.length ? history[0].before : ui.chess.fen());
   for (const move of history.slice(0, ui.view)) start.move(move.lan);
-  await newGame({ rating: ui.rating, color: colorName(ui.human), time: ui.time || "none", start });
+  await newGame({ rating: ui.rating, color: colorName(ui.human), time: ui.time || "none", start,
+                 difficulty: ui.adaptive.mode });
 }
 
 /** What the Play button does: a standard game, or one from the pasted position (an error shown if it cannot be). */
@@ -536,6 +599,8 @@ export async function init(modelBase = "model/", dataBase = modelBase.replace(/m
   rating.addEventListener("input", show);
   show();
   applySettings(saved.settings.load());
+  for (const radio of $("new-game").elements.difficulty) radio.addEventListener("change", renderAdaptiveNote);
+  renderAdaptiveNote();
   const showMode = () => {
     $("position-fields").hidden = $("new-game").elements.mode.value !== "position";
   };
@@ -549,7 +614,8 @@ export async function init(modelBase = "model/", dataBase = modelBase.replace(/m
   $("new-game").addEventListener("submit", (event) => {
     event.preventDefault();
     const data = new FormData($("new-game"));
-    saved.settings.save({ rating: Number(data.get("rating")), color: data.get("color"), time: data.get("time") });
+    saved.settings.save({ rating: Number($("rating").value), color: data.get("color"), time: data.get("time"),
+                          difficulty: data.get("difficulty") || "off" });
     startFromForm();
   });
   $("flip").addEventListener("click", () => { ui.board.flip(); if (ui.chess) render(); });
@@ -626,6 +692,9 @@ export function restore(snap = saved.game.load()) {
   ui.time = snap.time || "none";
   ui.clock = snap.clock ? Clock.fromJSON(snap.clock) : null;
   ui.thoughts = snap.thoughts || {};
+  const a = snap.adaptive || {};
+  ui.adaptive = { mode: a.mode === "between" ? a.mode : "off", start: Number(a.start) || ui.rating,
+                  rated: a.rated !== false, recorded: a.recorded || null };
   const plies = snap.moves.length;
   ui.last = ui.thoughts[plies] || null;
   ui.view = null;
