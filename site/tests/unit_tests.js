@@ -11,6 +11,7 @@ import { START, canMate, captured, countPieces, describeCaptures, materialOf } f
 import { describeEstimate, estimateFromBucketLL, interp, loadRatingData, moveBucketLL, posterior, summarize }
   from "../js/rating.js";
 import { bucketOf, loadModel } from "../js/engine.js";
+import { clockOf, parseTimeControl, playerGames, readGame, splitPgn } from "../js/games.js";
 import { ADAPTIVE, LiveAdjuster, botRatingFor, expectedScore, readProfile, recordGame, scoreFor,
          updateRating } from "../js/adaptive.js";
 
@@ -367,6 +368,57 @@ test("rating: a move's likelihood at each rating is PyTorch's probability", asyn
   let threw = false;
   try { moveBucketLL(model, { fen: model.meta.tests[0].fen, uci: "a1a8" }); } catch { threw = true; }
   assert(threw, "an illegal move is refused");
+});
+
+// ------------------------------------------------------------------ games from PGN
+
+const TWO_GAMES = `[Event "Rated blitz game"]
+[White "Ann"]
+[Black "Bob"]
+[WhiteElo "1520"]
+[BlackElo "1488"]
+[Result "1-0"]
+[TimeControl "180+2"]
+
+1. e4 { [%clk 0:03:00] } 1... e5 { [%clk 0:03:00] } 2. Nf3 { [%clk 0:02:58.4] } 2... Nc6 { [%clk 0:02:55] } 3. Bb5 { [%clk 0:02:50] } 1-0
+
+[Event "Casual"]
+[White "Bob"]
+[Black "ann"]
+[Result "0-1"]
+
+1. d4 d5 2. c4 0-1
+`;
+
+test("games: PGN text is split into games, and time controls and clocks are read", () => {
+  equal(splitPgn(TWO_GAMES).length, 2);
+  equal(splitPgn("1. e4 e5 *").length, 1, "moves without headers");
+  equal(splitPgn("  \n "), []);
+  equal([parseTimeControl("180+2"), parseTimeControl("600"), parseTimeControl("-"), parseTimeControl("1/86400")],
+        [{ base: 180, increment: 2 }, { base: 600, increment: 0 }, null, null]);
+  equal([clockOf("[%clk 0:02:58.4]"), clockOf("[%clk 1:00:00]"), clockOf("a comment")], [178.4, 3600, null]);
+});
+
+test("games: each player's moves, with ratings and clocks before each move, as in Python", () => {
+  const { games, unreadable } = playerGames(TWO_GAMES);
+  equal(unreadable, 0);
+  equal(games.map((g) => [g.name, g.color, g.rating, g.oppRating, g.base, g.increment, g.moves.map((m) => m.uci)]), [
+    ["Ann", "w", 1520, 1488, 180, 2, ["e2e4", "g1f3", "f1b5"]],
+    ["Bob", "b", 1488, 1520, 180, 2, ["e7e5", "b8c6"]],
+    ["Bob", "w", null, null, 180, 0, ["d2d4", "c2c4"]],
+    ["ann", "b", null, null, 180, 0, ["d7d5"]],
+  ]);
+  equal(games[0].moves.map((m) => [m.clock, m.oppClock]), [[180, 180], [180, 180], [178.4, 175]]);
+  equal(games[1].moves.map((m) => [m.clock, m.oppClock]), [[180, 180], [180, 178.4]]);
+  equal(games[2].moves[0].clock, null, "no clocks in the PGN");
+  equal(games[0].moves[1].fen, "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2", "the position before");
+  equal(playerGames(TWO_GAMES, { player: "ANN" }).games.map((g) => g.color), ["w", "b"], "one player, any case");
+});
+
+test("games: an unreadable game is counted, and the others are still read", () => {
+  const { games, unreadable } = playerGames(`[White "A"]\n[Black "B"]\n\n1. e4 e5 2. Ke3 Ke6 3. Qxh8 *\n\n${TWO_GAMES}`);
+  equal([unreadable, games.length], [1, 4]);
+  assert(readGame("1. e4 e5 2. Qxf7").error.startsWith("could not be read"));
 });
 
 run();
