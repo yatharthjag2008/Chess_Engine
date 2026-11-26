@@ -147,6 +147,13 @@ function renderCaptured(fen) {
       }
       groups[groups.length - 1].append(pieceEl(opponent, type));
     }
+    const lead = side === "w" ? taken.diff : -taken.diff;   // material ahead, shown on the side ahead
+    if (lead > 0) {
+      const score = document.createElement("span");
+      score.className = "score";
+      score.textContent = `+${lead}`;
+      groups.push(score);
+    }
     $(id).replaceChildren(...groups);
   }
 }

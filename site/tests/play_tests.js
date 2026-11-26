@@ -203,10 +203,17 @@ test("each player's captures are shown next to their name", async () => {
   site.render();
   equal([...$("top-captured").querySelectorAll(".piece")].map((el) => el.dataset.piece), ["bp"],
         "flipped: you are at the top");
-  site.ui.chess.load("4k3/8/8/8/8/8/8/4K3 w - - 0 1");          // White has taken everything but the king
+  site.ui.chess.load("4k3/8/8/8/8/8/8/4K3 w - - 0 1");          // both sides took everything but the king
   site.render();
   const groups = [...$("top-captured").querySelectorAll(".group")].map((g) => `${g.dataset.type}${g.children.length}`);
   equal(groups, ["p8", "n2", "b2", "r2", "q1"], "grouped by kind, cheapest first");
+  equal(document.querySelectorAll(".captured .score").length, 0, "kings only: level, no score");
+  site.ui.chess.load("rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+  site.render();
+  equal($("top-captured").querySelector(".score").textContent, "+9");
+  site.ui.chess.load("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RN1QKBNR w KQkq - 0 1");
+  site.render();
+  equal($("bottom-captured").querySelector(".score").textContent, "+3", "Black is ahead: shown with Black");
   site.ui.board.flip();
 });
 
