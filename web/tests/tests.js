@@ -392,6 +392,26 @@ test("right-click a square to circle it, again to remove the circle; no browser 
   assert(menu.defaultPrevented, "the browser's menu is not shown over the board");
 });
 
+test("right-drag draws an arrow, shown faintly while dragging; the same arrow again removes it", () => {
+  const board = new Board(fixture());
+  const [x0, y0] = centre(board, "g1");
+  const [x1, y1] = centre(board, "f3");
+  pointer("pointerdown", board.squareEl("g1"), x0, y0, { button: 2 });
+  pointer("pointermove", window, x1, y1, { button: 2 });
+  assert(board.el.querySelector(".shapes line.preview"), "a preview while dragging");
+  equal(board.shapes, [], "not drawn yet");
+  pointer("pointerup", window, x1, y1, { button: 2 });
+  equal(board.shapes, [{ orig: "g1", dest: "f3" }]);
+  assert(!board.el.querySelector(".shapes line.preview") && board.el.querySelector(".shapes line"), "drawn for real");
+  rightDrag(board, "e2", "e4");
+  equal(board.shapes.length, 2);
+  rightDrag(board, "g1", "f3");
+  equal(board.shapes, [{ orig: "e2", dest: "e4" }], "toggled off");
+  pointer("pointerdown", board.squareEl("a1"), ...centre(board, "a1"), { button: 2 });
+  pointer("pointerup", window, -50, -50, { button: 2 });
+  equal(board.shapes.length, 1, "released off the board: nothing");
+});
+
 test("a right-click that cancels a premove draws nothing", () => {
   const board = premoveBoard();
   board.squareEl("g1").click();

@@ -150,9 +150,9 @@ export function shapesLayer(shapes, orientation) {
     const [x2, y2] = squareCentre(shape.dest, orientation);
     const length = Math.hypot(x2 - x1, y2 - y1);
     const end = (length - 0.32) / length;                  // stop short so the head ends near the centre
-    svg.append(svgEl("line", { class: `arrow ${brush}`, x1, y1, x2: x1 + (x2 - x1) * end, y2: y1 + (y2 - y1) * end,
+    svg.append(svgEl("line", { class: `arrow ${brush}${shape.preview ? " preview" : ""}`, x1, y1, x2: x1 + (x2 - x1) * end, y2: y1 + (y2 - y1) * end,
                                stroke: BRUSHES[brush], "stroke-width": 0.16, "stroke-linecap": "round",
-                               "marker-end": `url(#arrowhead-${brush})`, opacity: 0.8 }));
+                               "marker-end": `url(#arrowhead-${brush})`, opacity: shape.preview ? 0.45 : 0.8 }));
   }
   return svg;
 }
@@ -201,19 +201,43 @@ export class Board {
     return squareOrder(this.orientation)[row * 8 + col];
   }
 
-  /** Right button down: start drawing a circle (released on the same square). A right-click that
-   *  cancels a premove draws nothing. */
+  /** Right button down: start drawing, a circle if released on the same square, an arrow if dragged to
+   *  another (shown faintly meanwhile). A right-click that cancels a premove draws nothing. */
   annotateStart(event) {
     if (event.button !== 2 || this.premove || (this.premover && this.selected)) return;
     const orig = this.squareAt(event.clientX, event.clientY);
     if (!orig) return;
     event.preventDefault();
-    this.drawing = { orig };
+    this.drawing = { orig, dest: orig };
+    const move = (e) => this.annotateMove(e);
     const up = (e) => {
+      window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       this.annotateEnd(e);
     };
+    window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+  }
+
+  annotateMove(event) {
+    const drawing = this.drawing;
+    const dest = drawing && this.squareAt(event.clientX, event.clientY);
+    if (!dest || dest === drawing.dest) return;
+    drawing.dest = dest;
+    this.renderShapes();
+  }
+
+  /** Redraw only the shapes layer (cheap enough for every pointer move). */
+  renderShapes() {
+    const layer = this.el.querySelector(".shapes");
+    if (layer) layer.replaceWith(this.shapesLayer());
+  }
+
+  /** The drawn shapes, plus the one being drawn (marked as a preview). */
+  shapesLayer() {
+    const drawing = this.drawing;
+    const preview = drawing && drawing.dest !== drawing.orig ? [{ ...drawing, preview: true }] : [];
+    return shapesLayer([...this.shapes, ...preview], this.orientation);
   }
 
   annotateEnd(event) {
@@ -221,7 +245,11 @@ export class Board {
     this.drawing = null;
     if (!drawing) return;
     const dest = this.squareAt(event.clientX, event.clientY);
-    if (dest === drawing.orig) this.toggleShape({ orig: drawing.orig });
+    if (!dest) {
+      this.renderShapes();                                   // released off the board: nothing drawn
+      return;
+    }
+    this.toggleShape(dest === drawing.orig ? { orig: drawing.orig } : { orig: drawing.orig, dest });
   }
 
   /** Add a shape, or remove it if the same one is already drawn. */
@@ -500,7 +528,7 @@ export class Board {
       }
       fragment.append(cell);
     });
-    fragment.append(shapesLayer(this.shapes, this.orientation));
+    fragment.append(this.shapesLayer());
     this.el.replaceChildren(fragment);
     this.el.classList.toggle("locked", !this.active);
     this.el.classList.toggle("premoving", !this.mover && Boolean(this.premover));
