@@ -6,7 +6,7 @@ import { loadModel, sampleMove } from "./engine.js";
 import { Sounds, soundFor } from "./sounds.js";
 import { START, captured, describeCaptures } from "./material.js";
 import { stored } from "./storage.js";
-import { Clock, baseSeconds } from "./clock.js";
+import { Clock, baseSeconds, formatClock } from "./clock.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -87,6 +87,7 @@ export function setSound(on, { save = true } = {}) {
 /** Make a move on the game (UCI or SAN) and play its sound; returns chess.js's move. */
 function makeMove(move) {
   const made = ui.chess.move(move);
+  if (ui.clock) ui.clock.start(ui.chess.turn());              // the other side's time now runs
   ui.sounds.play(soundFor(made, { check: ui.chess.inCheck() }));
   return made;
 }
@@ -165,6 +166,7 @@ export function render() {
   $("first").disabled = $("prev").disabled = shownPly === 0;
   $("next").disabled = $("last").disabled = !viewing;
   renderCaptured(shown.fen);
+  updateClocks();
   renderThinking(viewing ? ui.thoughts[ui.view] || null : ui.last);
   const humanMoves = history.filter((m) => m.color === ui.human).length;
   $("takeback").disabled = ui.over || ui.busy || humanMoves === 0;
@@ -207,6 +209,21 @@ function renderMoves(history, shownPly) {
     items.push(li);
   }
   $("move-list").replaceChildren(...items);
+}
+
+/** The clock faces: time left, whose clock runs, and red when it is low. */
+export function updateClocks() {
+  const clock = ui.clock;
+  const top = ui.board.orientation === "white" ? "b" : "w";
+  for (const [id, color] of [["top-clock", top], ["bottom-clock", top === "w" ? "b" : "w"]]) {
+    const el = $(id);
+    el.hidden = !clock;
+    if (!clock) continue;
+    const left = clock.left(color);
+    el.textContent = formatClock(left);
+    el.classList.toggle("running", clock.running === color);
+    el.classList.toggle("low", left < Math.min(20000, (clock.base * 1000) / 6));
+  }
 }
 
 /** Next to each player, the pieces they have captured. */
@@ -273,6 +290,7 @@ function finish(text, winner) {
   ui.over = true;
   ui.overText = text;
   ui.winner = winner;
+  if (ui.clock) ui.clock.stop();
   setStatus(text);
   ui.sounds.play(winner === null ? "draw" : winner === ui.human ? "win" : "lose");
   const banner = $("result-banner");
@@ -457,6 +475,7 @@ export async function init(modelBase = "model/") {
     : `Warning: this browser's results differ from PyTorch's (by ${check.worst.toExponential(1)}).`;
   $("play").disabled = false;
   setStatus("Choose a rating and press Play.");
+  setInterval(() => { if (ui.clock && ui.chess) updateClocks(); }, 100);
   restore();
 }
 

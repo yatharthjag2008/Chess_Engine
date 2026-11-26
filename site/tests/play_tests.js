@@ -471,4 +471,23 @@ test("choose a time control: none, 1, 3, 5 or 10 minutes", async () => {
   pick("none");
 });
 
+test("the clocks: shown in timed games, your time runs on your move and the bot's on its move", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1500, color: "white", time: "3" });
+  assert(!$("top-clock").hidden && !$("bottom-clock").hidden, "both clocks shown");
+  equal([$("top-clock").textContent, $("bottom-clock").textContent], ["3:00", "3:00"]);
+  equal(site.ui.clock.running, null, "nobody's time runs before White's first move");
+  await site.play("e2e4");
+  equal(site.ui.clock.running, "w", "after the bot's reply, your time runs");
+  assert($("bottom-clock").classList.contains("running") && !$("top-clock").classList.contains("running"));
+  assert(site.ui.clock.left("b") < 180000, "the bot used some time");
+  site.ui.clock.remaining.w = 15000;
+  site.updateClocks();
+  assert($("bottom-clock").classList.contains("low"), "under 20 seconds: low");
+  site.resign();
+  equal(site.ui.clock.running, null, "stopped at the end");
+  await site.newGame({ rating: 1500, color: "white" });
+  assert($("top-clock").hidden && $("bottom-clock").hidden, "untimed: no clocks");
+});
+
 run();

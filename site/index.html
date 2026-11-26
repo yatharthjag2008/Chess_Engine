@@ -18,14 +18,16 @@
   <main class="layout">
     <section class="board-column" aria-label="Board">
       <div class="player-row"><span class="player"><span class="player-name" id="top-name">Bot</span>
-        <span class="captured" id="top-captured" role="img"></span></span></div>
+        <span class="captured" id="top-captured" role="img"></span></span>
+        <span class="clock" id="top-clock" role="timer" hidden>0:00</span></div>
       <div class="board-wrap">
         <div id="board" class="board" role="grid" aria-label="Chess board"></div>
         <div id="promotion" class="promotion" hidden></div>
         <div id="result-banner" class="result-banner" hidden></div>
       </div>
       <div class="player-row"><span class="player"><span class="player-name" id="bottom-name">You</span>
-        <span class="captured" id="bottom-captured" role="img"></span></span></div>
+        <span class="captured" id="bottom-captured" role="img"></span></span>
+        <span class="clock" id="bottom-clock" role="timer" hidden>0:00</span></div>
       <p id="status" class="status" role="status" aria-live="polite">Loading the model...</p>
       <p class="hint keys">Click or drag pieces to move; while the bot thinks you can premove. Keys: <kbd>f</kbd> flips the board,
         <kbd>m</kbd> turns the sound on or off, <kbd>&larr;</kbd> <kbd>&rarr;</kbd> step through the moves
