@@ -1232,3 +1232,7 @@ Basic features players expect, each built in its own series of commits with brow
   heavier one for a capture, tones for check, promotion, castling, the start and the end of a game (win, loss and
   draw differ), a tick for a premove and a blip when one is dropped. On/off (key m) and volume are remembered.
   Audio starts on the first click or key press, as browsers require.
+- **Captured pieces** (`site/js/material.js`): next to each player, the pieces they took (small icons grouped by
+  kind, cheapest first) and the material lead ("+3") on the side ahead. Counted from the game's start position, so a
+  pawn that promoted is not shown as captured. Screen readers get it in words ("Captured 2 pawns and a knight; 5
+  ahead.").
