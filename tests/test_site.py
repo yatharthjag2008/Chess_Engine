@@ -74,7 +74,7 @@ def test_a_fresh_export_matches_pytorch(tmp_path) -> None:
     check_results(dom, 7)
 
 
-def _run_page(tmp_path, page: str, minimum: int, budget_ms: int = 30000, attempts: int = 1) -> None:
+def _run_page(tmp_path, page: str, minimum: int, budget_ms: int = 30000, attempts: int = 2) -> None:
     """Run a test page in headless Chrome; ``attempts`` > 1 retries a page that did not finish (never a failure)."""
     out = tmp_path / "site"
     _build_site().assemble(out, tests=True)

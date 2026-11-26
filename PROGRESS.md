@@ -1250,3 +1250,8 @@ Basic features players expect, each built in its own series of commits with brow
   the opening, about a thirtieth of its clock later, hurried when short), and the network is given both clocks, as it
   was in training, so a bot in time trouble chooses like players in time trouble. Clocks survive a reload with the
   time away charged, as on a server; there is no take back against the clock.
+- **Arrows and circles** (`web/js/board.js`, so both play pages have them): right-click a square to circle it,
+  right-drag to draw an arrow (shown faintly while dragging), Shift for red, Alt for blue, both for yellow; the same
+  shape again removes it, in another colour recolours it. Knight moves are drawn as an L. A left-click or a new
+  position clears them; a right-click that cancels a premove draws nothing. Drawn as SVG over the squares, turning
+  with the board.
