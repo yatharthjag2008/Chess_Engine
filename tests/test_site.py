@@ -19,6 +19,7 @@ UNIT_TESTS = 34     # tests in site/tests/unit_tests.js
 PLAY_TESTS = 53    # tests in site/tests/play_tests.js
 ANALYSE_TESTS = 8  # tests in site/tests/analyse_tests.js
 STOCKFISH_TESTS = 6  # tests in site/tests/stockfish_tests.js
+REVIEW_TESTS = 5  # tests in site/tests/review_tests.js
 
 
 def _build_site():
@@ -43,7 +44,8 @@ def test_assemble_copies_the_site_and_the_shared_files(tmp_path) -> None:
             "pieces/LICENSE.txt", "data/openings.json", "js/openings.js",
             "analyse.html", "js/analyse.js", "js/rating.js", "js/games.js", "data/rating.json",
             "js/stockfish.js", "vendor/stockfish/stockfish-18-lite-single.js",
-            "vendor/stockfish/stockfish-18-lite-single.wasm", "vendor/stockfish/COPYING.txt"} <= set(files)
+            "vendor/stockfish/stockfish-18-lite-single.wasm", "vendor/stockfish/COPYING.txt",
+            "review.html", "js/review.js", "js/review_page.js", "css/review.css"} <= set(files)
     assert not any(f.startswith("tests/") for f in files), "tests are not published"
     with_tests = build.assemble(tmp_path / "out", tests=True)
     assert "tests/engine.html" in with_tests and "tests/harness.js" in with_tests
@@ -116,7 +118,7 @@ def test_the_play_page_end_to_end(tmp_path) -> None:
 
 def test_the_analyse_page_end_to_end(tmp_path) -> None:
     """Rating estimates in the browser, checked against Python's for a real game."""
-    _run_page(tmp_path, "analyse.html", ANALYSE_TESTS, budget_ms=60000)
+    _run_page_live(tmp_path, "analyse.html", ANALYSE_TESTS, seconds=240)
 
 
 class _Results(_Quiet):
@@ -158,6 +160,11 @@ def _run_page_live(tmp_path, page: str, minimum: int, seconds: float = 120) -> N
 def test_stockfish_runs_in_the_browser(tmp_path) -> None:
     """The vendored Stockfish WebAssembly build in a worker: mates, lines, evaluations for the side to move."""
     _run_page_live(tmp_path, "stockfish.html", STOCKFISH_TESTS)
+
+
+def test_the_review_page_end_to_end(tmp_path) -> None:
+    """Game review in the browser: a scripted analyzer for the details, and the real Stockfish for a blunder."""
+    _run_page_live(tmp_path, "review.html", REVIEW_TESTS)
 
 
 def test_a_game_survives_a_reload(tmp_path) -> None:

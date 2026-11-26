@@ -7,5 +7,13 @@
   <div id="page"></div>
   <script>window.__noAutoInit = true;</script>
   <script type="module" src="analyse_tests.js"></script>
+  <script>   // run in real time by tests/test_site.py (scoring a real game takes a while): post the results back
+    const watch = setInterval(() => {
+      const text = document.getElementById("results").textContent;
+      if (!text.includes("RESULT passed=")) return;
+      clearInterval(watch);
+      fetch("/__results", { method: "POST", body: text });
+    }, 100);
+  </script>
 </body>
 </html>

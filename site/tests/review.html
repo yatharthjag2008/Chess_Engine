@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Review page tests</title><link rel="stylesheet" href="../css/style.css"><link rel="stylesheet" href="../css/review.css"><link rel="stylesheet" href="../css/site.css"></head>
+<body>
+  <!-- End-to-end tests of the Review page (review_page.js), with a scripted analyzer and with the real Stockfish.
+       Run in real time by tests/test_site.py (a WebAssembly worker), so the results are posted back when done. -->
+  <pre id="results">running</pre>
+  <div id="page"></div>
+  <script>window.__noAutoInit = true;</script>
+  <script type="module" src="review_tests.js"></script>
+  <script>
+    const watch = setInterval(() => {
+      const text = document.getElementById("results").textContent;
+      if (!text.includes("RESULT passed=")) return;
+      clearInterval(watch);
+      fetch("/__results", { method: "POST", body: text });
+    }, 100);
+  </script>
+</body>
+</html>

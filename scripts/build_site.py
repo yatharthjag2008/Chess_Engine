@@ -20,7 +20,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "site"
-SHARED = {"js/board.js": ROOT / "web" / "js" / "board.js", "css/style.css": ROOT / "web" / "css" / "style.css"}
+SHARED = {"js/board.js": ROOT / "web" / "js" / "board.js", "css/style.css": ROOT / "web" / "css" / "style.css",
+          "css/review.css": ROOT / "web" / "css" / "review.css"}
 
 
 def assemble(out: Path, tests: bool = False) -> list[str]:
