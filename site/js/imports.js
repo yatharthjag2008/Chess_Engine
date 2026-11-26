@@ -34,13 +34,48 @@ async function get(url, { accept, what, fetchImpl }) {
   return response;
 }
 
+/**
+ * Why Lichess answered 404 to a games request. Its games export answers an unknown player with an HTML page, and so
+ * it does when it refuses a request (it blocks some automated browsers), so the user endpoint (JSON) decides.
+ */
+async function lichessNotFound(name, fetchImpl) {
+  const refused = new ImportError("Lichess refused to send the games (it blocks some automated browsers and "
+    + "privacy-protected requests). You can paste the games\u2019 PGN from lichess.org instead.");
+  let response;
+  try {
+    response = await fetchImpl(`${LICHESS}/api/user/${encodeURIComponent(name)}`, {});
+  } catch {
+    return refused;
+  }
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    return refused;                                   // not the API's JSON: the request was turned away
+  }
+  if (response.status === 404 && data && data.error) return new ImportError("Lichess has no player of that name.");
+  if (response.ok && data && data.username) {
+    return new ImportError(`Lichess has ${data.username}, but refused to send their games (it blocks some automated `
+      + "browsers). You can paste the games\u2019 PGN from lichess.org instead.");
+  }
+  return refused;
+}
+
 /** The player's latest `max` games on Lichess as PGN, with clocks, newest first. */
 export async function fetchLichess(username, { max = 10, fetchImpl = fetch } = {}) {
   const name = checkUsername("lichess", username);
   const query = new URLSearchParams({ max: String(max), clocks: "true", opening: "true", moves: "true",
                                       tags: "true", evals: "false" });
   const url = `${LICHESS}/api/games/user/${encodeURIComponent(name)}?${query}`;
-  const response = await get(url, { accept: "application/x-chess-pgn", what: "Lichess", fetchImpl });
+  let response;
+  try {
+    response = await get(url, { accept: "application/x-chess-pgn", what: "Lichess", fetchImpl });
+  } catch (err) {
+    if (err instanceof ImportError && err.message === "Lichess has no player of that name.") {
+      throw await lichessNotFound(name, fetchImpl);
+    }
+    throw err;
+  }
   return (await response.text()).trim();
 }
 

@@ -128,7 +128,8 @@ test("Chess.com: the newest archives first, standard chess only, never another h
 });
 
 test("fetching: bad names, unknown players and unreachable sites say why", async () => {
-  analyse.page.fetchImpl = fakeFetch({ "https://lichess.org/api/games/user/ghost": [404, ""] }).impl;
+  analyse.page.fetchImpl = fakeFetch({ "https://lichess.org/api/games/user/ghost": [404, "<!DOCTYPE html>"],
+                                       "https://lichess.org/api/user/ghost": [404, { error: "Not found" }] }).impl;
   $("source").value = "lichess";
   const cases = [
     ["a", '"a" is not a valid Lichess username.'],
@@ -182,6 +183,22 @@ test("workers: the moves are shared out, and the results equal the page's own, m
   let failed = false;
   try { await broken.start(); } catch { failed = true; }
   assert(failed, "a pool that cannot start says so (the page then scores the moves itself)");
+});
+
+test("Lichess: a refused request is not mistaken for an unknown player", async () => {
+  $("source").value = "lichess";
+  // Lichess answers an unknown player and a refused request with the same HTML 404: its user endpoint decides.
+  analyse.page.fetchImpl = fakeFetch({ "https://lichess.org/api/games/user/thibault": [404, "<!DOCTYPE html>"],
+                                       "https://lichess.org/api/user/thibault": [200, { username: "thibault" }] }).impl;
+  $("username").value = "thibault";
+  equal(await analyse.fetchRecent(), 0);
+  assert($("estimate-error").textContent.startsWith("Lichess has thibault, but refused to send their games"),
+         $("estimate-error").textContent);
+  analyse.page.fetchImpl = fakeFetch({ "https://lichess.org/api/games/user/blocked": [404, "<!DOCTYPE html>"],
+                                       "https://lichess.org/api/user/blocked": [404, "<!DOCTYPE html>"] }).impl;
+  $("username").value = "blocked";
+  await analyse.fetchRecent();
+  assert($("estimate-error").textContent.startsWith("Lichess refused to send the games"), $("estimate-error").textContent);
 });
 
 run();
