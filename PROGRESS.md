@@ -1236,3 +1236,7 @@ Basic features players expect, each built in its own series of commits with brow
   kind, cheapest first) and the material lead ("+3") on the side ahead. Counted from the game's start position, so a
   pawn that promoted is not shown as captured. Screen readers get it in words ("Captured 2 pawns and a knight; 5
   ahead.").
+- **Stepping through the game**: click a move, use the arrow keys (Home / End for the start and the game) or the
+  step buttons to look at any earlier position while the game is kept as it is. The board is outlined and locked
+  meanwhile (a click on it returns); captures, the check and "what players at this rating play" follow the position
+  shown, so you can look back at what the bot weighed on any of its moves.
