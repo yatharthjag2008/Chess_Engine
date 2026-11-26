@@ -9,7 +9,8 @@ clocks (1, 3, 5 or 10 minutes; the bot thinks like a human and feels time pressu
 sound effects (on/off and volume), captured pieces and the material lead, arrows and circles (right-click), the opening's name,
 stepping back through the game (arrow keys), games that survive a reload, take back, resign and PGN download,
 and **adaptive difficulty** (the bot follows your level between games, or adjusts live within a game). An
-**Analyse** page estimates a player's rating from pasted games, from a player's recent Lichess or Chess.com games,
+**honest strength dial** (its steps are measured Elo steps, so it offers only the 1100-1750 the bot really
+plays), an **Analyse** page estimates a player's rating from pasted games, from a player's recent Lichess or Chess.com games,
 or from the game you just played, and a **Review** page judges every move with Stockfish running in the browser
 (accuracy, inaccuracies, mistakes, blunders, key moments and an eval graph) with a **coach** that compares your
 moves with your level and the next and explains your mistakes: free and unlimited, nothing uploaded. **Hints**
@@ -57,7 +58,7 @@ from one month of Lichess blitz). Each row links to the full report or to the st
 |---|---|
 | Does it predict the human move? | **41.7%** top-1 / 79.6% top-5 on 172k held-out positions; Stockfish's best move 37.6%, the most common move 12.6%, random 6.3% ([report](reports/eval/laptop_64x6_best_model/report.md)) |
 | Is it better than Stockfish at imitating people? | yes below 2000: +9 to +10 points at 800-1199, a tie around 2000 |
-| Does the rating dial change its strength? | yes, in steps: rank correlation 0.94, but 800 ≈ 1100 and 2000 ≈ 1700 ([report](reports/elo/laptop_64x6_best_model/report.md)) |
+| Does the rating dial change its strength? | yes, in steps: rank correlation 0.94, but 800 ≈ 1100 and 2000 ≈ 1700 ([report](reports/elo/laptop_64x6_best_model/report.md)); the website's dial is therefore calibrated to measured strength, which spans only 1100-1750 |
 | Can it estimate a rating from one game? | from the moves alone, weakly: 253 Elo average error, pulled towards the middle ([report](reports/rating/laptop_64x6_best_model/report.md)); with the opponent's rating as well, 60 Elo, but that is the opponent's rating doing the work (guessing it alone: 61) |
 | Do hints adapt to how hard a move is? | yes: moves the player found had a median 54% find rate at their rating, missed ones 6.5% (step 17) |
 | Does adaptive difficulty find a balance? | yes, in the model's own units: a bot fixed at 1000 balances the adaptive bot at 1400-1450 (step 18) |

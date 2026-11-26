@@ -16,6 +16,8 @@ rules. It is built from `site/` by `.github/workflows/pages.yml` on every push t
   run `python scripts/build_openings.py` (writes `site/data/openings.json`; a test checks it is up to date).
 The rating estimate's prior and temper (`site/data/rating.json`) are rebuilt with
 `python scripts/build_rating_prior.py` after retraining or re-fitting the estimate (it needs the built dataset).
+The website's strength dial (`site/data/dial.json`) is rebuilt with `python scripts/build_dial.py` after a new
+Elo-dial validation (`scripts/elo_validation.py`) of the model the site runs.
 - **To look before pushing**: `python scripts/build_site.py`, then `python -m http.server -d _site 8001` and open
   `http://localhost:8001`.
 - **One-time setup on GitHub**: Settings → Pages → Build and deployment → Source: **GitHub Actions** (as for any

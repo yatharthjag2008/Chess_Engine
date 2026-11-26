@@ -1381,4 +1381,27 @@ export (4) and a real reload.
   (player01, rated 1825: 1790 with the opponent's rating, 1754 from the moves). The opponent prior is never used for
   games against the bot, whose rating is chosen rather than paired (the play page's PGN has no ratings). A better
   rating sense in the model (the bigger training run) is what would make the moves count.
+- **An honest strength dial** (`chess_engine/eval/dial.py`, `scripts/build_dial.py`, `site/js/dial.js`). Step 11
+  measured what each dial setting really plays like (bots against Stockfish levels and each other): the settings
+  800 to 2300 spanned only about 670 Elo, 800 and 1100 played alike, and 2000 measured below 1700. The website's
+  slider now shows strength instead of the model's input:
+
+  1. the six measurements are made non-decreasing by weighted isotonic regression (each weighted by the precision
+     of its 95% interval), which pools 1700 and 2000 (912 and 833) at 868;
+  2. labels differ by exactly the measured Elo differences, anchored so that the input 1500 keeps the label 1500;
+  3. a chosen strength is turned back into the lowest input that plays that well.
+
+  | the model is told | 800 | 1100 | 1400 | 1700 | 2000 | 2300 |
+  |---|---|---|---|---|---|---|
+  | measured (Stockfish's scale) | 311 | 319 | 656 | 912 | 833 | 981 |
+  | honest label | 1085 | 1093 | 1429 | 1641 | 1641 | 1755 |
+
+  So the dial offers 1100-1750 in steps of 50; strength 1700, for example, means imitating players rated about
+  2156. The note under the slider says what the numbers mean, the thinking panel says which players the bot is
+  imitating, the PGN gets a `BotImitates` header, and adaptive difficulty stays within the range.
+  **What is and is not measured:** the differences are (Elo differences carry over between scales); the anchor is
+  not: the measurements are on Stockfish's Elo scale at 50 ms a move, not against people, so "1500" is assumed to
+  mean what the training data's 1500s play. Each measurement is also uncertain by about +-200 Elo (20 games per
+  pairing), so the curve is a best estimate; more validation games would tighten it. The local app (`scripts/serve.py`)
+  still uses the plain dial. A model with a stronger rating sense (the bigger training run) would widen the range.
 
