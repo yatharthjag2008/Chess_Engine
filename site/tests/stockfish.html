@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Stockfish tests</title></head>
+<body>
+  <!-- Stockfish in the browser (site/js/stockfish.js); tests/test_site.py runs this in real time (a WebAssembly
+       worker does not follow headless Chrome's virtual time), so the results are posted back when done. -->
+  <pre id="results">running</pre>
+  <script type="module" src="stockfish_tests.js"></script>
+  <script>
+    const watch = setInterval(() => {
+      const text = document.getElementById("results").textContent;
+      if (!text.includes("RESULT passed=")) return;
+      clearInterval(watch);
+      fetch("/__results", { method: "POST", body: text });
+    }, 100);
+  </script>
+</body>
+</html>

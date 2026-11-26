@@ -6,6 +6,7 @@ import functools
 import http.server
 import importlib.util
 import json
+import subprocess
 import threading
 from pathlib import Path
 
@@ -17,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 UNIT_TESTS = 32     # tests in site/tests/unit_tests.js
 PLAY_TESTS = 53    # tests in site/tests/play_tests.js
 ANALYSE_TESTS = 8  # tests in site/tests/analyse_tests.js
+STOCKFISH_TESTS = 6  # tests in site/tests/stockfish_tests.js
 
 
 def _build_site():
@@ -39,7 +41,9 @@ def test_assemble_copies_the_site_and_the_shared_files(tmp_path) -> None:
     assert {"index.html", "js/engine.js", "js/board.js", "css/style.css", "vendor/chess.js",
             "model/model.json", "model/model.bin", ".nojekyll", "pieces/wK.svg", "pieces/bP.svg",
             "pieces/LICENSE.txt", "data/openings.json", "js/openings.js",
-            "analyse.html", "js/analyse.js", "js/rating.js", "js/games.js", "data/rating.json"} <= set(files)
+            "analyse.html", "js/analyse.js", "js/rating.js", "js/games.js", "data/rating.json",
+            "js/stockfish.js", "vendor/stockfish/stockfish-18-lite-single.js",
+            "vendor/stockfish/stockfish-18-lite-single.wasm", "vendor/stockfish/COPYING.txt"} <= set(files)
     assert not any(f.startswith("tests/") for f in files), "tests are not published"
     with_tests = build.assemble(tmp_path / "out", tests=True)
     assert "tests/engine.html" in with_tests and "tests/harness.js" in with_tests
@@ -113,6 +117,47 @@ def test_the_play_page_end_to_end(tmp_path) -> None:
 def test_the_analyse_page_end_to_end(tmp_path) -> None:
     """Rating estimates in the browser, checked against Python's for a real game."""
     _run_page(tmp_path, "analyse.html", ANALYSE_TESTS, budget_ms=60000)
+
+
+class _Results(_Quiet):
+    """Serves the site, and takes the results a test page posts to /__results."""
+
+    posted: list[str]
+    done: threading.Event
+
+    def do_POST(self) -> None:  # noqa: N802 (http.server's naming)
+        body = self.rfile.read(int(self.headers.get("Content-Length", 0))).decode("utf-8", "replace")
+        if self.path == "/__results":
+            type(self).posted.append(body)
+            type(self).done.set()
+        self.send_response(204)
+        self.end_headers()
+
+
+def _run_page_live(tmp_path, page: str, minimum: int, seconds: float = 120) -> None:
+    """Run a test page in headless Chrome in real time, until it posts its results (for pages with workers)."""
+    out = tmp_path / "site"
+    _build_site().assemble(out, tests=True)
+    handler_class = type("Handler", (_Results,), {"posted": [], "done": threading.Event()})
+    handler = functools.partial(handler_class, directory=str(out))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{server.server_address[1]}/tests/{page}"
+    chrome = subprocess.Popen([browser_or_skip(), "--headless=new", "--disable-gpu", "--no-first-run",
+                               "--no-default-browser-check", f"--user-data-dir={tmp_path / 'profile'}", url],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        handler_class.done.wait(seconds)
+    finally:
+        chrome.kill()
+        chrome.wait(timeout=30)
+        server.shutdown()
+    check_results(handler_class.posted[0] if handler_class.posted else "(nothing posted)", minimum)
+
+
+def test_stockfish_runs_in_the_browser(tmp_path) -> None:
+    """The vendored Stockfish WebAssembly build in a worker: mates, lines, evaluations for the side to move."""
+    _run_page_live(tmp_path, "stockfish.html", STOCKFISH_TESTS)
 
 
 def test_a_game_survives_a_reload(tmp_path) -> None:
