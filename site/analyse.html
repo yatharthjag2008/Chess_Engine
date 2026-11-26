@@ -19,6 +19,17 @@
   <main class="analyse-layout">
     <form id="estimate-form" class="panel" autocomplete="off">
       <h2>Estimate a rating</h2>
+      <fieldset class="field fetch-games">
+        <legend>Fetch a player's recent games, or paste games below</legend>
+        <div class="fetch-row">
+          <select id="source" aria-label="Site">
+            <option value="lichess">Lichess</option>
+            <option value="chess.com">Chess.com</option>
+          </select>
+          <input id="username" type="text" placeholder="username" aria-label="Username" autocapitalize="off" spellcheck="false">
+          <button type="button" id="fetch">Fetch 10 games</button>
+        </div>
+      </fieldset>
       <label class="field" for="pgn-text"><span>Games (PGN)</span></label>
       <textarea id="pgn-text" name="pgn" rows="10" spellcheck="false"
         placeholder="[White &quot;...&quot;]&#10;[Black &quot;...&quot;]&#10;&#10;1. e4 e5 2. Nf3 ..."></textarea>

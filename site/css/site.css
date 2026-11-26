@@ -60,3 +60,6 @@
 .estimate-list { padding-left: 1.2em; line-height: 1.5; }
 .estimate-list li { margin-bottom: 6px; }
 .estimate-overall { font-weight: 600; margin: 8px 0; }
+.fetch-games { border: 0; padding: 0; margin: 0 0 10px; }
+.fetch-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.fetch-row input[type="text"] { flex: 1 1 140px; width: auto; }

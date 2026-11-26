@@ -3,11 +3,12 @@
 import { Chess } from "../vendor/chess.js";
 import { loadModel } from "./engine.js";
 import { playerGames } from "./games.js";
+import { SOURCES, fetchGames } from "./imports.js";
 import { describeEstimate, estimateFromBucketLL, loadRatingData, moveBucketLL } from "./rating.js";
 
 const $ = (id) => document.getElementById(id);
 
-export const page = { model: null, data: null, running: false };
+export const page = { model: null, data: null, running: false, fetchImpl: (...args) => fetch(...args) };
 
 const pause = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -89,6 +90,32 @@ function render({ results, overall, unreadable }, player) {
   }
 }
 
+/** What the Fetch button does: the player's recent games into the box, and their name as the player. */
+export async function fetchRecent() {
+  const source = $("source").value;
+  const username = $("username").value.trim();
+  $("estimate-error").hidden = true;
+  $("fetch").disabled = true;
+  $("estimate-status").textContent = `Fetching ${username}'s games from ${SOURCES[source].name}...`;
+  try {
+    const text = await fetchGames(source, username, { max: 10, fetchImpl: page.fetchImpl });
+    const { games } = playerGames(text, { player: username });
+    if (!games.length) throw new Error(`No standard games of ${username} were found on ${SOURCES[source].name}.`);
+    $("pgn-text").value = text;
+    $("player-name").value = games[0].name;              // as the site spells it
+    $("estimate-status").textContent = `Fetched ${games.length} game${games.length === 1 ? "" : "s"} of `
+      + `${games[0].name} from ${SOURCES[source].name}. Press Estimate.`;
+    return games.length;
+  } catch (err) {
+    $("estimate-error").textContent = err.message;
+    $("estimate-error").hidden = false;
+    $("estimate-status").textContent = "";
+    return 0;
+  } finally {
+    $("fetch").disabled = false;
+  }
+}
+
 /** What the Estimate button does. */
 export async function estimate() {
   if (page.running || !page.model) return null;
@@ -121,6 +148,13 @@ export async function init(modelBase = "model/", dataBase = modelBase.replace(/m
   $("estimate-form").addEventListener("submit", (event) => {
     event.preventDefault();
     estimate();
+  });
+  $("fetch").addEventListener("click", fetchRecent);
+  $("username").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      fetchRecent();
+    }
   });
   try {
     [page.model, page.data] = await Promise.all([loadModel(modelBase), loadRatingData(dataBase)]);

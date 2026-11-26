@@ -63,4 +63,86 @@ test("nothing to estimate says why", async () => {
   equal($("estimate-error").textContent, "1 game could not be read, and none could.");
 });
 
+/** A stand-in for fetch: `routes` maps a URL prefix to [status, body]; every URL asked is recorded. */
+function fakeFetch(routes) {
+  const asked = [];
+  const impl = async (url, options = {}) => {
+    asked.push({ url, accept: options.headers && options.headers.Accept });
+    const key = Object.keys(routes).find((prefix) => url.startsWith(prefix));
+    if (!key) throw new TypeError("Failed to fetch");
+    const [status, body] = routes[key];
+    return { status, ok: status >= 200 && status < 300, text: async () => body,
+             json: async () => (typeof body === "string" ? JSON.parse(body) : body) };
+  };
+  return { impl, asked };
+}
+
+const LICHESS_PGN = `[Event "Rated blitz game"]\n[White "SomePlayer"]\n[Black "other"]\n[WhiteElo "1600"]\n[BlackElo "1580"]\n`
+  + `[Result "1-0"]\n[TimeControl "180+0"]\n\n1. e4 { [%clk 0:03:00] } 1... e5 { [%clk 0:03:00] } 2. Nf3 { [%clk 0:02:57] } 1-0\n\n`
+  + `[Event "Rated blitz game"]\n[White "other"]\n[Black "SomePlayer"]\n[Result "0-1"]\n\n1. d4 d5 0-1\n`;
+
+test("Lichess: recent games by username fill the box, with the player's name", async () => {
+  const fake = fakeFetch({ "https://lichess.org/api/games/user/someplayer": [200, LICHESS_PGN] });
+  analyse.page.fetchImpl = fake.impl;
+  $("source").value = "lichess";
+  $("username").value = " someplayer ";
+  equal(await analyse.fetchRecent(), 2);
+  assert(fake.asked[0].url.startsWith("https://lichess.org/api/games/user/someplayer?max=10&clocks=true"), fake.asked[0].url);
+  equal(fake.asked[0].accept, "application/x-chess-pgn");
+  equal($("pgn-text").value, LICHESS_PGN.trim());
+  equal($("player-name").value, "SomePlayer", "as Lichess spells it");
+  equal($("estimate-status").textContent, "Fetched 2 games of SomePlayer from Lichess. Press Estimate.");
+  const result = await analyse.estimate();
+  equal(result.results.length, 2);
+  assert(!$("overall").hidden, "one estimate from both games");
+});
+
+test("Chess.com: the newest archives first, standard chess only, never another host", async () => {
+  const game = (white, black, n) => `[White "${white}"]\n[Black "${black}"]\n[Result "*"]\n[TimeControl "600"]\n\n1. e4 e5 ${n} *`;
+  const fake = fakeFetch({
+    "https://api.chess.com/pub/player/someplayer/games/archives": [200, { archives: [
+      "https://api.chess.com/pub/player/someplayer/games/2026/10",
+      "https://elsewhere.example/pub/player/someplayer/games/2026/11",
+      "https://api.chess.com/pub/player/someplayer/games/2026/11"] }],
+    "https://api.chess.com/pub/player/someplayer/games/2026/11": [200, { games: [
+      { rules: "chess", pgn: game("SomePlayer", "x", "2. Nf3") },
+      { rules: "chess960", pgn: game("SomePlayer", "y", "2. Nc3") }] }],
+    "https://api.chess.com/pub/player/someplayer/games/2026/10": [200, { games: [
+      { rules: "chess", pgn: game("z", "SomePlayer", "2. Bc4") }] }],
+  });
+  analyse.page.fetchImpl = fake.impl;
+  $("source").value = "chess.com";
+  $("username").value = "SomePlayer";
+  equal(await analyse.fetchRecent(), 2);
+  equal(fake.asked.map((a) => a.url.split("/").slice(-2).join("/")), ["games/archives", "2026/11", "2026/10"]);
+  assert(!fake.asked.some((a) => a.url.includes("elsewhere")), "the other host is not asked");
+  assert($("pgn-text").value.includes("2. Nf3") && !$("pgn-text").value.includes("2. Nc3"), "no Chess960");
+  assert($("pgn-text").value.indexOf("2. Nf3") < $("pgn-text").value.indexOf("2. Bc4"), "newest first");
+});
+
+test("fetching: bad names, unknown players and unreachable sites say why", async () => {
+  analyse.page.fetchImpl = fakeFetch({ "https://lichess.org/api/games/user/ghost": [404, ""] }).impl;
+  $("source").value = "lichess";
+  const cases = [
+    ["a", '"a" is not a valid Lichess username.'],
+    ["bad name!", '"bad name!" is not a valid Lichess username.'],
+    ["ghost", "Lichess has no player of that name."],
+    ["offline", "Lichess could not be reached (offline, or the browser blocked the request). You can paste the games\u2019 PGN instead."],
+  ];
+  for (const [name, message] of cases) {
+    $("username").value = name;
+    equal(await analyse.fetchRecent(), 0, name);
+    equal($("estimate-error").textContent, message);
+  }
+  analyse.page.fetchImpl = fakeFetch({ "https://lichess.org/api/games/user/busy": [429, ""] }).impl;
+  $("username").value = "busy";
+  await analyse.fetchRecent();
+  equal($("estimate-error").textContent, "Lichess asks us to slow down: try again in a minute.");
+  analyse.page.fetchImpl = fakeFetch({ "https://lichess.org/api/games/user/quiet": [200, ""] }).impl;
+  $("username").value = "quiet";
+  await analyse.fetchRecent();
+  equal($("estimate-error").textContent, "No standard games of quiet were found on Lichess.");
+  assert(!$("fetch").disabled, "the button works again");
+});
+
 run();
