@@ -349,4 +349,36 @@ test("server errors are shown, and the game resyncs", async () => {
   equal(app.ui.busy, false);
 });
 
+test("premove: queued while the bot thinks, played when your turn comes", async () => {
+  await app.startGame({ rating: 1500, color: "white", seed: 4 });
+  const botMove = api.botMove;
+  api.botMove = async (id) => {                    // a slower bot, so there is time to premove
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return botMove(id);
+  };
+  try {
+    clickSquare("e2");
+    clickSquare("e4");
+    await until(() => app.ui.board.premover === "white", "premove mode once your move is in");
+    assert(app.ui.board.el.classList.contains("premoving"), "shown on the board");
+    clickSquare("g1");
+    clickSquare("f3");
+    equal(app.ui.board.premove.uci, "g1f3");
+    await until(() => app.ui.game.moves_san.length === 4 && !app.ui.busy, "the premove and the bot's answer");
+    equal(app.ui.game.moves_san[2], "Nf3");
+    equal(app.ui.board.premove, null);
+  } finally {
+    api.botMove = botMove;
+  }
+});
+
+test("premove: none when the game is over", async () => {
+  await app.startGame({ rating: 1500, color: "white", seed: 5 });
+  await app.resign();
+  await app.resign();                              // the second click confirms
+  equal(app.ui.game.status, "over");
+  equal(app.ui.board.premover, null);
+  assert(app.ui.board.el.classList.contains("locked"));
+});
+
 run();

@@ -134,7 +134,7 @@ def test_web_ui_javascript_unit_tests(web_server: str, tmp_path: Path) -> None:
 
 def test_play_page_end_to_end(api_server: str, tmp_path: Path) -> None:
     dom = dump_dom(browser_or_skip(), f"{api_server}/tests/app.html", tmp_path / "profile", budget_ms=20000)
-    check_results(dom, 25)
+    check_results(dom, 27)
 
 
 def test_review_page_end_to_end(api_server: str, tmp_path: Path) -> None:

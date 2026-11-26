@@ -291,7 +291,9 @@ export function render(state) {
   const humanToMove = state.status === "ongoing" && state.turn === state.human_color;
   board.marks = hintMarks(state);
   board.setPosition(state.fen, { lastMove: state.last_move, check: state.check });
-  board.setLegalMoves(humanToMove && !ui.busy ? state.legal_moves : [], humanToMove && !ui.busy ? state.turn : null);
+  const botToMove = state.status === "ongoing" && state.turn !== state.human_color;   // meanwhile you may premove
+  board.setLegalMoves(humanToMove && !ui.busy ? state.legal_moves : [], humanToMove && !ui.busy ? state.turn : null,
+                      { premover: botToMove ? state.human_color : null });
   const bottomIsHuman = board.orientation === state.human_color;
   const bot = botLabel(state);
   const you = state.your_rating ? `You (${state.your_rating})` : "You";
