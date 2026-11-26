@@ -312,10 +312,13 @@ test("when your turn comes, a legal premove is played", async () => {
 test("an illegal premove is dropped; a premove waits for its own side", async () => {
   const played = [];
   const board = premoveBoard(played);
+  const events = [];
+  board.onPremove = (event) => events.push(event);
   board.squareEl("d1").click();
   board.squareEl("h5").click();                     // blocked if Black answers ...g6
   board.setLegalMoves(legal("d2d4"), "white");
   equal(board.premove, null);
+  equal(events, ["set", "dropped"], "onPremove hears both");
   await tick();
   equal(played, [], "not legal now: nothing is played");
   const other = premoveBoard(played);

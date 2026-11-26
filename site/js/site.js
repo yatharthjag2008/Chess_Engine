@@ -251,7 +251,11 @@ function download() {
 }
 
 export async function init(modelBase = "model/") {
-  ui.board = new Board($("board"), { promotionEl: $("promotion"), onMove: (uci) => play(uci) });
+  ui.board = new Board($("board"), {
+    promotionEl: $("promotion"),
+    onMove: (uci) => play(uci),
+    onPremove: (event) => ui.sounds.play(event === "set" ? "premove" : "premove-dropped"),
+  });
   ui.board.setLegalMoves([], null);
   const rating = $("rating");
   const show = () => { $("rating-value").textContent = rating.value; };

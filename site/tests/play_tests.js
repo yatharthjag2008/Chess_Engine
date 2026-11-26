@@ -119,6 +119,8 @@ test("premove: one that is illegal when your turn comes is dropped", async () =>
   await reply;
   await new Promise((resolve) => setTimeout(resolve, 20));
   equal(site.ui.chess.history(), ["h3", "e5"], "blocked by ...e5: dropped, nothing played");
+  assert(site.ui.sounds.log.includes("premove") && site.ui.sounds.log.includes("premove-dropped"),
+         `a tick when queued, a blip when dropped: ${site.ui.sounds.log}`);
   equal(site.ui.board.premove, null);
   equal(site.ui.board.mover, "white", "your move");
   site.ui.delay = 0;

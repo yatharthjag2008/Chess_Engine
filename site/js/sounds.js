@@ -65,6 +65,8 @@ export const RECIPES = {
   win: (ctx, at, v) => notes(ctx, at, [523, 659, 784, 1047], 0.1, v, 0.3),
   lose: (ctx, at, v) => notes(ctx, at, [392, 330, 262], 0.14, v, 0.32),
   draw: (ctx, at, v) => notes(ctx, at, [440, 440], 0.16, v, 0.22),
+  premove: (ctx, at, v) => knock(ctx, at, { freq: 3200, length: 0.02, gain: 0.35 * v }),
+  "premove-dropped": (ctx, at, v) => tone(ctx, at, { freq: 196, length: 0.12, gain: 0.16 * v, type: "triangle" }),
 };
 
 function defaultContext() {

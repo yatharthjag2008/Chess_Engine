@@ -118,11 +118,12 @@ export function isLightSquare(square) {
 }
 
 export class Board {
-  constructor(element, { orientation = "white", promotionEl = null, onMove = null } = {}) {
+  constructor(element, { orientation = "white", promotionEl = null, onMove = null, onPremove = null } = {}) {
     this.el = element;
     this.orientation = orientation;
     this.promotionEl = promotionEl;
     this.onMove = onMove;
+    this.onPremove = onPremove;  // called with "set" when a premove is queued, "dropped" when it became illegal
     this.fen = START_FEN;
     this.lastMove = null;
     this.check = false;
@@ -234,6 +235,7 @@ export class Board {
     this.render();
     const move = queued && this.legal.find((m) => m.from_square === queued.from_square &&
       m.to_square === queued.to_square && (m.promotion || null) === queued.promotion);
+    if (queued && !move && this.onPremove) this.onPremove("dropped");
     if (move) {
       // After the caller has finished updating (this is often called while it renders).
       const legal = this.legal;
@@ -284,6 +286,7 @@ export class Board {
       this.selected = null;
       this.dragged = false;
       this.render();
+      if (this.onPremove) this.onPremove("set");
       return;
     }
     let move = moves[0];
