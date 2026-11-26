@@ -111,6 +111,52 @@ export function squareOrder(orientation) {
   return squares;
 }
 
+// Arrows and circles drawn on the board: { orig: "e2", dest: "e4" } is an arrow, { orig: "e4" } (no
+// dest) a circle; `brush` is "green" (the default), "red", "blue" or "yellow".
+export const BRUSHES = { green: "#15781b", red: "#882020", blue: "#003088", yellow: "#e68f00" };
+const SVG = "http://www.w3.org/2000/svg";
+
+function svgEl(name, attrs) {
+  const el = document.createElementNS(SVG, name);
+  for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, String(value));
+  return el;
+}
+
+/** The centre of `square` in board units (0-8 from the top-left corner) as seen by `orientation`. */
+export function squareCentre(square, orientation) {
+  const index = squareOrder(orientation).indexOf(square);
+  return [(index % 8) + 0.5, Math.floor(index / 8) + 0.5];
+}
+
+/** The SVG layer with `shapes` drawn for `orientation`. */
+export function shapesLayer(shapes, orientation) {
+  const svg = svgEl("svg", { class: "shapes", viewBox: "0 0 8 8", "aria-hidden": "true" });
+  const defs = svgEl("defs", {});
+  for (const [brush, color] of Object.entries(BRUSHES)) {
+    const marker = svgEl("marker", { id: `arrowhead-${brush}`, orient: "auto", markerWidth: 4, markerHeight: 4,
+                                     refX: 2.05, refY: 2, markerUnits: "strokeWidth" });
+    marker.append(svgEl("path", { d: "M0,0 V4 L3,2 Z", fill: color }));
+    defs.append(marker);
+  }
+  svg.append(defs);
+  for (const shape of shapes) {
+    const brush = BRUSHES[shape.brush] ? shape.brush : "green";
+    const [x1, y1] = squareCentre(shape.orig, orientation);
+    if (!shape.dest || shape.dest === shape.orig) {
+      svg.append(svgEl("circle", { class: `circle ${brush}`, cx: x1, cy: y1, r: 0.46, fill: "none",
+                                   stroke: BRUSHES[brush], "stroke-width": 0.0625, opacity: 0.85 }));
+      continue;
+    }
+    const [x2, y2] = squareCentre(shape.dest, orientation);
+    const length = Math.hypot(x2 - x1, y2 - y1);
+    const end = (length - 0.32) / length;                  // stop short so the head ends near the centre
+    svg.append(svgEl("line", { class: `arrow ${brush}`, x1, y1, x2: x1 + (x2 - x1) * end, y2: y1 + (y2 - y1) * end,
+                               stroke: BRUSHES[brush], "stroke-width": 0.16, "stroke-linecap": "round",
+                               "marker-end": `url(#arrowhead-${brush})`, opacity: 0.8 }));
+  }
+  return svg;
+}
+
 export function isLightSquare(square) {
   const file = FILES.indexOf(square[0]);
   const rank = Number(square[1]);
@@ -135,6 +181,7 @@ export class Board {
     this.drag = null;         // { from, startX, startY, ghost, moved }
     this.suppressClick = false;
     this.marks = {};          // { square: "class names" } kept across renders (hints, better moves)
+    this.shapes = [];         // arrows and circles drawn on the board (see shapesLayer)
     this.el.addEventListener("click", (event) => this.handleClick(event));
     this.el.addEventListener("pointerdown", (event) => this.dragStart(event));
     this.el.addEventListener("contextmenu", (event) => {   // right-click cancels a premove
@@ -376,6 +423,12 @@ export class Board {
     animation.onfinish = () => { piece.style.zIndex = ""; };
   }
 
+  /** Arrows and circles to draw, e.g. [{ orig: "e2", dest: "e4" }, { orig: "d5", brush: "red" }]; [] clears. */
+  setShapes(shapes) {
+    this.shapes = shapes || [];
+    this.render();
+  }
+
   /** Extra classes on squares, e.g. { e2: "hint-from" }; {} clears them. */
   setMarks(marks) {
     this.marks = marks || {};
@@ -415,6 +468,7 @@ export class Board {
       }
       fragment.append(cell);
     });
+    fragment.append(shapesLayer(this.shapes, this.orientation));
     this.el.replaceChildren(fragment);
     this.el.classList.toggle("locked", !this.active);
     this.el.classList.toggle("premoving", !this.mover && Boolean(this.premover));

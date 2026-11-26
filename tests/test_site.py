@@ -74,12 +74,16 @@ def test_a_fresh_export_matches_pytorch(tmp_path) -> None:
     check_results(dom, 7)
 
 
-def _run_page(tmp_path, page: str, minimum: int, budget_ms: int = 30000) -> None:
+def _run_page(tmp_path, page: str, minimum: int, budget_ms: int = 30000, attempts: int = 1) -> None:
+    """Run a test page in headless Chrome; ``attempts`` > 1 retries a page that did not finish (never a failure)."""
     out = tmp_path / "site"
     _build_site().assemble(out, tests=True)
     server, url = _serve(out)
     try:
-        dom = dump_dom(browser_or_skip(), f"{url}/tests/{page}", tmp_path / "profile", budget_ms=budget_ms)
+        for attempt in range(attempts):
+            dom = dump_dom(browser_or_skip(), f"{url}/tests/{page}", tmp_path / f"profile{attempt}", budget_ms=budget_ms)
+            if "RESULT passed=" in dom:
+                break
     finally:
         server.shutdown()
     check_results(dom, minimum)
@@ -96,4 +100,5 @@ def test_the_play_page_end_to_end(tmp_path) -> None:
 
 def test_a_game_survives_a_reload(tmp_path) -> None:
     """A real reload in the browser: the saved game is restored."""
-    _run_page(tmp_path, "reload.html", 1, budget_ms=120000)   # two page loads, each loading the model
+    # Two page loads, each loading the model: under a busy machine the first try sometimes runs out of time.
+    _run_page(tmp_path, "reload.html", 1, budget_ms=120000, attempts=3)

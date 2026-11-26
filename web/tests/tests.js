@@ -1,6 +1,6 @@
 // Unit tests of board.js (and review.js, in review_unit.js), run in a real browser (see harness.js and tests/test_web_js.py).
 
-import { Board, START_FEN, isLightSquare, parseFen, premoveTargets, squareOrder } from "../js/board.js";
+import { Board, START_FEN, isLightSquare, parseFen, premoveTargets, squareCentre, squareOrder } from "../js/board.js";
 import { assert, equal, run, test } from "./harness.js";
 import "./review_unit.js";
 
@@ -342,6 +342,30 @@ test("a premove to the last rank promotes to a queen", async () => {
   board.setLegalMoves(legal("b7b8q", "b7b8r", "b7b8b", "b7b8n", "a1a2"), "white");
   await tick();
   equal(played, ["b7b8q"]);
+});
+
+// ------------------------------------------------------------------ arrows and circles
+
+test("arrows and circles are drawn over the board, and turn with it", () => {
+  const board = new Board(fixture());
+  equal(board.el.querySelectorAll(".shapes line, .shapes circle").length, 0);
+  board.setShapes([{ orig: "e2", dest: "e4" }, { orig: "d5", brush: "red" }]);
+  const line = board.el.querySelector(".shapes line.arrow.green");
+  assert(line, "a green arrow");
+  equal([line.getAttribute("x1"), line.getAttribute("y1")], ["4.5", "6.5"], "from the middle of e2");
+  assert(Math.abs(Number(line.getAttribute("y2")) - (4.5 + 0.32)) < 1e-9, "the head ends at e4's middle");
+  const circle = board.el.querySelector(".shapes circle.red");
+  equal([circle.getAttribute("cx"), circle.getAttribute("cy")], ["3.5", "3.5"], "around d5");
+  board.flip();
+  equal(board.el.querySelector(".shapes line").getAttribute("y1"), "1.5", "flipped: e2 is near the top");
+  equal(squareCentre("a1", "white"), [0.5, 7.5]);
+  equal(squareCentre("a1", "black"), [7.5, 0.5]);
+  board.setPosition(START_FEN);
+  equal(board.el.querySelectorAll(".shapes line, .shapes circle").length, 2, "kept across renders");
+  const rect = board.el.querySelector(".shapes").getBoundingClientRect();
+  equal(Math.round(rect.width), 400, "the layer covers the board");
+  board.setShapes([]);
+  equal(board.el.querySelectorAll(".shapes line, .shapes circle").length, 0);
 });
 
 test("marks stay on squares across renders and can be cleared", () => {
