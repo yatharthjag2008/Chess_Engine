@@ -292,6 +292,55 @@ test("a premove by dragging, cancelled by a right-click or cancelPremove()", asy
   assert(board.el.classList.contains("locked"));
 });
 
+const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+const legal = (...ucis) => ucis.map((uci) => ({ uci, from_square: uci.slice(0, 2), to_square: uci.slice(2, 4),
+                                               promotion: uci[4] || null }));
+
+test("when your turn comes, a legal premove is played", async () => {
+  const played = [];
+  const board = premoveBoard(played);
+  board.squareEl("g1").click();
+  board.squareEl("f3").click();
+  board.setPosition("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2", { lastMove: "e7e5" });
+  board.setLegalMoves(legal("g1f3", "g1e2", "d2d4"), "white");
+  equal(board.premove, null, "used up");
+  equal(played, [], "played after the caller finishes updating");
+  await tick();
+  equal(played, ["g1f3"]);
+});
+
+test("an illegal premove is dropped; a premove waits for its own side", async () => {
+  const played = [];
+  const board = premoveBoard(played);
+  board.squareEl("d1").click();
+  board.squareEl("h5").click();                     // blocked if Black answers ...g6
+  board.setLegalMoves(legal("d2d4"), "white");
+  equal(board.premove, null);
+  await tick();
+  equal(played, [], "not legal now: nothing is played");
+  const other = premoveBoard(played);
+  other.squareEl("d2").click();
+  other.squareEl("d4").click();
+  other.setLegalMoves([], null, { premover: "white" });   // still waiting (another update)
+  equal(other.premove.uci, "d2d4", "kept while the other side still thinks");
+  other.setLegalMoves(legal("d7d5"), "black");     // not White's turn (e.g. you were flipped): not played
+  await tick();
+  equal(played, []);
+});
+
+test("a premove to the last rank promotes to a queen", async () => {
+  const played = [];
+  const board = new Board(fixture(), { onMove: (uci) => played.push(uci) });
+  board.setPosition("7k/1P6/8/8/8/8/8/K7 b - - 0 1");
+  board.setLegalMoves([], null, { premover: "white" });
+  board.squareEl("b7").click();
+  board.squareEl("b8").click();
+  board.setPosition("6k1/1P6/8/8/8/8/8/K7 w - - 1 2", { lastMove: "h8g8" });
+  board.setLegalMoves(legal("b7b8q", "b7b8r", "b7b8b", "b7b8n", "a1a2"), "white");
+  await tick();
+  equal(played, ["b7b8q"]);
+});
+
 test("marks stay on squares across renders and can be cleared", () => {
   const board = new Board(fixture());
   board.setMarks({ e2: "hint-from", e4: "hint-to best-to" });

@@ -15,7 +15,8 @@
 // Premoves: while the other side is thinking, `setLegalMoves([], null, { premover: "white" })`
 // lets White queue a move the same way. Any square the piece could reach on an empty board is
 // offered (the position will change before it is played). Click elsewhere, right-click or
-// press Escape to cancel it.
+// press Escape to cancel it. When White's turn comes (`setLegalMoves(moves, "white")`), the
+// premove is played through onMove if it is legal then, and dropped if not.
 //
 // Pieces are SVG images (the cburnett set in web/pieces/, see its LICENSE.txt), drawn by style.css from
 // each piece's data-piece attribute ("wk", "bn", ...), so the board itself has no image paths.
@@ -224,12 +225,22 @@ export class Board {
   /** Moves the player may make now (from the API's legal_moves) and whose they are; while nobody may
    *  move, `premover` names the colour that may queue a premove (null: none, and a queued one is dropped). */
   setLegalMoves(moves, mover, { premover = null } = {}) {
+    const queued = mover && this.premove && this.premove.color === mover ? this.premove : null;
     this.legal = moves || [];
     this.mover = mover;
     this.premover = mover ? null : premover;
-    if (!mover && !premover) this.premove = null;
+    if (mover || !premover) this.premove = null;
     this.selected = null;
     this.render();
+    const move = queued && this.legal.find((m) => m.from_square === queued.from_square &&
+      m.to_square === queued.to_square && (m.promotion || null) === queued.promotion);
+    if (move) {
+      // After the caller has finished updating (this is often called while it renders).
+      const legal = this.legal;
+      setTimeout(() => {
+        if (this.mover === mover && this.legal === legal && this.onMove) this.onMove(move.uci);
+      }, 0);
+    }
   }
 
   targetsFrom(square) {
@@ -269,7 +280,7 @@ export class Board {
   /** Play one of `moves` (several only for a promotion: ask which piece). */
   async commit(moves) {
     if (!this.mover && this.premover) {           // not our turn: queue it (promotions become queens)
-      this.premove = moves.find((m) => m.promotion === "q") || moves[0];
+      this.premove = { ...(moves.find((m) => m.promotion === "q") || moves[0]), color: this.premover };
       this.selected = null;
       this.dragged = false;
       this.render();
