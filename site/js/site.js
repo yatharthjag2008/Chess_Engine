@@ -3,6 +3,7 @@
 import { Chess } from "../vendor/chess.js";
 import { Board } from "./board.js";
 import { loadModel, sampleMove } from "./engine.js";
+import { Sounds, soundFor } from "./sounds.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -17,7 +18,15 @@ export const ui = {
   over: false,
   random: Math.random, // replaceable in tests
   delay: 350,          // ms before the bot moves (so its move is visible as a move)
+  sounds: new Sounds(),
 };
+
+/** Make a move on the game (UCI or SAN) and play its sound; returns chess.js's move. */
+function makeMove(move) {
+  const made = ui.chess.move(move);
+  ui.sounds.play(soundFor(made, { check: ui.chess.inCheck() }));
+  return made;
+}
 
 const colorName = (c) => (c === "w" ? "white" : "black");
 
@@ -152,7 +161,7 @@ export function botMove() {
   const c = ui.chess;
   const { moves } = ui.model.predict(c, ui.rating);
   const choice = sampleMove(moves, 1, ui.random);
-  c.move(choice.uci);
+  makeMove(choice.uci);
   ui.last = { san: choice.san, uci: choice.uci, prob: choice.prob, candidates: moves };
   return choice;
 }
@@ -173,7 +182,7 @@ function botTurn() {
 /** You play ``uci``; the bot answers. */
 export async function play(uci) {
   if (ui.over || ui.busy || ui.chess.turn() !== ui.human) return;
-  ui.chess.move(uci);
+  makeMove(uci);
   render();
   if (!ui.over) await botTurn();
 }

@@ -14,6 +14,8 @@ import pytest
 from test_web_js import _Quiet, browser_or_skip, check_results, dump_dom
 
 ROOT = Path(__file__).resolve().parents[1]
+UNIT_TESTS = 3     # tests in site/tests/unit_tests.js
+PLAY_TESTS = 11    # tests in site/tests/play_tests.js
 
 
 def _build_site():
@@ -85,15 +87,8 @@ def _run_page(tmp_path, page: str, minimum: int, budget_ms: int = 30000) -> None
 
 def test_the_site_modules(tmp_path) -> None:
     """Sounds, material, clocks and the other modules of the play page, one by one."""
-    _run_page(tmp_path, "unit.html", 3)
+    _run_page(tmp_path, "unit.html", UNIT_TESTS)
 
 
 def test_the_play_page_end_to_end(tmp_path) -> None:
-    out = tmp_path / "site"
-    _build_site().assemble(out, tests=True)
-    server, url = _serve(out)
-    try:
-        dom = dump_dom(browser_or_skip(), f"{url}/tests/play.html", tmp_path / "profile", budget_ms=30000)
-    finally:
-        server.shutdown()
-    check_results(dom, 10)
+    _run_page(tmp_path, "play.html", PLAY_TESTS)

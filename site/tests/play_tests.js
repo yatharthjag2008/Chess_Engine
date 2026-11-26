@@ -131,4 +131,15 @@ test("premove: none once the game is over", async () => {
   assert(site.ui.board.el.classList.contains("locked"));
 });
 
+test("moves make their sounds: yours and the bot's", async () => {
+  await site.newGame({ rating: 1500, color: "white" });
+  site.ui.chess.load("r3k2r/pppq1ppp/2npbn2/2b1p3/2B1P3/2NPBN2/PPPQ1PPP/R3K2R w KQkq - 0 1");
+  site.render();
+  site.ui.sounds.log = [];
+  await site.play("e1g1");
+  equal(site.ui.sounds.log.length, 2, "your move and the bot's reply");
+  equal(site.ui.sounds.log[0], "castle");
+  assert(["move", "capture", "check", "castle", "promote"].includes(site.ui.sounds.log[1]), site.ui.sounds.log[1]);
+});
+
 run();
