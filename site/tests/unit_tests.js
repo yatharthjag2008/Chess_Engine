@@ -3,6 +3,7 @@
 import { Chess } from "../vendor/chess.js";
 import { assert, equal, run, test } from "./harness.js";
 import { RECIPES, Sounds, soundFor } from "../js/sounds.js";
+import { START, captured, countPieces, materialOf } from "../js/material.js";
 
 // ------------------------------------------------------------------ sounds
 
@@ -48,6 +49,31 @@ test("muted: nothing plays", () => {
   const sounds = new Sounds({ enabled: false });
   assert(!sounds.play("move"));
   equal(sounds.log, []);
+});
+
+// ------------------------------------------------------------------ material
+
+/** The FEN after a game given in SAN. */
+function fenAfter(...sans) {
+  const chess = new Chess();
+  for (const san of sans) chess.move(san);
+  return chess.fen();
+}
+
+test("piece counts and material", () => {
+  const counts = countPieces(START);
+  equal(counts.w, { p: 8, n: 2, b: 2, r: 2, q: 1, k: 1 });
+  equal(counts.b, counts.w);
+  equal(materialOf(counts.w), 39);
+});
+
+test("captured pieces and the material balance", () => {
+  equal(captured(START, START), { w: [], b: [], diff: 0 });
+  equal(captured(START, fenAfter("e4", "d5", "exd5", "Qxd5")), { w: ["p"], b: ["p"], diff: 0 });
+  const scholar = fenAfter("e4", "e5", "Bc4", "Nc6", "Qh5", "Nf6", "Qxf7#");
+  equal(captured(START, scholar), { w: ["p"], b: [], diff: 1 });
+  const trade = fenAfter("e4", "d5", "exd5", "Qxd5", "Nc3", "Qxa2", "Rxa2");
+  equal(captured(START, trade), { w: ["p", "q"], b: ["p", "p"], diff: 8 });
 });
 
 run();
