@@ -12,18 +12,20 @@
 // piece there (mouse, pen or touch). The board only offers legal moves (it is given the
 // list by the server, it does not know the rules itself). Promotions ask which piece to take.
 //
-// Pieces are Unicode chess symbols (the filled set for both colours, coloured with CSS),
-// so there are no image files and no third-party code.
+// Pieces are SVG images (the cburnett set in web/pieces/, see its LICENSE.txt), drawn by style.css from
+// each piece's data-piece attribute ("wk", "bn", ...), so the board itself has no image paths.
 
 export const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 export const FILES = "abcdefgh";
 
-// U+FE0E asks for the text (not emoji) presentation of the symbol.
-const GLYPHS = { k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" };
 const NAMES = { k: "king", q: "queen", r: "rook", b: "bishop", n: "knight", p: "pawn" };
 
-export function glyph(type) {
-  return GLYPHS[type] + "︎";
+/** A piece element: `color` "white" | "black", `type` "k" | "q" | ... (the image comes from style.css). */
+export function pieceEl(color, type, tag = "span") {
+  const el = document.createElement(tag);
+  el.className = `piece ${color}`;
+  el.dataset.piece = color[0] + type;
+  return el;
 }
 
 /** Parse the piece placement and side to move of a FEN.
@@ -41,7 +43,7 @@ export function parseFen(fen) {
         file += Number(ch);
       } else {
         const type = ch.toLowerCase();
-        if (!GLYPHS[type]) throw new Error(`bad FEN piece: ${ch}`);
+        if (!NAMES[type]) throw new Error(`bad FEN piece: ${ch}`);
         pieces.set(FILES[file] + rank, { color: ch === type ? "black" : "white", type });
         file += 1;
       }
@@ -131,7 +133,8 @@ export class Board {
       const ghost = source.cloneNode(true);
       ghost.classList.remove("dragging");
       ghost.classList.add("drag-ghost");
-      ghost.style.fontSize = `${this.el.getBoundingClientRect().width * 0.102}px`;
+      const size = this.el.getBoundingClientRect().width / 8;
+      ghost.style.width = ghost.style.height = `${size}px`;
       document.body.append(ghost);
       drag.ghost = ghost;
     }
@@ -219,11 +222,9 @@ export class Board {
       const box = document.createElement("div");
       box.className = "choices";
       for (const type of order) {
-        const button = document.createElement("button");
+        const button = pieceEl(this.mover, type, "button");
         button.type = "button";
         button.dataset.promotion = type;
-        button.className = `piece ${this.mover}`;
-        button.textContent = glyph(type);
         button.setAttribute("aria-label", `promote to ${NAMES[type]}`);
         button.addEventListener("click", (event) => { event.stopPropagation(); finish(type); });
         box.append(button);
@@ -282,11 +283,7 @@ export class Board {
       if (index % 8 === 0) cell.append(coordinate("rank", square[1]));
       if (index >= 56) cell.append(coordinate("file", square[0]));
       if (piece) {
-        const span = document.createElement("span");
-        span.className = `piece ${piece.color}`;
-        span.dataset.piece = piece.color[0] + piece.type;
-        span.textContent = glyph(piece.type);
-        cell.append(span);
+        cell.append(pieceEl(piece.color, piece.type));
         cell.classList.add("occupied");
       }
       fragment.append(cell);

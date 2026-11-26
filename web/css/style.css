@@ -17,9 +17,6 @@
   --selected: rgba(42, 120, 214, 0.45);
   --target-dot: rgba(11, 11, 11, 0.28);
   --check: radial-gradient(circle, rgba(227, 73, 72, 0.95) 0%, rgba(227, 73, 72, 0.55) 45%, rgba(227, 73, 72, 0) 75%);
-  --piece-white: #ffffff;
-  --piece-black: #161616;
-  --piece-outline: #161616;
   --bar: #2a78d6;
   --radius: 10px;
   --board-size: min(92vw, 560px);
@@ -129,17 +126,25 @@ body {
 .square.dark .coord { color: var(--square-light); }
 
 .piece {
-  font-size: 10.2cqw;
-  line-height: 1;
+  width: 100%;
+  height: 100%;
+  background: center / 100% 100% no-repeat;
   cursor: grab;
   position: relative;
   z-index: 1;
 }
-/* Outlines drawn with shadows, so they do not eat into the white fill as a text stroke does. */
-.piece.white { color: var(--piece-white);
-  text-shadow: 1px 0 var(--piece-outline), -1px 0 var(--piece-outline), 0 1px var(--piece-outline),
-               0 -1px var(--piece-outline), 0 2px 2px rgba(0, 0, 0, 0.35); }
-.piece.black { color: var(--piece-black); text-shadow: 0 0 2px rgba(255, 255, 255, 0.55), 0 2px 2px rgba(0, 0, 0, 0.3); }
+.piece[data-piece="wk"] { background-image: url("../pieces/wK.svg"); }
+.piece[data-piece="wq"] { background-image: url("../pieces/wQ.svg"); }
+.piece[data-piece="wr"] { background-image: url("../pieces/wR.svg"); }
+.piece[data-piece="wb"] { background-image: url("../pieces/wB.svg"); }
+.piece[data-piece="wn"] { background-image: url("../pieces/wN.svg"); }
+.piece[data-piece="wp"] { background-image: url("../pieces/wP.svg"); }
+.piece[data-piece="bk"] { background-image: url("../pieces/bK.svg"); }
+.piece[data-piece="bq"] { background-image: url("../pieces/bQ.svg"); }
+.piece[data-piece="br"] { background-image: url("../pieces/bR.svg"); }
+.piece[data-piece="bb"] { background-image: url("../pieces/bB.svg"); }
+.piece[data-piece="bn"] { background-image: url("../pieces/bN.svg"); }
+.piece[data-piece="bp"] { background-image: url("../pieces/bP.svg"); }
 .piece.dragging { opacity: 0.35; }
 .drag-ghost { position: fixed; pointer-events: none; z-index: 50; transform: translate(-50%, -50%); }
 .board.locked .piece { cursor: default; }
@@ -149,7 +154,9 @@ body {
   background: rgba(0, 0, 0, 0.35); z-index: 10;
 }
 .promotion .choices { display: flex; gap: 6px; background: var(--surface); padding: 10px; border-radius: var(--radius); }
-.promotion button { font-size: 2.6rem; width: 64px; height: 64px; line-height: 1; }
+.promotion button { width: 64px; height: 64px; padding: 4px; border: 1px solid var(--line); border-radius: 8px;
+  background-color: var(--surface); background-origin: content-box; background-size: contain; cursor: pointer; }
+.promotion button:hover { background-color: var(--line); }
 
 .result-banner {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 9;

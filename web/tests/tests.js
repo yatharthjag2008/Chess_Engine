@@ -1,6 +1,6 @@
 // Unit tests of board.js (and review.js, in review_unit.js), run in a real browser (see harness.js and tests/test_web_js.py).
 
-import { Board, START_FEN, glyph, isLightSquare, parseFen, squareOrder } from "../js/board.js";
+import { Board, START_FEN, isLightSquare, parseFen, squareOrder } from "../js/board.js";
 import { assert, equal, run, test } from "./harness.js";
 import "./review_unit.js";
 
@@ -50,7 +50,8 @@ test("board renders 64 squares with pieces and coordinates", () => {
   equal(squares.length, 64);
   equal(board.el.querySelectorAll(".piece").length, 32);
   equal(board.squareEl("e1").querySelector(".piece").dataset.piece, "wk");
-  equal(board.squareEl("e1").querySelector(".piece").textContent, glyph("k"));
+  const king = getComputedStyle(board.squareEl("e1").querySelector(".piece")).backgroundImage;
+  assert(king.includes("pieces/wK.svg"), `the white king's image: ${king}`);
   equal(board.el.querySelectorAll(".coord.rank").length, 8);
   equal(board.el.querySelectorAll(".coord.file").length, 8);
   equal(squares[0].dataset.square, "a8");
