@@ -1,0 +1,5 @@
+Chess pieces: the "cburnett" set by Colin M.L. Burnett (https://en.wikipedia.org/wiki/User:Cburnett),
+as published by Lichess (https://github.com/lichess-org/lila, public/piece/cburnett/).
+
+License: GNU General Public License, version 2 or later (https://www.gnu.org/licenses/gpl-2.0.txt).
+The files are unchanged.

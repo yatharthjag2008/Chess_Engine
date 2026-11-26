@@ -34,7 +34,8 @@ def test_assemble_copies_the_site_and_the_shared_files(tmp_path) -> None:
     build = _build_site()
     files = build.assemble(tmp_path / "out")
     assert {"index.html", "js/engine.js", "js/board.js", "css/style.css", "vendor/chess.js",
-            "model/model.json", "model/model.bin", ".nojekyll"} <= set(files)
+            "model/model.json", "model/model.bin", ".nojekyll", "pieces/wK.svg", "pieces/bP.svg",
+            "pieces/LICENSE.txt"} <= set(files)
     assert not any(f.startswith("tests/") for f in files), "tests are not published"
     with_tests = build.assemble(tmp_path / "out", tests=True)
     assert "tests/engine.html" in with_tests and "tests/harness.js" in with_tests

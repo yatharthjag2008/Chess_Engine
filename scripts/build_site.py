@@ -6,7 +6,7 @@ Usage:
     python -m http.server -d _site 8001        # look at it: http://localhost:8001
 
 The site is site/ (its page, scripts and the exported model) plus the board and styles shared with the local web
-app (web/js/board.js, web/css/style.css). The exported model is committed, so the GitHub Actions workflow
+app (web/js/board.js, web/css/style.css, web/pieces/). The exported model is committed, so the GitHub Actions workflow
 (.github/workflows/pages.yml) only runs the second command and publishes _site/.
 """
 
@@ -34,6 +34,7 @@ def assemble(out: Path, tests: bool = False) -> list[str]:
     for target, source in SHARED.items():
         (out / target).parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, out / target)
+    shutil.copytree(ROOT / "web" / "pieces", out / "pieces")     # the piece images style.css refers to
     if tests:
         shutil.copyfile(ROOT / "web" / "tests" / "harness.js", out / "tests" / "harness.js")
     (out / ".nojekyll").write_text("", encoding="utf-8")      # serve every file as it is
