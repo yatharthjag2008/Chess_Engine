@@ -137,3 +137,43 @@ def export_model(model: RatingConditionedNet, ratings: RatingsConfig, out_dir: s
     (out_dir / "model.bin").write_bytes(b"".join(chunks))
     (out_dir / "model.json").write_text(json.dumps(manifest, separators=(",", ":")), encoding="utf-8")
     return manifest
+
+
+# --------------------------------------------------------------------------- styles (step 19)
+
+STYLE_EXPORT_FORMAT = 1
+
+
+def export_style(base: MovePredictor, adapter: Any, info: Any, weight: float, out_dir: str | Path) -> dict[str, Any]:
+    """Write one trained style as ``<name>.json`` for the website: the adapter's numbers (the offset to the
+    conditioning vector, each block's modulation shift, a bias per move), how much it counts next to the base model
+    (``weight``), and test vectors from the PyTorch styled predictor. Returns what was written."""
+    from chess_engine.style.predictor import StylePredictor
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    state = {k: v.detach().cpu().numpy().astype(np.float32) for k, v in adapter.state_dict().items()}
+    c = base.model.config
+    if state["offset"].shape != (c.channels,) or state["block_shift"].shape != (c.residual_blocks, 2 * c.channels):
+        raise ExportError("the style was trained for a different model")
+    data = {
+        "format": STYLE_EXPORT_FORMAT,
+        "name": info.name, "kind": info.kind, "player": info.player, "games": info.games, "rating": info.rating,
+        "until": info.until, "weight": round(float(weight), 6),
+        "offset": [float(x) for x in state["offset"]],
+        "block_shift": [[float(x) for x in row] for row in state["block_shift"]],
+        "policy_bias": [float(x) for x in state["policy_bias"]],
+        "tests": test_vectors(StylePredictor(base, adapter, weight, info)),
+    }
+    (out_dir / f"{info.name}.json").write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
+    return data
+
+
+def write_style_index(out_dir: str | Path, styles: list[dict[str, Any]]) -> Path:
+    """``index.json``: the styles the site offers (name, player, kind, games, rating, until), by name."""
+    keys = ("name", "kind", "player", "games", "rating", "until")
+    index = sorted(({k: s[k] for k in keys} for s in styles), key=lambda s: s["name"])
+    path = Path(out_dir) / "index.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(index, indent=1), encoding="utf-8")
+    return path

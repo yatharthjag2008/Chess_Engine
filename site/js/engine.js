@@ -150,8 +150,10 @@ export class Model {
     return this.data.subarray(entry.offset, entry.offset + size);
   }
 
-  /** Move scores (1858) and win/draw/loss for encoded ``planes`` and the conditioning inputs. */
-  forward(planes, bucket, oppBucket, context) {
+  /** Move scores (1858) and win/draw/loss for encoded ``planes`` and the conditioning inputs; ``style`` (see
+   *  loadStyle) adds a trained player's adapter: an offset to the conditioning, a shift to each block's modulation
+   *  and a bias per move. */
+  forward(planes, bucket, oppBucket, context, style = null) {
     const C = this.channels;
     const t = (n) => this.t(n);
     const emb = this.meta.tensors["cond.rating"].shape[1];
@@ -160,11 +162,13 @@ export class Model {
     parts.set(t("cond.opponent").subarray(oppBucket * emb, oppBucket * emb + emb), emb);
     parts.set(linear(context, t("cond.clock.w"), t("cond.clock.b"), emb), 2 * emb);
     const cond = linear(silu(linear(parts, t("cond.fc1.w"), t("cond.fc1.b"), C)), t("cond.fc2.w"), t("cond.fc2.b"), C);
+    if (style) for (let c = 0; c < C; c++) cond[c] += style.offset[c];
 
     let x = relu(conv(planes, NUM_PLANES, t("stem.w"), t("stem.b"), C, 3));
     for (let i = 0; i < this.meta.blocks; i++) {
       const h = relu(conv(x, C, t(`block${i}.conv1.w`), t(`block${i}.conv1.b`), C, 3));
       const mod = linear(cond, t(`block${i}.mod.w`), t(`block${i}.mod.b`), 2 * C);
+      if (style) for (let j = 0; j < 2 * C; j++) mod[j] += style.blockShift[i * 2 * C + j];
       for (let c = 0; c < C; c++) {
         const gamma = 1 + mod[c], beta = mod[C + c];
         for (let s = 0; s < 64; s++) h[c * 64 + s] = h[c * 64 + s] * gamma + beta;
@@ -178,6 +182,7 @@ export class Model {
     const types = conv(p, C, t("policy.moves.w"), t("policy.moves.b"), 73, 1);
     const logits = new Float32Array(this.meta.gather.length);
     this.meta.gather.forEach((g, i) => { logits[i] = types[g]; });
+    if (style) for (let i = 0; i < logits.length; i++) logits[i] += style.policyBias[i];
 
     const v = relu(conv(x, C, t("value.conv.w"), t("value.conv.b"), 8, 1));
     const joined = new Float32Array(v.length + C);
@@ -197,25 +202,36 @@ export class Model {
   }
 
   /** Every legal move with the probability that players rated ``rating`` play it (likeliest first). */
-  predict(chess, rating, { oppRating = rating, clock = 180, oppClock = 180, base = 180, increment = 0 } = {}) {
+  predict(chess, rating, { oppRating = rating, clock = 180, oppClock = 180, base = 180, increment = 0, style = null } = {}) {
     const legal = chess.moves({ verbose: true });
     if (!legal.length) return { moves: [], wdl: null };
     const edges = this.meta.bucket_edges;
     const context = contextFeatures(clock, oppClock, base, increment, this.meta.log_clock_scale);
-    const { logits, wdl } = this.forward(encode(chess), bucketOf(rating, edges), bucketOf(oppRating, edges), context);
+    const planes = encode(chess);
     const turn = chess.turn();
-    const probs = softmax(legal.map((m) => logits[this.indexOf(m, turn)]));
+    const indices = legal.map((m) => this.indexOf(m, turn));
+    const run = (s) => {
+      const out = this.forward(planes, bucketOf(rating, edges), bucketOf(oppRating, edges), context, s);
+      return { probs: softmax(indices.map((i) => out.logits[i])), wdl: out.wdl };
+    };
+    let { probs, wdl } = run(null);
+    if (style) {                         // the style blended with the base model (StylePredictor in Python)
+      const w = style.weight;
+      const styled = run(style);
+      probs = probs.map((p, i) => w * styled.probs[i] + (1 - w) * p);
+      wdl = wdl.map((v, i) => w * styled.wdl[i] + (1 - w) * v);
+    }
     const moves = legal.map((m, i) => ({ uci: m.lan, san: m.san, from: m.from, to: m.to,
                                          promotion: m.promotion || null, prob: probs[i] }));
     moves.sort((a, b) => b.prob - a.prob);
     return { moves, wdl };
   }
 
-  /** Compare with the PyTorch numbers stored at export: the largest difference in any probability. */
-  selfTest(Chess) {
+  /** Compare with the PyTorch numbers stored at export (the model's, or a style's): the largest difference. */
+  selfTest(Chess, style = null) {
     let worst = 0;
-    for (const test of this.meta.tests) {
-      const { moves, wdl } = this.predict(new Chess(test.fen), test.rating, { oppRating: test.opp_rating });
+    for (const test of (style ? style.tests : this.meta.tests)) {
+      const { moves, wdl } = this.predict(new Chess(test.fen), test.rating, { oppRating: test.opp_rating, style });
       if (moves.length !== Object.keys(test.probs).length) return { ok: false, worst: Infinity, fen: test.fen };
       for (const m of moves) worst = Math.max(worst, Math.abs(m.prob - test.probs[m.uci]));
       wdl.forEach((v, i) => { worst = Math.max(worst, Math.abs(v - test.wdl[i])); });
@@ -230,6 +246,27 @@ export async function loadModel(base = "model/") {
     fetch(base + "model.bin").then((r) => { if (!r.ok) throw new Error("model.bin not found"); return r.arrayBuffer(); }),
   ]);
   return new Model(manifest, buffer);
+}
+
+/** The styles the site offers (styles/index.json): [{ name, kind, player, games, rating, until }]; none if absent. */
+export async function loadStyles(base = "styles/") {
+  try {
+    const response = await fetch(base + "index.json");
+    if (!response.ok) return [];
+    const index = await response.json();
+    return Array.isArray(index) ? index : [];
+  } catch {
+    return [];
+  }
+}
+
+/** One style's adapter (styles/<name>.json), ready for Model.predict's `style` option. */
+export async function loadStyle(name, base = "styles/") {
+  const response = await fetch(`${base}${encodeURIComponent(name)}.json`);
+  if (!response.ok) throw new Error(`style ${name} not found`);
+  const data = await response.json();
+  return { ...data, offset: Float32Array.from(data.offset), blockShift: Float32Array.from(data.block_shift.flat()),
+           policyBias: Float32Array.from(data.policy_bias) };
 }
 
 /** Pick a move: ``temperature`` 1 plays each move as often as the players do; lower favours the likeliest. */

@@ -2,6 +2,7 @@
 
 Usage:
     python scripts/build_site.py --export      # export the trained model to site/model/ (needs PyTorch and the model)
+    python scripts/build_site.py --styles      # export the trained styles and ghosts to site/styles/ (the same)
     python scripts/build_site.py               # assemble the site into _site/ (standard library only)
     python -m http.server -d _site 8001        # look at it: http://localhost:8001
 
@@ -57,17 +58,43 @@ def export(config: str | None, model_path: str | None, write: Callable[[str], No
     write(f"Exported {path.name} ({manifest['floats']:,} numbers, {size / 1e6:.1f} MB) to site/model/")
 
 
+def export_styles(config: str | None, model_path: str | None, write: Callable[[str], None],
+                  names: list[str] | None = None, out_dir: Path | None = None) -> list[str]:
+    """Export trained styles (all, or ``names``) from the style folder to site/styles/ with an index."""
+    from chess_engine.config import load_config
+    from chess_engine.model.inference import load_model
+    from chess_engine.style.store import StyleLibrary, blend_weight
+    from chess_engine.web_export import export_style, write_style_index
+
+    cfg = load_config(config)
+    base = load_model(Path(model_path or cfg.bot.model)).predictor()
+    library = StyleLibrary(cfg.paths.data_dir / cfg.style.directory)
+    out = out_dir or SITE / "styles"
+    chosen = names or [info.name for info in library.list()]
+    exported = []
+    for name in chosen:
+        adapter, info = library.load(name, base.model)
+        exported.append(export_style(base, adapter, info, blend_weight(info.games, cfg.style), out))
+        write(f"Exported style {name} ({info.player}, {info.kind}, {info.games} games)")
+    write_style_index(out, exported)
+    return [s["name"] for s in exported]
+
+
 def main(argv: list[str] | None = None, write: Callable[[str], None] = print) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--export", action="store_true", help="export the trained model to site/model/ first")
     parser.add_argument("--out", default=str(ROOT / "_site"), help="where to assemble the site (default: _site/)")
     parser.add_argument("--tests", action="store_true", help="include the browser tests (site/tests/)")
+    parser.add_argument("--styles", nargs="*", default=None, metavar="NAME",
+                        help="export trained styles to site/styles/ first (all, or the ones named)")
     parser.add_argument("--model", default=None)
     parser.add_argument("--config", default=None)
     args = parser.parse_args(argv)
     try:
         if args.export:
             export(args.config, args.model, write)
+        if args.styles is not None:
+            export_styles(args.config, args.model, write, args.styles or None)
         files = assemble(Path(args.out), tests=args.tests)
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)

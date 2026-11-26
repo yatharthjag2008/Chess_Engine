@@ -92,6 +92,28 @@ def test_a_fresh_export_matches_pytorch(tmp_path) -> None:
     check_results(dom, 7)
 
 
+def test_an_exported_style_matches_pytorch(tmp_path) -> None:
+    """A style adapter exported for the site gives the PyTorch styled predictor's numbers in the browser."""
+    from bot_helpers import small_predictor
+    from chess_engine.web_export import export_model, export_style, write_style_index
+    from test_style import _biased_adapter, _info
+
+    out = tmp_path / "site"
+    _build_site().assemble(out, tests=True)
+    predictor = small_predictor()
+    export_model(predictor.model, predictor.ratings, out / "model", name="small")
+    data = export_style(predictor, _biased_adapter(predictor.model, "a2a3"), _info("ann", games=200), 1.0,
+                        out / "styles")
+    write_style_index(out / "styles", [data])
+    assert len(data["policy_bias"]) == 1858 and len(data["tests"]) == 6
+    server, url = _serve(out)
+    try:
+        dom = dump_dom(browser_or_skip(), f"{url}/tests/style.html", tmp_path / "profile", budget_ms=20000)
+    finally:
+        server.shutdown()
+    check_results(dom, 4)
+
+
 def _run_page(tmp_path, page: str, minimum: int, budget_ms: int = 30000, attempts: int = 2) -> None:
     """Run a test page in headless Chrome; ``attempts`` > 1 retries a page that did not finish (never a failure)."""
     out = tmp_path / "site"
