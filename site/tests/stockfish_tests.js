@@ -3,6 +3,8 @@
 import { assert, equal, run, test } from "./harness.js";
 import { MATE_CP, StockfishAnalyzer, finishedEval, parseInfo } from "../js/stockfish.js";
 import { Chess } from "../vendor/chess.js";
+import { HintEngine } from "../js/hints.js";
+import { loadModel } from "../js/engine.js";
 
 test("UCI info lines: centipawns, mates, bounds", () => {
   equal(parseInfo("info depth 12 seldepth 18 multipv 2 score cp -35 nodes 1 nps 1 pv e7e5 g1f3"),
@@ -55,6 +57,18 @@ test("searches queue one at a time", async () => {
   equal(results.map((r) => r.fen), fens);
   assert(results.every((r) => r.lines.length === 3));
   engine.terminate();
+});
+
+test("a real hint: Stockfish finds the mate, the model says how often your level would", async () => {
+  const model = await loadModel("../model/");
+  const hints = new HintEngine(model, new StockfishAnalyzer({ depth: 10, multipv: 2 }));
+  const fen = "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1";
+  const nudge = await hints.hint(fen, "nudge", 1200);
+  assert(nudge.findRate > 0 && nudge.findRate < 1, String(nudge.findRate));
+  assert(["There is a forcing move here: look at checks, captures and threats.", "There is a checkmate!",
+          "There is a checkmate! It's a rook move."].includes(nudge.text), nudge.text);
+  equal((await hints.hint(fen, "show", 1200)).text, "Play Ra8#: checkmate.");
+  hints.analyzer.terminate();
 });
 
 run();

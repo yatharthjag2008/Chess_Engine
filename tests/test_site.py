@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 UNIT_TESTS = 41     # tests in site/tests/unit_tests.js
 PLAY_TESTS = 56    # tests in site/tests/play_tests.js
 ANALYSE_TESTS = 8  # tests in site/tests/analyse_tests.js
-STOCKFISH_TESTS = 6  # tests in site/tests/stockfish_tests.js
+STOCKFISH_TESTS = 7  # tests in site/tests/stockfish_tests.js
 REVIEW_TESTS = 7  # tests in site/tests/review_tests.js
 
 
