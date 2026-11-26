@@ -16,5 +16,8 @@
   .captured .piece { width: 17px; height: 17px; }
   .captured .piece + .piece { margin-left: -10px; }
 }
+.move-list .san[data-ply] { cursor: pointer; }
+.move-list .san[data-ply]:hover { background: var(--line); }
+
 .volume { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 0.9rem; }
 .volume input { width: 90px; }

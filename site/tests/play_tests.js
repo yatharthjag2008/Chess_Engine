@@ -253,4 +253,20 @@ test("stepping back shows an earlier position; the game is kept and you move onl
   equal(site.ui.view, null, "past the end is the game");
 });
 
+test("click a move in the list to look at it; the move shown is highlighted", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1500, color: "white" });
+  await site.play("d2d4");
+  await site.play("c2c4");
+  const cells = () => [...$("move-list").querySelectorAll(".san[data-ply]")];
+  equal(cells().map((c) => c.dataset.ply), ["1", "2", "3", "4"]);
+  equal($("move-list").querySelector(".latest").dataset.ply, "4", "the last move, while at the game");
+  cells()[0].click();
+  equal(site.ui.view, 1);
+  equal($("move-list").querySelector(".latest").textContent, "d4", "the move looked at");
+  equal(site.ui.board.lastMove, "d2d4");
+  cells()[3].click();
+  equal(site.ui.view, null, "the last move is the game itself");
+});
+
 run();

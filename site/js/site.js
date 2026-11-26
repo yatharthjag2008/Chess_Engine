@@ -111,7 +111,7 @@ export function render() {
   $("top-name").textContent = bottomIsHuman ? `Bot ${ui.rating}` : "You";
   $("bottom-name").textContent = bottomIsHuman ? "You" : `Bot ${ui.rating}`;
   $("game-panel").hidden = false;
-  renderMoves(history);
+  renderMoves(history, viewing ? ui.view : history.length);
   renderCaptured(c.fen());
   renderThinking();
   const humanMoves = history.filter((m) => m.color === ui.human).length;
@@ -128,7 +128,8 @@ function setStatus(text) {
   $("status").textContent = text;
 }
 
-function renderMoves(history) {
+/** The move list; the move at `shownPly` is highlighted, and every move can be clicked to look at it. */
+function renderMoves(history, shownPly) {
   const items = [];
   const blackFirst = history.length && history[0].color === "b";
   const sans = blackFirst ? [null, ...history.map((m) => m.san)] : history.map((m) => m.san);
@@ -140,8 +141,12 @@ function renderMoves(history) {
     li.append(num);
     for (const index of [i, i + 1]) {
       const cell = document.createElement("span");
-      cell.className = "san" + (index === sans.length - 1 ? " latest" : "");
-      if (sans[index]) cell.textContent = sans[index];
+      const ply = blackFirst ? index : index + 1;           // the position after this move
+      cell.className = "san" + (ply === shownPly && sans[index] ? " latest" : "");
+      if (sans[index]) {
+        cell.textContent = sans[index];
+        cell.dataset.ply = String(ply);
+      }
       li.append(cell);
     }
     items.push(li);
@@ -332,6 +337,10 @@ export async function init(modelBase = "model/") {
     newGame(readForm());
   });
   $("flip").addEventListener("click", () => { ui.board.flip(); if (ui.chess) render(); });
+  $("move-list").addEventListener("click", (event) => {
+    const cell = event.target.closest("[data-ply]");
+    if (cell) showPly(Number(cell.dataset.ply));
+  });
   $("takeback").addEventListener("click", takeback);
   $("resign").addEventListener("click", resign);
   $("download").addEventListener("click", download);
