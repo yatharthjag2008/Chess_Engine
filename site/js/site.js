@@ -10,6 +10,8 @@ import { Clock, baseSeconds, formatClock, thinkTime } from "./clock.js";
 import { loadOpenings, openingOf } from "./openings.js";
 import { PRESETS, parsePosition } from "./position.js";
 import { ADAPTIVE, LiveAdjuster, botRatingFor, readProfile, recordGame, scoreFor } from "./adaptive.js";
+import { HINTS, HintBudget, HintEngine } from "./hints.js";
+import { StockfishAnalyzer } from "./stockfish.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -32,6 +34,10 @@ export const ui = {
   sounds: new Sounds(),
   profile: null,       // your rating for adaptive difficulty: { rating, games, history }
   adaptive: { mode: "off", start: 1500, rated: true, recorded: null },   // this game's adaptive difficulty
+  hints: new HintBudget(HINTS.limit),   // this game's hints
+  hint: null,          // the latest hint: { fen, data }, shown while that position is on the board
+  hintEngine: null,    // Stockfish and the model, started on the first hint
+  makeHintEngine: () => new HintEngine(ui.model, new StockfishAnalyzer({ depth: HINTS.depth, multipv: HINTS.multipv })),
 };
 
 const saved = {
@@ -99,7 +105,7 @@ export function resetProfile(rating) {
 /** A finished game counts for adaptive difficulty (once; not for games from a position). */
 function recordResult(winner) {
   const a = ui.adaptive;
-  if (a.mode === "off" || !a.rated || a.recorded) return;
+  if (a.mode === "off" || !a.rated || a.recorded || !ui.hints.rated) return;
   const before = profile().rating;
   const botRating = a.live ? Math.round(a.live.meanRating) : a.start;   // live: the rating it played at on average
   ui.profile = recordGame(profile(), botRating, scoreFor(winner, ui.human), a.mode);
@@ -115,6 +121,9 @@ export function applySettings(settings) {
   if (rating >= 800 && rating <= 2400) {
     $("rating").value = String(rating);
     $("rating-value").textContent = String(rating);
+  }
+  if (settings.hints !== undefined && [...$("hint-limit").options].some((o) => o.value === String(settings.hints))) {
+    $("hint-limit").value = String(settings.hints);
   }
   for (const name of ["color", "time", "difficulty"]) {
     const radio = $("new-game").querySelector(`input[name="${name}"][value="${settings[name]}"]`);
@@ -139,6 +148,7 @@ export function snapshot() {
     thoughts: Object.fromEntries(Object.entries(ui.thoughts).map(([ply, t]) => [ply, trim(t)])),
     time: ui.time || "none",
     adaptive: ui.adaptive,
+    hints: ui.hints.toJSON(),
     clock: ui.clock ? ui.clock.toJSON() : null,           // carries on after a reload, time running as on a server
     savedAt: Date.now(),
   };
@@ -229,6 +239,7 @@ export function render() {
   if (!viewing) ui.view = null;
   const shown = positionAt(history, viewing ? ui.view : history.length);
   const humanToMove = !viewing && !ui.over && !ui.busy && c.turn() === ui.human;
+  ui.board.marks = hintMarks(viewing);                       // drawn by setPosition below
   const check = viewing ? Boolean(shown.move && /[+#]$/.test(shown.move.san)) : c.inCheck();
   ui.board.setPosition(shown.fen, { lastMove: shown.move ? shown.move.lan : null, check });
   const botToMove = !viewing && !ui.over && c.turn() !== ui.human;   // meanwhile you may premove
@@ -250,6 +261,7 @@ export function render() {
   const humanMoves = history.filter((m) => m.color === ui.human).length;
   $("takeback").disabled = ui.over || ui.busy || humanMoves === 0 || Boolean(ui.clock);   // not in timed games
   $("resign").disabled = ui.over || ui.busy;
+  renderHintControls(humanToMove);
   const end = outcome();
   ui.board.el.classList.toggle("viewing", viewing);
   if (viewing) setStatus(`${lookingAt(shown.move)} End, or a click on the board, returns to the game.`);
@@ -364,6 +376,73 @@ function renderCaptured(fen) {
   }
 }
 
+// ------------------------------------------------------------------ hints
+
+const TIER_NAMES = { nudge: "1 of 3: a nudge", point: "2 of 3: the piece", show: "3 of 3: the move" };
+const MORE_LABELS = { point: "Which piece?", show: "Show the move" };
+
+/** The hint for the position in the game, or null (hints belong to one position). */
+function currentHint(viewing = false) {
+  return ui.hint && !viewing && !ui.over && ui.chess && ui.hint.fen === ui.chess.fen() ? ui.hint.data : null;
+}
+
+function hintMarks(viewing) {
+  const hint = currentHint(viewing);
+  const marks = {};
+  if (hint && hint.from) marks[hint.from] = "hint-from";
+  if (hint && hint.to) marks[hint.to] = "hint-to";
+  return marks;
+}
+
+/** The Hint button (with how many are left), the Unrated badge and the hint panel. */
+function renderHintControls(humanToMove) {
+  const budget = ui.hints;
+  const button = $("hint");
+  const fen = ui.chess.fen();
+  button.hidden = budget.limit === 0;
+  const shownAll = Boolean(currentHint()) && currentHint().tier === "show";
+  button.disabled = !humanToMove || ui.hintBusy || !budget.canTake(fen) || shownAll;
+  button.textContent = `Hint (${budget.left} left)`;
+  $("unrated").hidden = budget.rated;
+  const hint = currentHint(ui.view !== null);
+  $("hint-panel").hidden = !hint;
+  if (!hint) return;
+  $("hint-tier").textContent = TIER_NAMES[hint.tier];
+  $("hint-text").textContent = hint.text;
+  const next = hint.tier === "show" ? null : budget.nextTier(fen);
+  $("hint-more").hidden = !next;
+  if (next) $("hint-more").textContent = MORE_LABELS[next];
+}
+
+/** A hint about the best move for you here: the next tier for this position (nudge, then the piece, then the move).
+ *  Stockfish starts on the first hint. */
+export async function askHint() {
+  if (!ui.chess || ui.over || ui.busy || ui.hintBusy || ui.view !== null || ui.chess.turn() !== ui.human) return null;
+  const fen = ui.chess.fen();
+  if (!ui.hints.canTake(fen)) {
+    setStatus("No hints left in this game.");
+    return null;
+  }
+  ui.hintBusy = true;
+  setStatus("Looking for a hint...");
+  try {
+    if (!ui.hintEngine) ui.hintEngine = ui.makeHintEngine();
+    const tier = ui.hints.nextTier(fen);
+    const data = await ui.hintEngine.hint(fen, tier, ui.adaptive.mode === "off" ? ui.rating : Math.round(profile().rating),
+                                          clockContext());
+    if (ui.chess.fen() !== fen) return null;                 // the position changed meanwhile
+    ui.hints.take(fen);
+    ui.hint = { fen, data };
+    return data;
+  } catch (err) {
+    setStatus(`No hint: ${err.message}`);
+    return null;
+  } finally {
+    ui.hintBusy = false;
+    render();
+  }
+}
+
 /** "What players at this rating play" for one bot move (null hides the panel). */
 function renderThinking(move) {
   $("thinking-panel").hidden = !move;
@@ -412,6 +491,10 @@ function finish(text, winner) {
   p.textContent = text;
   const lines = [heading, p];
   const r = ui.adaptive.recorded;
+  if (!r && ui.adaptive.mode !== "off" && !ui.hints.rated) {
+    lines.push(Object.assign(document.createElement("p"), { className: "adaptive-result",
+      textContent: "Hints were used, so your rating is unchanged." }));
+  }
   if (r) {
     const rating = document.createElement("p");
     rating.className = "adaptive-result";
@@ -512,11 +595,11 @@ export function readForm() {
   if (color === "random") color = ui.random() < 0.5 ? "white" : "black";
   return { rating: Number(data.get("rating")), color, time: data.get("time") || "none",
            mode: data.get("mode") || "standard", position: data.get("position") || "",
-           difficulty: data.get("difficulty") || "off" };
+           difficulty: data.get("difficulty") || "off", hints: Number(data.get("hints") ?? HINTS.limit) };
 }
 
 /** A new game: `start` (a chess.js game, see position.js) to carry on from a position, else the usual start. */
-export async function newGame({ rating, color, time = "none", start = null, difficulty = "off" }) {
+export async function newGame({ rating, color, time = "none", start = null, difficulty = "off", hints = HINTS.limit }) {
   ui.chess = start || new Chess();
   const mode = ["between", "live"].includes(difficulty) ? difficulty : "off";
   if (mode === "between") rating = botRatingFor(profile().rating);   // the bot plays at your level
@@ -529,6 +612,8 @@ export async function newGame({ rating, color, time = "none", start = null, diff
                   live: mode === "live" ? new LiveAdjuster(rating) : null };
   ui.view = null;
   ui.thoughts = {};
+  ui.hints = new HintBudget(Math.max(0, Number(hints) || 0));
+  ui.hint = null;
   ui.rating = rating;
   ui.human = color === "black" ? "b" : "w";
   ui.over = false;
@@ -547,7 +632,7 @@ export async function playFromHere() {
   const start = new Chess(history.length ? history[0].before : ui.chess.fen());
   for (const move of history.slice(0, ui.view)) start.move(move.lan);
   await newGame({ rating: ui.adaptive.start, color: colorName(ui.human), time: ui.time || "none", start,
-                 difficulty: ui.adaptive.mode });
+                 difficulty: ui.adaptive.mode, hints: ui.hints.limit });
 }
 
 /** What the Play button does: a standard game, or one from the pasted position (an error shown if it cannot be). */
@@ -595,6 +680,10 @@ export function pgn() {
     c.setHeader("FEN", ui.startFen);
   }
   c.setHeader(ui.human === "w" ? "White" : "Black", "You");
+  if (!ui.hints.rated) {
+    c.setHeader("Hints", String(ui.hints.used));
+    c.setHeader("Annotator", "unrated: hints used");
+  }
   const a = ui.adaptive;
   const changed = a.live && a.live.changes.length;
   c.setHeader(ui.human === "w" ? "Black" : "White", changed ? `Bot ${a.start}-${ui.rating}` : `Bot ${ui.rating}`);
@@ -689,7 +778,7 @@ export async function init(modelBase = "model/", dataBase = modelBase.replace(/m
     event.preventDefault();
     const data = new FormData($("new-game"));
     saved.settings.save({ rating: Number($("rating").value), color: data.get("color"), time: data.get("time"),
-                          difficulty: data.get("difficulty") || "off" });
+                          difficulty: data.get("difficulty") || "off", hints: data.get("hints") });
     startFromForm();
   });
   $("flip").addEventListener("click", () => { ui.board.flip(); if (ui.chess) render(); });
@@ -708,6 +797,8 @@ export async function init(modelBase = "model/", dataBase = modelBase.replace(/m
     if (cell) showPly(Number(cell.dataset.ply));
   });
   $("takeback").addEventListener("click", takeback);
+  $("hint").addEventListener("click", () => askHint());
+  $("hint-more").addEventListener("click", () => askHint());
   $("resign").addEventListener("click", resign);
   $("download").addEventListener("click", download);
   $("copy-fen").addEventListener("click", copyFen);
@@ -728,6 +819,7 @@ export async function init(modelBase = "model/", dataBase = modelBase.replace(/m
     if (typing || event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.key === "f") $("flip").click();
     if (event.key === "m") $("sound").click();
+    if (event.key === "h" && !$("hint").hidden && !$("hint").disabled) askHint();
     if (NAVIGATION[event.key] && ui.chess) {
       event.preventDefault();                                // not scrolling the page
       NAVIGATION[event.key]();
@@ -768,6 +860,8 @@ export function restore(snap = saved.game.load()) {
   ui.time = snap.time || "none";
   ui.clock = snap.clock ? Clock.fromJSON(snap.clock) : null;
   ui.thoughts = snap.thoughts || {};
+  ui.hints = snap.hints ? HintBudget.fromJSON(snap.hints) : new HintBudget(0);
+  ui.hint = null;
   const a = snap.adaptive || {};
   const mode = ["between", "live"].includes(a.mode) ? a.mode : "off";
   ui.adaptive = { mode, start: Number(a.start) || ui.rating, rated: a.rated !== false, recorded: a.recorded || null,

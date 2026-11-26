@@ -31,6 +31,8 @@
 .adaptive-history ol { margin: 6px 0; padding-left: 1.2em; }
 .adaptive-history button { margin-top: 2px; }
 .result-banner .adaptive-result { font-weight: 600; }
+.badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 0.75rem;
+         font-weight: 600; vertical-align: middle; border: 1px solid currentColor; opacity: 0.8; }
 
 .segmented span { white-space: nowrap; }
 

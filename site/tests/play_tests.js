@@ -443,7 +443,7 @@ test("the new-game choices are remembered (rating and side, random included)", a
   $("new-game").querySelector('input[value="random"]').checked = true;
   $("new-game").dispatchEvent(new Event("submit", { cancelable: true }));
   await until(() => !site.ui.busy, "the game started");
-  equal(JSON.parse(localStorage.getItem("human-chess-site.settings")), { rating: 1850, color: "random", time: "none", difficulty: "off" });
+  equal(JSON.parse(localStorage.getItem("human-chess-site.settings")), { rating: 1850, color: "random", time: "none", difficulty: "off", hints: "3" });
   $("rating").value = "1000";
   $("new-game").querySelector('input[value="white"]').checked = true;
   site.applySettings({ rating: 1850, color: "random" });
@@ -925,6 +925,68 @@ test("Review this game hands the PGN to the Review page, also from the result ba
   site.resign();
   const buttons = [...$("result-banner").querySelectorAll("button")].map((b) => b.textContent);
   equal(buttons, ["New game", "Review", "Close"]);
+});
+
+/** A stand-in hint engine: the best move is `uci` wherever asked; counts its searches. */
+function fakeHints(uci = "e2e4") {
+  const calls = [];
+  return { calls, async hint(fen, tier, rating) {
+    calls.push([fen, tier, rating]);
+    const { makeHint } = await import("../js/hints.js");
+    return makeHint(fen, uci, tier, 0.2);
+  } };
+}
+
+test("hints: nudge, then the piece, then the move; the squares are marked, and the game becomes unrated", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1500, color: "white", hints: 3 });
+  const fake = fakeHints("e2e4");
+  site.ui.hintEngine = fake;
+  equal($("hint").textContent, "Hint (3 left)");
+  assert(!$("hint").hidden && !$("hint").disabled && $("unrated").hidden);
+  await site.askHint();
+  equal($("hint-tier").textContent, "1 of 3: a nudge");
+  equal($("hint-text").textContent, "Look for a quiet move that improves your position.");
+  equal($("hint-more").textContent, "Which piece?");
+  equal($("hint").textContent, "Hint (2 left)");
+  assert(!$("unrated").hidden, "a hinted game is unrated");
+  $("hint-more").click();
+  await until(() => $("hint-tier").textContent === "2 of 3: the piece");
+  assert($("hint-text").textContent.endsWith("Move your pawn on e2."), $("hint-text").textContent);
+  assert(site.ui.board.squareEl("e2").classList.contains("hint-from"));
+  await site.askHint();
+  equal($("hint-text").textContent, "Play e4.");
+  assert(site.ui.board.squareEl("e4").classList.contains("hint-to"));
+  assert($("hint-more").hidden && $("hint").disabled, "nothing more to give here");
+  equal(fake.calls.map((c) => c[1]), ["nudge", "point", "show"]);
+  equal(fake.calls[0][2], 1500, "at your rating (the bot's, when it is fixed)");
+  equal(site.ui.hints.used, 1, "one position, one hint");
+  await site.play("e2e4");
+  assert($("hint-panel").hidden && !site.ui.board.squareEl("e2").classList.contains("hint-from"), "gone after the move");
+  const text = site.pgn();
+  assert(text.includes('[Hints "1"]') && text.includes('[Annotator "unrated: hints used"]'), text);
+});
+
+test("hints: the limit, Off, a reload, and no rating change in Follow my level", async () => {
+  site.ui.random = () => 0.5;
+  site.resetProfile(1300);
+  await site.newGame({ rating: 1500, color: "white", hints: 1, difficulty: "between" });
+  site.ui.hintEngine = fakeHints("e2e4");
+  await site.askHint();
+  equal($("hint").textContent, "Hint (0 left)");
+  const snap = JSON.parse(JSON.stringify(site.snapshot()));
+  assert(site.restore(snap));
+  equal([site.ui.hints.used, site.ui.hints.limit], [1, 1], "survives a reload");
+  site.ui.hintEngine = fakeHints("d2d4");
+  await site.play("d2d4");
+  assert($("hint").disabled, "a new position, and none left");
+  equal(await site.askHint(), null);
+  equal($("status").textContent, "No hints left in this game.");
+  site.resign();
+  equal(site.profile().games, 0, "an unrated game does not move your rating");
+  equal($("result-banner").querySelector(".adaptive-result").textContent, "Hints were used, so your rating is unchanged.");
+  await site.newGame({ rating: 1500, color: "white", hints: 0 });
+  assert($("hint").hidden, "hints off");
 });
 
 run();

@@ -31,6 +31,7 @@
         <span class="clock" id="bottom-clock" role="timer" hidden>0:00</span></div>
       <p id="status" class="status" role="status" aria-live="polite">Loading the model...</p>
       <p class="hint keys">Click or drag pieces to move; while the bot thinks you can premove. Keys: <kbd>f</kbd> flips the board,
+        <kbd>h</kbd> asks for a hint,
         <kbd>m</kbd> turns the sound on or off, <kbd>&larr;</kbd> <kbd>&rarr;</kbd> step through the moves
         (<kbd>Home</kbd> <kbd>End</kbd>: start, now), <kbd>Esc</kbd> drops the selection or the premove (so does a right-click).
         Right-click a square to circle it, right-drag to draw an arrow (Shift red, Alt blue); a click clears them.</p>
@@ -87,11 +88,21 @@
             <button type="button" id="adaptive-reset">Start my rating again</button>
           </details>
         </fieldset>
+        <label class="field">
+          <span>Hints <small class="hint">(a game with hints is unrated)</small></span>
+          <select id="hint-limit" name="hints">
+            <option value="0">Off</option>
+            <option value="1">1 per game</option>
+            <option value="3" selected>3 per game</option>
+            <option value="5">5 per game</option>
+            <option value="20">20 per game</option>
+          </select>
+        </label>
         <button type="submit" class="primary" id="play" disabled>Play</button>
       </form>
 
       <section class="panel" id="game-panel" hidden>
-        <h2>Moves</h2>
+        <h2>Moves <span id="unrated" class="badge" hidden title="Hints were used, so this game does not count">Unrated</span></h2>
         <p class="opening" id="opening" hidden><span class="eco" id="opening-eco"></span> <span id="opening-name"></span></p>
         <ol id="move-list" class="move-list"></ol>
         <div class="step-buttons" role="group" aria-label="Step through the moves">
@@ -102,6 +113,7 @@
         </div>
         <button type="button" id="play-from-here" class="play-from-here" hidden>Play from here (a new game from this position)</button>
         <div class="actions">
+          <button type="button" id="hint" hidden>Hint</button>
           <button type="button" id="flip">Flip board</button>
           <button type="button" id="takeback">Take back</button>
           <button type="button" id="resign" class="danger">Resign</button>
@@ -112,6 +124,12 @@
           <button type="button" id="sound" aria-pressed="true">Sound: on</button>
           <label class="volume">Volume <input id="volume" type="range" min="0" max="100" step="5" value="70"></label>
         </div>
+      </section>
+
+      <section class="panel" id="hint-panel" hidden aria-live="polite">
+        <h2>Hint <span id="hint-tier" class="hint"></span></h2>
+        <p id="hint-text" class="hint-text"></p>
+        <div class="actions"><button type="button" id="hint-more" hidden>More</button></div>
       </section>
 
       <section class="panel" id="thinking-panel" hidden>
