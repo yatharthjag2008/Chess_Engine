@@ -8,6 +8,9 @@ import { loadOpenings, openingOf, positionKey } from "../js/openings.js";
 import { PRESETS, parsePosition } from "../js/position.js";
 import { Clock, TIME_CONTROLS, baseSeconds, formatClock, thinkTime } from "../js/clock.js";
 import { START, canMate, captured, countPieces, describeCaptures, materialOf } from "../js/material.js";
+import { describeEstimate, estimateFromBucketLL, interp, loadRatingData, moveBucketLL, posterior, summarize }
+  from "../js/rating.js";
+import { bucketOf, loadModel } from "../js/engine.js";
 import { ADAPTIVE, LiveAdjuster, botRatingFor, expectedScore, readProfile, recordGame, scoreFor,
          updateRating } from "../js/adaptive.js";
 
@@ -330,6 +333,40 @@ test("adaptive: live changes follow the bot's chances, with a cap", () => {
   equal(new LiveAdjuster(1400).observe(null), null, "no value head: no change");
   const copy = LiveAdjuster.fromJSON(JSON.parse(JSON.stringify(losing)));
   equal([copy.rating, copy.meanRating, copy.changes.length], [1500, 1425, 2], "saved and restored");
+});
+
+// ------------------------------------------------------------------ rating estimation
+
+test("rating: interpolation, posterior and summary behave like numpy's", () => {
+  equal([interp(5, [0, 10], [0, 1]), interp(-3, [0, 10], [2, 4]), interp(99, [0, 10], [2, 4])], [0.5, 2, 4]);
+  const p = posterior([0, Math.log(3)], [0, 0]);
+  assert(near(p[0], 0.25) && near(p[1], 0.75));
+  const s = summarize([1000, 1100, 1200], [0.25, 0.5, 0.25], 0.5, 3);
+  equal(s.estimate, 1100);
+  equal(describeEstimate({ estimate: 1434, low: 1251, high: 1618, interval: 0.8, moves: 31 }),
+        "about 1430 (80% range 1250-1620, from 31 moves)");
+});
+
+test("rating: the estimate matches Python's for the same move likelihoods", async () => {
+  const data = await loadRatingData("../data/");
+  equal(data.log_prior.length, data.points);
+  const est = estimateFromBucketLL(data.test.bucket_ll, data);
+  for (const key of ["estimate", "median", "low", "high"]) assert(near(est[key], data.test[key], 1e-6), `${key}: ${est[key]} vs ${data.test[key]}`);
+  equal(est.moves, data.test.moves);
+});
+
+test("rating: a move's likelihood at each rating is PyTorch's probability", async () => {
+  const model = await loadModel("../model/");
+  for (const t of model.meta.tests.slice(0, 2)) {
+    const [uci, prob] = Object.entries(t.probs).sort((a, b) => b[1] - a[1])[0];
+    const ll = moveBucketLL(model, { fen: t.fen, uci, oppRating: t.opp_rating });
+    equal(ll.length, model.meta.bucket_edges.length);
+    const b = bucketOf(t.rating, model.meta.bucket_edges);
+    assert(Math.abs(Math.exp(ll[b]) - prob) < 1e-3, `${Math.exp(ll[b])} vs ${prob}`);
+  }
+  let threw = false;
+  try { moveBucketLL(model, { fen: model.meta.tests[0].fen, uci: "a1a8" }); } catch { threw = true; }
+  assert(threw, "an illegal move is refused");
 });
 
 run();
