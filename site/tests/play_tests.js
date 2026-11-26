@@ -539,4 +539,25 @@ test("the network gets the clocks, so short time changes the bot's choices like 
   equal(site.clockContext(), {}, "untimed: the model's default");
 });
 
+test("timed games: clocks survive a reload (time passes meanwhile), and there is no take back", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1500, color: "white", time: "5" });
+  await site.play("e2e4");
+  assert($("takeback").disabled, "no take back against the clock");
+  site.takeback();
+  equal(site.ui.chess.history().length, 2, "not even by calling it");
+  const snap = site.snapshot();
+  equal(snap.time, "5");
+  equal(snap.clock.running, "w");
+  const away = { ...snap, clock: { ...snap.clock, at: snap.clock.at - 30000 } };   // saved 30 s ago
+  assert(site.restore(away));
+  const left = site.ui.clock.left("w");
+  assert(left <= snap.clock.remaining.w - 30000 && left > snap.clock.remaining.w - 31000, `${left}`);
+  equal(site.ui.clock.left("b"), snap.clock.remaining.b, "the bot's clock was stopped");
+  const gone = { ...snap, clock: { ...snap.clock, at: snap.clock.at - 400000 } };    // away longer than the time left
+  assert(site.restore(gone));
+  await until(() => site.ui.over, "the flag fell while away");
+  equal(site.ui.overText, "Black wins on time");
+});
+
 run();

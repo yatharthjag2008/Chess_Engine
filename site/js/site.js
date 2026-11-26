@@ -64,6 +64,8 @@ export function snapshot() {
     orientation: ui.board.orientation,
     over: ui.over ? { text: ui.overText, winner: ui.winner ?? null } : null,
     thoughts: Object.fromEntries(Object.entries(ui.thoughts).map(([ply, t]) => [ply, trim(t)])),
+    time: ui.time || "none",
+    clock: ui.clock ? ui.clock.toJSON() : null,           // carries on after a reload, time running as on a server
     savedAt: Date.now(),
   };
 }
@@ -170,7 +172,7 @@ export function render() {
   updateClocks();
   renderThinking(viewing ? ui.thoughts[ui.view] || null : ui.last);
   const humanMoves = history.filter((m) => m.color === ui.human).length;
-  $("takeback").disabled = ui.over || ui.busy || humanMoves === 0;
+  $("takeback").disabled = ui.over || ui.busy || humanMoves === 0 || Boolean(ui.clock);   // not in timed games
   $("resign").disabled = ui.over || ui.busy;
   const end = outcome();
   ui.board.el.classList.toggle("viewing", viewing);
@@ -411,7 +413,7 @@ export async function newGame({ rating, color, time = "none" }) {
 }
 
 export function takeback() {
-  if (ui.over || ui.busy) return;
+  if (ui.over || ui.busy || ui.clock) return;
   ui.chess.undo();                                   // the bot's reply
   if (ui.chess.turn() !== ui.human) ui.chess.undo(); // and your move
   ui.last = null;
@@ -530,6 +532,8 @@ export function restore(snap = saved.game.load()) {
   ui.startFen = snap.startFen || snap.start;
   ui.human = snap.human === "b" ? "b" : "w";
   ui.rating = Number(snap.rating) || 1500;
+  ui.time = snap.time || "none";
+  ui.clock = snap.clock ? Clock.fromJSON(snap.clock) : null;
   ui.thoughts = snap.thoughts || {};
   const plies = snap.moves.length;
   ui.last = ui.thoughts[plies] || null;
