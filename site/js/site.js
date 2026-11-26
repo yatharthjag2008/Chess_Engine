@@ -133,6 +133,7 @@ function finish(text, winner) {
   ui.over = true;
   ui.overText = text;
   setStatus(text);
+  ui.sounds.play(winner === null ? "draw" : winner === ui.human ? "win" : "lose");
   const banner = $("result-banner");
   const heading = document.createElement("h2");
   heading.textContent = winner === null ? "Draw" : winner === ui.human ? "You won" : "The bot won";
@@ -202,6 +203,7 @@ export async function newGame({ rating, color }) {
   ui.last = null;
   $("result-banner").hidden = true;
   ui.board.setOrientation(color === "black" ? "black" : "white");
+  ui.sounds.play("start");
   render();
   if (ui.human === "b") await botTurn();
 }

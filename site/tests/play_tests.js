@@ -142,4 +142,23 @@ test("moves make their sounds: yours and the bot's", async () => {
   assert(["move", "capture", "check", "castle", "promote"].includes(site.ui.sounds.log[1]), site.ui.sounds.log[1]);
 });
 
+test("a game starts and ends with a sound: win, lose or draw", async () => {
+  site.ui.sounds.log = [];
+  await site.newGame({ rating: 1500, color: "white" });
+  equal(site.ui.sounds.log, ["start"]);
+  site.resign();
+  equal(site.ui.sounds.log.slice(-1), ["lose"]);
+  await site.newGame({ rating: 1500, color: "white" });
+  site.ui.chess.load("7k/8/6K1/8/8/8/R7/1R6 w - - 0 1");
+  site.render();
+  await site.play("a2a7");
+  await site.play("b1b8");
+  equal(site.ui.sounds.log.slice(-2), ["check", "win"]);
+  await site.newGame({ rating: 1500, color: "white" });
+  site.ui.chess.load("k7/8/1Q6/8/8/8/8/7K w - - 0 1");
+  site.render();
+  await site.play("h1g1");                          // after Kg1 Black has no moves: stalemate
+  equal(site.ui.sounds.log.slice(-1), ["draw"]);
+});
+
 run();
