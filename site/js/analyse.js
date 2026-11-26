@@ -98,8 +98,10 @@ function render({ results, overall, unreadable }, player) {
     if (estimate.withOpponent && !fits) {
       const warning = document.createElement("p");
       warning.className = "form-error misfit";
-      warning.textContent = `These disagree: the opponent's rating (${side.oppRating}) is far outside what the moves `
-        + `suggest. If this was not a game between similarly rated players (a casual challenge, say), go by the moves.`;
+      warning.textContent = `These disagree: the opponent's rating (${side.oppRating}) is far from what the moves alone `
+        + `suggest. Either this was not a game between similarly rated players (a casual challenge, say), and the moves `
+        + `are the better guide; or the moves undersell the player, which happens: from one game they are often hundreds `
+        + `of points off.`;
       li.append(warning);
     }
     const opponent = side.color === "w" ? side.headers.Black : side.headers.White;

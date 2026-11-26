@@ -214,7 +214,8 @@ test("an opponent whose rating does not fit the moves is flagged, and left out o
   equal(fits[1], false, "an opponent rated 610 against these moves");
   const flagged = [...$("estimate-list").querySelectorAll(".misfit")];
   equal(flagged.length, fits.filter((f) => !f).length);
-  assert(flagged[0].textContent.startsWith("These disagree: the opponent's rating (610) is far outside"), flagged[0].textContent);
+  assert(flagged[0].textContent.startsWith("These disagree: the opponent's rating (610) is far from what the moves alone suggest. Either"),
+         flagged[0].textContent);
   const left = fits.filter((f) => !f).length;
   assert($("overall").textContent.includes(`(${left} game${left === 1 ? "" : "s"} left out where the opponent's rating did not fit the moves)`),
          $("overall").textContent);
