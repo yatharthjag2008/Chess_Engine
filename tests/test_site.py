@@ -92,3 +92,8 @@ def test_the_site_modules(tmp_path) -> None:
 
 def test_the_play_page_end_to_end(tmp_path) -> None:
     _run_page(tmp_path, "play.html", PLAY_TESTS)
+
+
+def test_a_game_survives_a_reload(tmp_path) -> None:
+    """A real reload in the browser: the saved game is restored."""
+    _run_page(tmp_path, "reload.html", 1)
