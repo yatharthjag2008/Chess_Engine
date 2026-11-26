@@ -351,4 +351,20 @@ test("looking back, the captures and the check are those of the position shown",
   assert(site.ui.board.check);
 });
 
+test("looking back at a bot move shows what players weighed there; take back returns to the game", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1500, color: "white" });
+  await site.play("e2e4");
+  const first = site.ui.last;
+  await site.play("d2d4");
+  site.showPly(2);
+  assert(!$("thinking-panel").hidden, "shown for the bot's first move");
+  assert($("thinking-caption").textContent.includes(`before ${first.san}`), $("thinking-caption").textContent);
+  site.showPly(1);
+  assert($("thinking-panel").hidden, "your move: nothing to show");
+  site.takeback();
+  equal(site.ui.view, null, "take back returns to the game");
+  equal(site.ui.chess.history().length, 2);
+});
+
 run();

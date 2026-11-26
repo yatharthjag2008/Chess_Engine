@@ -14,6 +14,7 @@ export const ui = {
   chess: null,
   startFen: START,     // where the game began (captures are counted from here)
   view: null,          // null: the game as it stands; a number: looking at the position after that many moves
+  thoughts: {},        // what the bot weighed, by the ply its move made: { san, uci, prob, candidates }
   human: "w",          // "w" or "b"
   rating: 1500,
   busy: false,
@@ -136,7 +137,7 @@ export function render() {
   $("first").disabled = $("prev").disabled = shownPly === 0;
   $("next").disabled = $("last").disabled = !viewing;
   renderCaptured(shown.fen);
-  renderThinking();
+  renderThinking(viewing ? ui.thoughts[ui.view] || null : ui.last);
   const humanMoves = history.filter((m) => m.color === ui.human).length;
   $("takeback").disabled = ui.over || ui.busy || humanMoves === 0;
   $("resign").disabled = ui.over || ui.busy;
@@ -207,8 +208,8 @@ function renderCaptured(fen) {
   }
 }
 
-function renderThinking() {
-  const move = ui.last;
+/** "What players at this rating play" for one bot move (null hides the panel). */
+function renderThinking(move) {
   $("thinking-panel").hidden = !move;
   if (!move) return;
   $("thinking-caption").textContent = `In the position before ${move.san}, players rated about ${ui.rating} chose:`;
@@ -274,6 +275,7 @@ export function botMove() {
   const choice = sampleMove(moves, 1, ui.random);
   makeMove(choice.uci);
   ui.last = { san: choice.san, uci: choice.uci, prob: choice.prob, candidates: moves };
+  ui.thoughts[c.history().length] = ui.last;
   return choice;
 }
 
@@ -309,6 +311,7 @@ export async function newGame({ rating, color }) {
   ui.chess = new Chess();
   ui.startFen = ui.chess.fen();
   ui.view = null;
+  ui.thoughts = {};
   ui.rating = rating;
   ui.human = color === "black" ? "b" : "w";
   ui.over = false;
@@ -325,6 +328,7 @@ export function takeback() {
   ui.chess.undo();                                   // the bot's reply
   if (ui.chess.turn() !== ui.human) ui.chess.undo(); // and your move
   ui.last = null;
+  ui.view = null;
   render();
 }
 
