@@ -437,4 +437,21 @@ test("a finished game comes back finished, and its PGN has the result", async ()
   assert(text.includes('[White "You"]') && text.includes('[Black "Bot 1500"]'), text);
 });
 
+test("the new-game choices are remembered (rating and side, random included)", async () => {
+  $("rating").value = "1850";
+  $("new-game").querySelector('input[value="random"]').checked = true;
+  $("new-game").dispatchEvent(new Event("submit", { cancelable: true }));
+  await until(() => !site.ui.busy, "the game started");
+  equal(JSON.parse(localStorage.getItem("human-chess-site.settings")), { rating: 1850, color: "random" });
+  $("rating").value = "1000";
+  $("new-game").querySelector('input[value="white"]').checked = true;
+  site.applySettings({ rating: 1850, color: "random" });
+  equal($("rating").value, "1850");
+  equal($("rating-value").textContent, "1850");
+  assert($("new-game").querySelector('input[value="random"]').checked);
+  site.applySettings({ rating: 99999, color: "purple" });
+  equal($("rating").value, "1850", "nonsense is ignored");
+  $("new-game").querySelector('input[value="white"]').checked = true;
+});
+
 run();

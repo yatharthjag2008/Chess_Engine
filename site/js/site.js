@@ -30,7 +30,20 @@ const saved = {
   sound: stored("human-chess-site.sound"),      // "on" / "off"
   volume: stored("human-chess-site.volume"),    // 0-100
   game: stored("human-chess-site.game"),        // the game in progress (or just finished), see snapshot()
+  settings: stored("human-chess-site.settings"), // the new-game form: { rating, color }
 };
+
+/** Fill the new-game form from saved settings (unknown values are left alone). */
+export function applySettings(settings) {
+  if (!settings) return;
+  const rating = Number(settings.rating);
+  if (rating >= 800 && rating <= 2400) {
+    $("rating").value = String(rating);
+    $("rating-value").textContent = String(rating);
+  }
+  const radio = $("new-game").querySelector(`input[name="color"][value="${settings.color}"]`);
+  if (radio) radio.checked = true;
+}
 
 /** Everything needed to carry on with the game after a reload. */
 export function snapshot() {
@@ -382,8 +395,11 @@ export async function init(modelBase = "model/") {
   const show = () => { $("rating-value").textContent = rating.value; };
   rating.addEventListener("input", show);
   show();
+  applySettings(saved.settings.load());
   $("new-game").addEventListener("submit", (event) => {
     event.preventDefault();
+    const data = new FormData($("new-game"));
+    saved.settings.save({ rating: Number(data.get("rating")), color: data.get("color") });
     newGame(readForm());
   });
   $("flip").addEventListener("click", () => { ui.board.flip(); if (ui.chess) render(); });
