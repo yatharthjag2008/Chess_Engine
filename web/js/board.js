@@ -140,6 +140,12 @@ export class Board {
     }
     drag.ghost.style.left = `${event.clientX}px`;
     drag.ghost.style.top = `${event.clientY}px`;
+    const over = this.squareAt(event.clientX, event.clientY);   // outline the square the piece would land on
+    if (over !== drag.over) {
+      if (drag.over) this.squareEl(drag.over)?.classList.remove("drop-over");
+      if (over) this.squareEl(over)?.classList.add("drop-over");
+      drag.over = over;
+    }
   }
 
   dragEnd(event) {

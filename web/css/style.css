@@ -11,12 +11,13 @@
   --accent: #2a78d6;
   --accent-ink: #ffffff;
   --danger: #d03b3b;
-  --square-light: #f0d9b5;
-  --square-dark: #b58863;
-  --last-move: rgba(255, 213, 0, 0.42);
-  --selected: rgba(42, 120, 214, 0.45);
-  --target-dot: rgba(11, 11, 11, 0.28);
-  --check: radial-gradient(circle, rgba(227, 73, 72, 0.95) 0%, rgba(227, 73, 72, 0.55) 45%, rgba(227, 73, 72, 0) 75%);
+  --square-light: #eeeed2;
+  --square-dark: #769656;
+  --last-move: rgba(255, 255, 51, 0.48);
+  --selected: rgba(255, 255, 51, 0.62);
+  --target-dot: rgba(0, 0, 0, 0.16);
+  --drop-ring: rgba(255, 255, 255, 0.75);
+  --check: radial-gradient(circle, rgba(255, 30, 30, 0.95) 0%, rgba(231, 0, 0, 0.6) 30%, rgba(169, 0, 0, 0) 72%);
   --bar: #2a78d6;
   --radius: 10px;
   --board-size: min(92vw, 560px);
@@ -32,7 +33,6 @@
     --ink-muted: #898781;
     --line: #2c2c2a;
     --accent: #3987e5;
-    --target-dot: rgba(11, 11, 11, 0.35);
     --bar: #3987e5;
   }
 }
@@ -92,36 +92,44 @@ body {
   grid-template-rows: repeat(8, 1fr);
   width: 100%;
   height: 100%;
-  border-radius: 6px;
+  border-radius: 4px;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18), 0 12px 32px rgba(0, 0, 0, 0.18);
   user-select: none;
+  -webkit-user-select: none;
   touch-action: none;
 }
 .square { position: relative; display: flex; align-items: center; justify-content: center; }
 .square.light { background: var(--square-light); }
 .square.dark { background: var(--square-dark); }
+/* Highlights sit between the square colour and the piece (::before), move targets above it (::after). */
 .square.last-move::before, .square.selected::before, .square.in-check::before {
   content: ""; position: absolute; inset: 0; pointer-events: none;
 }
 .square.last-move::before { background: var(--last-move); }
 .square.selected::before { background: var(--selected); }
+.square.in-check::before { background: var(--check); }
 .square.hint-from::after, .square.hint-to::after {
   content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 4px var(--accent);
 }
 .square.hint-to::after { background: color-mix(in srgb, var(--accent) 25%, transparent); }
-.square.in-check::before { background: var(--check); }
+/* Where the selected piece can go: a dot on an empty square, a ring round a piece it can take. */
 .square.target::after {
-  content: ""; position: absolute; width: 30%; height: 30%; border-radius: 50%;
+  content: ""; position: absolute; width: 32%; height: 32%; border-radius: 50%; z-index: 2;
   background: var(--target-dot); pointer-events: none;
 }
 .square.target.occupied::after {
-  width: 100%; height: 100%; border-radius: 0; background: none;
-  box-shadow: inset 0 0 0 5px var(--target-dot);
+  width: 100%; height: 100%; border-radius: 0;
+  background: radial-gradient(circle closest-side, transparent 0 80%, var(--target-dot) 82% 100%, transparent 101%);
 }
-.coord { position: absolute; font-size: 2.2cqw; font-weight: 700; opacity: 0.9; pointer-events: none; }
-.coord.rank { top: 2px; left: 3px; }
-.coord.file { bottom: 1px; right: 4px; }
+.square.target { cursor: pointer; }
+@media (hover: hover) {
+  .square.target:hover::after { width: 100%; height: 100%; border-radius: 0; background: var(--target-dot); }
+}
+.square.drop-over::after { box-shadow: inset 0 0 0 0.6cqw var(--drop-ring); }
+.coord { position: absolute; font-size: 2.3cqw; font-weight: 600; line-height: 1; pointer-events: none; z-index: 1; }
+.coord.rank { top: 0.5cqw; left: 0.6cqw; }
+.coord.file { bottom: 0.5cqw; right: 0.7cqw; }
 .square.light .coord { color: var(--square-dark); }
 .square.dark .coord { color: var(--square-light); }
 
@@ -145,8 +153,10 @@ body {
 .piece[data-piece="bb"] { background-image: url("../pieces/bB.svg"); }
 .piece[data-piece="bn"] { background-image: url("../pieces/bN.svg"); }
 .piece[data-piece="bp"] { background-image: url("../pieces/bP.svg"); }
-.piece.dragging { opacity: 0.35; }
-.drag-ghost { position: fixed; pointer-events: none; z-index: 50; transform: translate(-50%, -50%); }
+.board:not(.locked) .square.occupied:hover .piece { filter: brightness(1.06); }
+.piece.dragging { opacity: 0.3; }
+.drag-ghost { position: fixed; pointer-events: none; z-index: 50; transform: translate(-50%, -50%) scale(1.08);
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35)); cursor: grabbing; }
 .board.locked .piece { cursor: default; }
 
 .promotion {
