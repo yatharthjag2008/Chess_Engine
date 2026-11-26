@@ -387,4 +387,25 @@ test("the game is saved in the browser after every move, and how it ended", asyn
   equal(game.over, { text: "You resigned: White wins", winner: "w" });
 });
 
+test("a saved game is carried on: position, side, rating, the bot's thinking", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1300, color: "white" });
+  await site.play("e2e4");
+  await site.play("d2d4");
+  const snap = site.snapshot();
+  const fen = site.ui.chess.fen();
+  const last = site.ui.last.san;
+  await site.newGame({ rating: 2000, color: "black" });
+  assert(site.restore(snap), "restored");
+  equal(site.ui.chess.fen(), fen);
+  equal([site.ui.human, site.ui.rating, site.ui.board.orientation], ["w", 1300, "white"]);
+  equal(site.ui.chess.history().length, 4);
+  equal(site.ui.last.san, last, "what the bot weighed on its last move");
+  equal(site.ui.board.mover, "white", "your move");
+  equal($("move-list").querySelectorAll(".san[data-ply]").length, 4);
+  assert(!site.restore({ version: 1, start: "not a fen", moves: [] }), "a broken save is ignored");
+  assert(!site.restore({ version: 99 }), "an unknown version too");
+  assert(!site.restore(null));
+});
+
 run();

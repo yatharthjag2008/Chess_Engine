@@ -430,6 +430,36 @@ export async function init(modelBase = "model/") {
     : `Warning: this browser's results differ from PyTorch's (by ${check.worst.toExponential(1)}).`;
   $("play").disabled = false;
   setStatus("Choose a rating and press Play.");
+  restore();
+}
+
+/** Carry on with a saved game (by default the one saved in this browser); false if there is none or it is broken. */
+export function restore(snap = saved.game.load()) {
+  if (!snap || snap.version !== 1 || !Array.isArray(snap.moves)) return false;
+  let chess;
+  try {
+    chess = new Chess(snap.start);
+    for (const move of snap.moves) chess.move(move);
+  } catch {
+    saved.game.clear();                                     // unreadable: start afresh
+    return false;
+  }
+  ui.chess = chess;
+  ui.startFen = snap.startFen || snap.start;
+  ui.human = snap.human === "b" ? "b" : "w";
+  ui.rating = Number(snap.rating) || 1500;
+  ui.thoughts = snap.thoughts || {};
+  const plies = snap.moves.length;
+  ui.last = ui.thoughts[plies] || null;
+  ui.view = null;
+  ui.busy = false;
+  ui.over = Boolean(snap.over);
+  ui.overText = snap.over ? snap.over.text : null;
+  ui.winner = snap.over ? snap.over.winner : null;
+  $("result-banner").hidden = true;
+  ui.board.setOrientation(snap.orientation === "black" ? "black" : "white");
+  render();
+  return true;
 }
 
 if (document.getElementById("board") && !window.__noAutoInit) init();
