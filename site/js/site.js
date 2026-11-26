@@ -484,6 +484,23 @@ export function pgn() {
   return c.pgn() + "\n";
 }
 
+/** The FEN of the position on the board (the one looked at, when looking back). */
+export function shownFen() {
+  return ui.board.fen;
+}
+
+/** Copy the position shown as a FEN, to paste into "From a position" here or elsewhere. */
+export async function copyFen() {
+  const fen = shownFen();
+  try {
+    await navigator.clipboard.writeText(fen);
+    setStatus(`Copied: ${fen}`);
+  } catch {
+    setStatus(`Your browser did not allow copying. The position: ${fen}`);
+  }
+  return fen;
+}
+
 function download() {
   const blob = new Blob([pgn()], { type: "application/x-chess-pgn" });
   const link = document.createElement("a");
@@ -542,6 +559,7 @@ export async function init(modelBase = "model/", dataBase = modelBase.replace(/m
   $("takeback").addEventListener("click", takeback);
   $("resign").addEventListener("click", resign);
   $("download").addEventListener("click", download);
+  $("copy-fen").addEventListener("click", copyFen);
   $("sound").addEventListener("click", () => setSound(!ui.sounds.enabled));
   const unlock = () => {                                   // audio may only start after a click or key
     ui.sounds.unlock();

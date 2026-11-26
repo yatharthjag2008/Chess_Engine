@@ -719,4 +719,28 @@ test("from a position: captures count from there, and the PGN records the positi
   assert(!site.pgn().includes("[SetUp"), "a standard game has no SetUp header");
 });
 
+test("Copy FEN copies the position shown (the one looked at, when looking back)", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1500, color: "white" });
+  await site.play("e2e4");
+  let copied = null;
+  const clipboard = navigator.clipboard;
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (t) => { copied = t; } } });
+  try {
+    $("copy-fen").click();
+    await until(() => copied, "copied");
+    equal(copied, site.ui.chess.fen());
+    assert($("status").textContent.startsWith("Copied: "), $("status").textContent);
+    site.showPly(0);
+    equal(await site.copyFen(), "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "the position looked at");
+    Object.defineProperty(navigator, "clipboard", { configurable: true,
+      value: { writeText: async () => { throw new Error("denied"); } } });
+    await site.copyFen();
+    assert($("status").textContent.startsWith("Your browser did not allow copying."), "says so, and shows the FEN");
+  } finally {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: clipboard });
+    site.showPly(null);
+  }
+});
+
 run();
