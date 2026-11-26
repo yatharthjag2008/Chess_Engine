@@ -14,6 +14,8 @@ rules. It is built from `site/` by `.github/workflows/pages.yml` on every push t
   `site/model/`). The site checks itself against PyTorch's numbers in every browser that loads it.
 - **Opening names** come from `third_party/chess-openings/` (the Lichess data set, CC0); after updating those files
   run `python scripts/build_openings.py` (writes `site/data/openings.json`; a test checks it is up to date).
+The rating estimate's prior and temper (`site/data/rating.json`) are rebuilt with
+`python scripts/build_rating_prior.py` after retraining or re-fitting the estimate (it needs the built dataset).
 - **To look before pushing**: `python scripts/build_site.py`, then `python -m http.server -d _site 8001` and open
   `http://localhost:8001`.
 - **One-time setup on GitHub**: Settings → Pages → Build and deployment → Source: **GitHub Actions** (as for any

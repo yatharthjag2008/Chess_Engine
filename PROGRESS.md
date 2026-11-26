@@ -1288,3 +1288,23 @@ server (the model already runs there, `site/js/engine.js`).
   - Games from a position do not count (a won position says little about your level). Your last ten rated games are
     listed, and the rating can start again. The mode and the live state survive a reload; the PGN gets an Adaptive
     header (and the live changes).
+- **Rating estimates** on a new **Analyse** page (`site/analyse.html`, `site/js/analyse.js`):
+  - `site/js/rating.js` ports `rating_estimation.py`: each move is scored at all eight rating buckets with the
+    network in the browser (log-softmax over the legal moves, the opponent's rating from the PGN or else assumed
+    equal), interpolated to a 600-2800 grid, tempered and combined with the data prior. The prior (from the
+    dataset's players) and the temper fitted on held-out games (1.19) come from `site/data/rating.json`, written by
+    `scripts/build_rating_prior.py`; a test checks the committed file is what the script builds.
+  - Checked three ways: the estimate from made-up likelihoods equals Python's (a test vector in the file); a move's
+    likelihood equals PyTorch's probability (the export's test positions); and for a real Lichess game the page
+    gives Python's `estimate_rating` result within 2 Elo (player01 1754, 80% range 1421-2060).
+  - `site/js/games.js` reads pasted PGN like `player_games.py`: several games, each side's moves with the position
+    before, ratings, time control (Chess.com's `600` too) and the clocks before each move from `[%clk]`.
+  - Paste games, or fetch a player's last 10 from Lichess (PGN with clocks) or Chess.com (newest monthly archives
+    first, standard chess only, never another host) straight from the browser (`site/js/imports.js`). Name a
+    player to get only their side and one estimate from all their games. Bad names, unknown players, rate limits
+    and blocked requests are explained, with pasting as the fallback.
+  - On the play page, **Analyse this game** hands the game over (through local storage) and the Analyse page
+    estimates how strong you played.
+  - Each move takes eight network passes, so a long game takes several seconds; the page reports progress and
+    stays responsive.
+
