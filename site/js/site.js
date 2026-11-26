@@ -266,6 +266,11 @@ export async function init(modelBase = "model/") {
   $("resign").addEventListener("click", resign);
   $("download").addEventListener("click", download);
   $("sound").addEventListener("click", () => setSound(!ui.sounds.enabled));
+  const unlock = () => {                                   // audio may only start after a click or key
+    ui.sounds.unlock();
+    for (const type of ["pointerdown", "keydown"]) document.removeEventListener(type, unlock, true);
+  };
+  for (const type of ["pointerdown", "keydown"]) document.addEventListener(type, unlock, true);
   setSound(savedSound(), { save: false });
   document.addEventListener("keydown", (event) => {
     const typing = event.target instanceof Element && event.target.closest("input, select, textarea, button");

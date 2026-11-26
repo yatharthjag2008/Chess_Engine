@@ -4,7 +4,8 @@
 //   sounds.play(soundFor(move, { check: chess.inCheck() }));   // "move", "capture", "castle", ...
 //
 // Every sound is a few milliseconds of filtered noise (the wooden click of a piece) and/or short
-// sine tones. Browsers keep audio silent until the page has been clicked; nothing breaks before that.
+// sine tones. Browsers keep audio silent until the page has been clicked: call unlock() from the
+// first click or key press (site.js does), and nothing breaks before that.
 
 /** Which sound a chess.js move makes (`check`: the move gives check). */
 export function soundFor(move, { check = false } = {}) {
@@ -85,6 +86,13 @@ export class Sounds {
       try { this.ctx = this.makeContext(); } catch { this.ctx = null; }
     }
     return this.ctx;
+  }
+
+  /** Browsers start audio suspended until the page is clicked: call this from a click or key press. */
+  unlock() {
+    const ctx = this.context;
+    if (ctx && ctx.state === "suspended" && ctx.resume) ctx.resume().catch(() => {});
+    return Boolean(ctx && ctx.state !== "closed");
   }
 
   /** Play a sound by name; returns whether it was played (false when muted or unknown). */

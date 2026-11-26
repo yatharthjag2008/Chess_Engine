@@ -33,6 +33,17 @@ test("sounds play through Web Audio, and quietly do nothing without it", () => {
   assert(broken.play("capture"), "a failing audio context does not throw");
 });
 
+test("unlock resumes a suspended audio context (the first click or key press)", () => {
+  let resumed = 0;
+  const fake = { state: "suspended", resume: () => { resumed += 1; fake.state = "running"; return Promise.resolve(); } };
+  const sounds = new Sounds({ makeContext: () => fake });
+  assert(sounds.unlock());
+  equal(resumed, 1);
+  sounds.unlock();
+  equal(resumed, 1, "already running");
+  assert(!new Sounds({ makeContext: () => null }).unlock(), "no audio at all");
+});
+
 test("muted: nothing plays", () => {
   const sounds = new Sounds({ enabled: false });
   assert(!sounds.play("move"));
