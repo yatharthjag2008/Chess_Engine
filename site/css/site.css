@@ -25,5 +25,7 @@
 .step-buttons button { padding: 6px 0; font-size: 0.95rem; line-height: 1; }
 .step-buttons button:disabled { opacity: 0.4; }
 
+.segmented span { white-space: nowrap; }
+
 .volume { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 0.9rem; }
 .volume input { width: 90px; }

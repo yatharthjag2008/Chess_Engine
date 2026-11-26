@@ -6,6 +6,7 @@ import { loadModel, sampleMove } from "./engine.js";
 import { Sounds, soundFor } from "./sounds.js";
 import { START, captured, describeCaptures } from "./material.js";
 import { stored } from "./storage.js";
+import { Clock, baseSeconds } from "./clock.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -30,7 +31,7 @@ const saved = {
   sound: stored("human-chess-site.sound"),      // "on" / "off"
   volume: stored("human-chess-site.volume"),    // 0-100
   game: stored("human-chess-site.game"),        // the game in progress (or just finished), see snapshot()
-  settings: stored("human-chess-site.settings"), // the new-game form: { rating, color }
+  settings: stored("human-chess-site.settings"), // the new-game form: { rating, color, time }
 };
 
 /** Fill the new-game form from saved settings (unknown values are left alone). */
@@ -41,8 +42,10 @@ export function applySettings(settings) {
     $("rating").value = String(rating);
     $("rating-value").textContent = String(rating);
   }
-  const radio = $("new-game").querySelector(`input[name="color"][value="${settings.color}"]`);
-  if (radio) radio.checked = true;
+  for (const name of ["color", "time"]) {
+    const radio = $("new-game").querySelector(`input[name="${name}"][value="${settings[name]}"]`);
+    if (radio) radio.checked = true;
+  }
 }
 
 /** Everything needed to carry on with the game after a reload. */
@@ -332,11 +335,13 @@ export function readForm() {
   const data = new FormData($("new-game"));
   let color = data.get("color");
   if (color === "random") color = ui.random() < 0.5 ? "white" : "black";
-  return { rating: Number(data.get("rating")), color };
+  return { rating: Number(data.get("rating")), color, time: data.get("time") || "none" };
 }
 
-export async function newGame({ rating, color }) {
+export async function newGame({ rating, color, time = "none" }) {
   ui.chess = new Chess();
+  ui.time = baseSeconds(time) ? String(time) : "none";
+  ui.clock = baseSeconds(time) ? new Clock(baseSeconds(time)) : null;   // null: an untimed game
   ui.startFen = ui.chess.fen();
   ui.view = null;
   ui.thoughts = {};
@@ -399,7 +404,7 @@ export async function init(modelBase = "model/") {
   $("new-game").addEventListener("submit", (event) => {
     event.preventDefault();
     const data = new FormData($("new-game"));
-    saved.settings.save({ rating: Number(data.get("rating")), color: data.get("color") });
+    saved.settings.save({ rating: Number(data.get("rating")), color: data.get("color"), time: data.get("time") });
     newGame(readForm());
   });
   $("flip").addEventListener("click", () => { ui.board.flip(); if (ui.chess) render(); });

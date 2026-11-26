@@ -442,7 +442,7 @@ test("the new-game choices are remembered (rating and side, random included)", a
   $("new-game").querySelector('input[value="random"]').checked = true;
   $("new-game").dispatchEvent(new Event("submit", { cancelable: true }));
   await until(() => !site.ui.busy, "the game started");
-  equal(JSON.parse(localStorage.getItem("human-chess-site.settings")), { rating: 1850, color: "random" });
+  equal(JSON.parse(localStorage.getItem("human-chess-site.settings")), { rating: 1850, color: "random", time: "none" });
   $("rating").value = "1000";
   $("new-game").querySelector('input[value="white"]').checked = true;
   site.applySettings({ rating: 1850, color: "random" });
@@ -452,6 +452,23 @@ test("the new-game choices are remembered (rating and side, random included)", a
   site.applySettings({ rating: 99999, color: "purple" });
   equal($("rating").value, "1850", "nonsense is ignored");
   $("new-game").querySelector('input[value="white"]').checked = true;
+});
+
+test("choose a time control: none, 1, 3, 5 or 10 minutes", async () => {
+  const pick = (value) => { $("new-game").querySelector(`input[name="time"][value="${value}"]`).checked = true; };
+  for (const [value, base] of [["1", 60], ["3", 180], ["5", 300], ["10", 600]]) {
+    pick(value);
+    const form = site.readForm();
+    equal(form.time, value);
+    await site.newGame({ ...form, color: "white" });
+    equal(site.ui.clock.base, base);
+  }
+  pick("none");
+  await site.newGame({ ...site.readForm(), color: "white" });
+  equal(site.ui.clock, null, "untimed");
+  site.applySettings({ rating: 1500, color: "white", time: "5" });
+  assert($("new-game").querySelector('input[name="time"][value="5"]').checked, "remembered like the rest");
+  pick("none");
 });
 
 run();
