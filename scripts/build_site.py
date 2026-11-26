@@ -5,7 +5,7 @@ Usage:
     python scripts/build_site.py               # assemble the site into _site/ (standard library only)
     python -m http.server -d _site 8001        # look at it: http://localhost:8001
 
-The site is site/ (its page, scripts and the exported model) plus the board and styles shared with the local web
+The site is site/ (its page, scripts, the exported model and the opening names from scripts/build_openings.py) plus the board and styles shared with the local web
 app (web/js/board.js, web/css/style.css, web/pieces/). The exported model is committed, so the GitHub Actions workflow
 (.github/workflows/pages.yml) only runs the second command and publishes _site/.
 """
@@ -27,6 +27,8 @@ def assemble(out: Path, tests: bool = False) -> list[str]:
     """Copy the site into ``out`` (replacing it); with ``tests`` also the browser tests. Returns the files."""
     if not (SITE / "model" / "model.json").is_file():
         raise FileNotFoundError("site/model/model.json is missing: run with --export first")
+    if not (SITE / "data" / "openings.json").is_file():
+        raise FileNotFoundError("site/data/openings.json is missing: run python scripts/build_openings.py")
     if out.exists():
         shutil.rmtree(out)
     ignore = None if tests else shutil.ignore_patterns("tests")

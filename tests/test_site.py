@@ -37,10 +37,20 @@ def test_assemble_copies_the_site_and_the_shared_files(tmp_path) -> None:
     files = build.assemble(tmp_path / "out")
     assert {"index.html", "js/engine.js", "js/board.js", "css/style.css", "vendor/chess.js",
             "model/model.json", "model/model.bin", ".nojekyll", "pieces/wK.svg", "pieces/bP.svg",
-            "pieces/LICENSE.txt"} <= set(files)
+            "pieces/LICENSE.txt", "data/openings.json", "js/openings.js"} <= set(files)
     assert not any(f.startswith("tests/") for f in files), "tests are not published"
     with_tests = build.assemble(tmp_path / "out", tests=True)
     assert "tests/engine.html" in with_tests and "tests/harness.js" in with_tests
+
+
+def test_assemble_needs_the_opening_names(tmp_path, monkeypatch) -> None:
+    build = _build_site()
+    fake = tmp_path / "site"
+    (fake / "model").mkdir(parents=True)
+    (fake / "model" / "model.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(build, "SITE", fake)
+    with pytest.raises(FileNotFoundError, match="build_openings.py"):
+        build.assemble(tmp_path / "out")
 
 
 def test_the_committed_model_matches_its_test_vectors(tmp_path) -> None:
