@@ -177,4 +177,15 @@ test("the sound button (and the m key) mutes and unmutes, and is remembered", as
   equal(localStorage.getItem("human-chess-site.sound"), "on");
 });
 
+test("the volume slider sets the volume and is remembered", () => {
+  const slider = $("volume");
+  slider.value = "30";
+  slider.dispatchEvent(new Event("input"));
+  equal(site.ui.sounds.volume, 0.3);
+  equal(localStorage.getItem("human-chess-site.volume"), "30");
+  site.setVolume(250);
+  equal(site.ui.sounds.volume, 1, "kept within 0-100");
+  site.setVolume(70);
+});
+
 run();
