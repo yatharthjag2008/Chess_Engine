@@ -8,7 +8,7 @@ import { stored } from "./storage.js";
 import { ScoringPool, scoreSide } from "./pool.js";
 
 const handoff = stored("human-chess-site.analyse");   // a game handed over by the play page
-import { describeEstimate, estimateFromBucketLL, loadRatingData, moveBucketLL } from "./rating.js";
+import { describeEstimate, estimateFromBucketLL, loadRatingData, moveBucketLL, opponentFits } from "./rating.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -62,12 +62,16 @@ export async function estimateText(text, { player = "", onProgress = () => {} } 
     all.push(...rows);
     const movesOnly = estimateFromBucketLL(rows, page.data);
     const paired = side.oppRating ? estimateFromBucketLL(rows, page.data, { oppRatings: [side.oppRating] }) : null;
-    results.push({ side, estimate: paired || movesOnly, movesOnly });
+    const fits = Boolean(paired && paired.withOpponent && opponentFits(movesOnly, side.oppRating));
+    results.push({ side, estimate: paired || movesOnly, movesOnly, fits });
   }
   let overall = null;
   if (player && results.length > 1) {
-    const opps = results.map((r) => r.side.oppRating);
-    overall = estimateFromBucketLL(all, page.data, { oppRatings: opps.every(Boolean) ? opps : null });
+    // Every game's moves count; only the opponents whose ratings fit the moves count as well.
+    const opps = results.filter((r) => r.fits).map((r) => r.side.oppRating);
+    overall = estimateFromBucketLL(all, page.data, { oppRatings: opps.length ? opps : null });
+    overall.opponentsUsed = opps.length;
+    overall.games = results.length;
   }
   return { results, overall, unreadable, error: null };
 }
@@ -76,10 +80,13 @@ function render({ results, overall, unreadable }, player) {
   $("estimate-results").hidden = false;
   $("overall").hidden = !overall;
   if (overall) {
+    const used = overall.opponentsUsed;
+    const left = overall.games - used;
     $("overall").textContent = `All ${results.length} games of ${player}: ${describeEstimate(overall)}`
-      + `${overall.withOpponent ? ", with the opponents' ratings" : ""}.`;
+      + (overall.withOpponent ? `, with the opponents' ratings${left ? ` (${left} game${left === 1 ? "" : "s"} left out `
+        + `where the opponent's rating did not fit the moves)` : ""}` : ", from the moves alone") + ".";
   }
-  const items = results.map(({ side, estimate, movesOnly }) => {
+  const items = results.map(({ side, estimate, movesOnly, fits }) => {
     const li = document.createElement("li");
     const who = document.createElement("strong");
     who.textContent = sideLabel(side);
@@ -88,6 +95,13 @@ function render({ results, overall, unreadable }, player) {
       ? `: ${describeEstimate(estimate)}, with the opponent's rating. From the moves alone: ${describeEstimate(movesOnly)}.`
       : `: ${describeEstimate(estimate)}, from the moves alone.`;
     li.append(who, what);
+    if (estimate.withOpponent && !fits) {
+      const warning = document.createElement("p");
+      warning.className = "form-error misfit";
+      warning.textContent = `These disagree: the opponent's rating (${side.oppRating}) is far outside what the moves `
+        + `suggest. If this was not a game between similarly rated players (a casual challenge, say), go by the moves.`;
+      li.append(warning);
+    }
     const opponent = side.color === "w" ? side.headers.Black : side.headers.White;
     if (opponent) {
       const game = document.createElement("span");

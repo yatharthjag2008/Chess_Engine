@@ -201,4 +201,24 @@ test("Lichess: a refused request is not mistaken for an unknown player", async (
   assert($("estimate-error").textContent.startsWith("Lichess refused to send the games"), $("estimate-error").textContent);
 });
 
+test("an opponent whose rating does not fit the moves is flagged, and left out of the combined estimate", async () => {
+  const game = (white, black, whiteElo, blackElo, moves) => `[White "${white}"]\n[Black "${black}"]\n`
+    + `[WhiteElo "${whiteElo}"]\n[BlackElo "${blackElo}"]\n[Result "*"]\n\n${moves} *\n`;
+  const text = [game("me", "a", 1500, 1480, "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7"),
+                game("b", "me", 610, 1500, "1. d4 d5 2. c4 e6 3. Nc3 Nf6 4. Bg5 Be7 5. e3 O-O"),
+                game("me", "c", 1500, 1530, "1. c4 e5 2. Nc3 Nf6 3. g3 d5 4. cxd5 Nxd5 5. Bg2 Nb6")].join("\n");
+  $("pgn-text").value = text;
+  $("player-name").value = "me";
+  const result = await analyse.estimate();
+  const fits = result.results.map((r) => r.fits);
+  equal(fits[1], false, "an opponent rated 610 against these moves");
+  const flagged = [...$("estimate-list").querySelectorAll(".misfit")];
+  equal(flagged.length, fits.filter((f) => !f).length);
+  assert(flagged[0].textContent.startsWith("These disagree: the opponent's rating (610) is far outside"), flagged[0].textContent);
+  const left = fits.filter((f) => !f).length;
+  assert($("overall").textContent.includes(`(${left} game${left === 1 ? "" : "s"} left out where the opponent's rating did not fit the moves)`),
+         $("overall").textContent);
+  equal(result.overall.opponentsUsed, 3 - left);
+});
+
 run();

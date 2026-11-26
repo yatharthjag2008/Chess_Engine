@@ -8,8 +8,8 @@ import { loadOpenings, openingOf, positionKey } from "../js/openings.js";
 import { PRESETS, parsePosition } from "../js/position.js";
 import { Clock, TIME_CONTROLS, baseSeconds, formatClock, thinkTime } from "../js/clock.js";
 import { START, canMate, captured, countPieces, describeCaptures, materialOf } from "../js/material.js";
-import { describeEstimate, estimateFromBucketLL, interp, loadRatingData, moveBucketLL, posterior, summarize }
-  from "../js/rating.js";
+import { describeEstimate, estimateFromBucketLL, interp, loadRatingData, moveBucketLL, opponentFits, posterior,
+         summarize } from "../js/rating.js";
 import { bucketOf, loadModel } from "../js/engine.js";
 import { clockOf, parseTimeControl, playerGames, readGame, splitPgn } from "../js/games.js";
 import { classify, describeSide, evalGraph, gameAccuracy, keyMoments, moveAccuracy, reviewMoves, summary,
@@ -351,6 +351,19 @@ test("rating: interpolation, posterior and summary behave like numpy's", () => {
   equal(s.estimate, 1100);
   equal(describeEstimate({ estimate: 1434, low: 1251, high: 1618, interval: 0.8, moves: 31 }),
         "about 1430 (80% range 1250-1620, from 31 moves)");
+});
+
+test("rating: the ends of the scale, and whether an opponent's rating fits the moves", () => {
+  const grid = [600, 700, 800, 900, 1000];
+  const top = summarize(grid, [0, 0, 0, 0.05, 0.95], 0.8, 12);
+  assert(top.atTop && !top.atBottom);
+  equal(describeEstimate(top), "1000 or more (the estimate's scale ends at 1000; 80% range from 910, from 12 moves)");
+  const bottom = summarize(grid, [0.95, 0.05, 0, 0, 0], 0.8, 1);
+  equal(describeEstimate(bottom), "600 or less (the estimate's scale starts at 600; 80% range up to 600, from 1 move)");
+  const middle = summarize(grid, [0, 0, 1, 0, 0], 0.8, 3);
+  assert(!middle.atTop && !middle.atBottom && describeEstimate(middle).startsWith("about 800"));
+  const alone = { wide: { low: 1280, high: 2190 } };
+  equal([opponentFits(alone, 1500), opponentFits(alone, 578), opponentFits(alone, 2500)], [true, false, false]);
 });
 
 test("rating: the estimate matches Python's for the same move likelihoods", async () => {

@@ -53,7 +53,8 @@ export function posterior(logLikelihood, logPrior, temper = 1) {
   return p.map((v) => v / total);
 }
 
-/** Mean, median and central `interval` of a posterior on `grid`. */
+/** Mean, median and central `interval` of a posterior on `grid`; `wide` is the central 95%, and `atTop` /
+ *  `atBottom` say the range reaches an end of the grid (the rating may lie beyond it). */
 export function summarize(grid, probabilities, interval = 0.8, moves = 0) {
   const cdf = [];
   let sum = 0;
@@ -61,7 +62,13 @@ export function summarize(grid, probabilities, interval = 0.8, moves = 0) {
   const tail = (1 - interval) / 2;
   const quantile = (q) => interp(q, cdf, grid);
   const estimate = grid.reduce((acc, r, i) => acc + r * probabilities[i], 0);
-  return { estimate, median: quantile(0.5), low: quantile(tail), high: quantile(1 - tail), interval, moves };
+  const step = grid.length > 1 ? grid[1] - grid[0] : 1;
+  const low = quantile(tail);
+  const high = quantile(1 - tail);
+  return { estimate, median: quantile(0.5), low, high, interval, moves,
+           wide: { low: quantile(0.025), high: quantile(0.975) },
+           atTop: high >= grid[grid.length - 1] - step / 2, atBottom: low <= grid[0] + step / 2,
+           gridMin: grid[0], gridMax: grid[grid.length - 1] };
 }
 
 /** A prior centred on the opponents' ratings (one per game; several games multiply), as opponent_log_prior. */
@@ -88,11 +95,23 @@ export function estimateFromBucketLL(bucketLL, data, { temper = null, oppRatings
   return { ...summarize(grid, posterior(total, prior, t), data.interval, bucketLL.length), withOpponent: useOpponent };
 }
 
-/** "about 1430 (80% range 1250-1620, from 31 moves)". */
+/** "about 1430 (80% range 1250-1620, from 31 moves)"; at an end of the scale, "2800 or more" / "600 or less". */
 export function describeEstimate(est) {
   const r10 = (x) => Math.round(x / 10) * 10;
-  return `about ${r10(est.estimate)} (${Math.round(est.interval * 100)}% range ${r10(est.low)}-${r10(est.high)}, `
-    + `from ${est.moves} move${est.moves === 1 ? "" : "s"})`;
+  const moves = `from ${est.moves} move${est.moves === 1 ? "" : "s"}`;
+  if (est.atTop && est.gridMax !== undefined) {
+    return `${est.gridMax} or more (the estimate's scale ends at ${est.gridMax}; 80% range from ${r10(est.low)}, ${moves})`;
+  }
+  if (est.atBottom && est.gridMin !== undefined) {
+    return `${est.gridMin} or less (the estimate's scale starts at ${est.gridMin}; 80% range up to ${r10(est.high)}, ${moves})`;
+  }
+  return `about ${r10(est.estimate)} (${Math.round(est.interval * 100)}% range ${r10(est.low)}-${r10(est.high)}, ${moves})`;
+}
+
+/** Does the opponent's rating fit what the moves alone say (inside their 95% range)? When it does not, the game was
+ *  probably not between similarly rated players (a casual challenge, say), and the opponent says little. */
+export function opponentFits(movesOnly, oppRating) {
+  return oppRating >= movesOnly.wide.low && oppRating <= movesOnly.wide.high;
 }
 
 // --------------------------------------------------------------------------- per-move likelihoods

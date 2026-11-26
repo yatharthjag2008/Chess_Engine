@@ -67,6 +67,30 @@ def fit_opponent_prior(cfg, ratings, held_out: Path = HELD_OUT) -> dict | None:
             "opponent_guess_mae": float(np.abs(test.opp_rating - test.rating).mean())}
 
 
+FIT_INTERVAL = 0.95          # the opponent's rating "fits" when it is inside the moves-alone 95% range
+
+
+def fit_check(cfg, ratings, log_prior: np.ndarray, temper: float, held_out: Path = HELD_OUT,
+              wrong_share: float = 0.1, seed: int = 3) -> dict | None:
+    """How the website's warning behaves on the test games: how often the opponent's rating falls outside the
+    moves-alone 95% range for real (rating-paired) games, and how often it does when a share of the games gets a
+    random opponent rating instead (standing in for casual challenges, where pairing says nothing)."""
+    if not (held_out / "test_ll.npz").is_file():
+        return None
+    test = EvalData.load(held_out / "test_ll.npz")
+    grid, centers = rating_grid(cfg), bucket_centers(ratings.bucket_edges)
+    post = posterior(grid_log_likelihood(test.summed(), centers, grid), log_prior, temper)
+    cdf = np.cumsum(post, axis=1)
+    tail = (1 - FIT_INTERVAL) / 2
+    low = np.array([np.interp(tail, row, grid) for row in cdf])
+    high = np.array([np.interp(1 - tail, row, grid) for row in cdf])
+    rng = np.random.default_rng(seed)
+    wrong = rng.choice(len(test.rating), int(len(test.rating) * wrong_share), replace=False)
+    random_opp = rng.uniform(cfg.rating_min, cfg.rating_max, len(wrong))
+    return {"interval": FIT_INTERVAL, "flagged_real": float(((test.opp_rating < low) | (test.opp_rating > high)).mean()),
+            "flagged_random": float(((random_opp < low[wrong]) | (random_opp > high[wrong])).mean())}
+
+
 def opponent_test_vector(cfg, ratings, opponent: dict) -> dict:
     """Made-up likelihoods with two opponents (1500 and 1620), and the Python estimate from them."""
     rng = np.random.default_rng(11)
@@ -105,15 +129,18 @@ def build(config_path: str | None = None) -> dict:
         "centers": bucket_centers(config.ratings.bucket_edges).tolist(),
         "points": len(grid),
         "test": test_vector(cfg, config.ratings, log_prior, round(float(temper), 6)),
-        **opponent_part(cfg, config.ratings),
+        **opponent_part(cfg, config.ratings, log_prior, round(float(temper), 6)),
     }
 
 
-def opponent_part(cfg, ratings) -> dict:
+def opponent_part(cfg, ratings, log_prior: np.ndarray, temper: float) -> dict:
     opponent = fit_opponent_prior(cfg, ratings)
     if opponent is None:
         return {}
     opponent["test_vector"] = opponent_test_vector(cfg, ratings, opponent)
+    check = fit_check(cfg, ratings, log_prior, temper)
+    if check is not None:
+        opponent["fit_check"] = check
     return {"opponent": opponent}
 
 
@@ -132,6 +159,10 @@ def main(argv: list[str] | None = None, write: Callable[[str], None] = print) ->
         write(f"opponent prior: sigma {o['sigma']:.0f}, temper {o['temper']:.1f}; on the test games average error "
               f"{o['test']['mae']:.1f} Elo (guessing the opponent's rating: {o['opponent_guess_mae']:.1f}), "
               f"80% range coverage {o['test']['coverage']:.1%}")
+        if "fit_check" in o:
+            f = o["fit_check"]
+            write(f"opponent's rating outside the moves-alone {f['interval']:.0%} range: {f['flagged_real']:.1%} of real "
+                  f"games, {f['flagged_random']:.1%} of games given a random opponent rating")
     return 0
 
 

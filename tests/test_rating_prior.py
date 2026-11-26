@@ -52,6 +52,8 @@ def test_the_opponent_prior_is_fitted_and_scored_on_held_out_games() -> None:
     assert o["test"]["mae"] < 100, "far better than from the moves alone (about 250)"
     assert o["test"]["players"] > 1000
     assert o["test_vector"]["low"] < o["test_vector"]["estimate"] < o["test_vector"]["high"]
+    f = o["fit_check"]
+    assert f["interval"] == 0.95 and f["flagged_real"] < 0.1 < 0.3 < f["flagged_random"], f
 
 
 def test_opponent_log_prior_multiplies_over_games() -> None:
