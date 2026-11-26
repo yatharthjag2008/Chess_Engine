@@ -17,7 +17,12 @@ moves with your level and the next and explains your mistakes: free and unlimite
 while you play (a nudge, then the piece, then the move) come from Stockfish too. Styles and ghosts trained with
 the full app can be published to the site, which then offers a Style choice.
 
-[![The website: the bot is thinking about its 4th move while you have castling queued as a premove (blue)](reports/web/website.png)](https://yatharthjag2008.github.io/Chess_Engine/)
+[![The website: a 5-minute Giuoco Piano against the bot at strength 1500, with a hint (the pawn on c2, step 2 of 3), an arrow and a circle drawn on the board, and the honest strength dial explained under the slider](reports/web/website.png)](https://yatharthjag2008.github.io/Chess_Engine/)
+
+More screenshots, desktop and phone: [play](reports/web/site/play-desktop.png) ([phone](reports/web/site/play-phone.png)),
+[Analyse](reports/web/site/analyse-desktop.png) ([phone](reports/web/site/analyse-phone.png)),
+[Review with the coach](reports/web/site/review-desktop.png) ([phone](reports/web/site/review-phone.png)); made with
+`python scripts/site_screenshots.py --readme`.
 
 The full app (game review, hints, the coach, adaptive difficulty, styles) needs Stockfish and runs on your own
 computer: `python scripts/serve.py`, then open [http://127.0.0.1:8000](http://127.0.0.1:8000) (setup below).
