@@ -40,6 +40,7 @@ const saved = {
   game: stored("human-chess-site.game"),        // the game in progress (or just finished), see snapshot()
   settings: stored("human-chess-site.settings"), // the new-game form: { rating, color, time, difficulty }
   profile: stored("human-chess-site.adaptive"),  // your adaptive-difficulty rating and recent games
+  handoff: stored("human-chess-site.analyse"),   // a game handed to the Analyse page
 };
 
 /** Your rating for adaptive difficulty (read once from this browser). */
@@ -615,6 +616,17 @@ export async function copyFen() {
   return fen;
 }
 
+/** Hand the game to the Analyse page (through this browser's storage) and open it. */
+export function analyseGame({ open = (url) => { window.location.href = url; } } = {}) {
+  if (!ui.chess || !ui.chess.history().length) return false;
+  if (!saved.handoff.save(pgn())) {
+    setStatus("Your browser did not allow handing the game over: download the PGN and paste it there.");
+    return false;
+  }
+  open("analyse.html#game");
+  return true;
+}
+
 function download() {
   const blob = new Blob([pgn()], { type: "application/x-chess-pgn" });
   const link = document.createElement("a");
@@ -681,6 +693,7 @@ export async function init(modelBase = "model/", dataBase = modelBase.replace(/m
   $("resign").addEventListener("click", resign);
   $("download").addEventListener("click", download);
   $("copy-fen").addEventListener("click", copyFen);
+  $("analyse-game").addEventListener("click", () => analyseGame());
   $("sound").addEventListener("click", () => setSound(!ui.sounds.enabled));
   const unlock = () => {                                   // audio may only start after a click or key
     ui.sounds.unlock();

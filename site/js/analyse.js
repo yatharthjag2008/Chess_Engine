@@ -4,6 +4,9 @@ import { Chess } from "../vendor/chess.js";
 import { loadModel } from "./engine.js";
 import { playerGames } from "./games.js";
 import { SOURCES, fetchGames } from "./imports.js";
+import { stored } from "./storage.js";
+
+const handoff = stored("human-chess-site.analyse");   // a game handed over by the play page
 import { describeEstimate, estimateFromBucketLL, loadRatingData, moveBucketLL } from "./rating.js";
 
 const $ = (id) => document.getElementById(id);
@@ -168,6 +171,17 @@ export async function init(modelBase = "model/", dataBase = modelBase.replace(/m
     $("estimate-status").textContent = "Paste games and press Estimate.";
   }
   $("estimate").disabled = false;
+  if (window.location.hash === "#game") await openHandedGame();
+}
+
+/** A game from the play page ("Analyse this game"): estimate how strong you played in it. */
+export async function openHandedGame() {
+  const text = handoff.load(null);
+  if (typeof text !== "string" || !text.trim()) return null;
+  handoff.clear();
+  $("pgn-text").value = text;
+  $("player-name").value = "You";
+  return estimate();
 }
 
 if (document.getElementById("estimate-form") && !window.__noAutoInit) init();

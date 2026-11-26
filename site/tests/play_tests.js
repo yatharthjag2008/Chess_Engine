@@ -900,4 +900,17 @@ test("the PGN says when the bot followed your level", async () => {
   assert(live.includes('[Black "Bot 1500-1550"]') && live.includes('[AdaptiveChanges "7:1550"]'), live);
 });
 
+test("Analyse this game hands the PGN over and opens the Analyse page", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1500, color: "white" });
+  let opened = null;
+  equal(site.analyseGame({ open: (url) => { opened = url; } }), false, "nothing to analyse yet");
+  await site.play("e2e4");
+  equal(site.analyseGame({ open: (url) => { opened = url; } }), true);
+  equal(opened, "analyse.html#game");
+  const handed = JSON.parse(localStorage.getItem("human-chess-site.analyse"));
+  assert(handed.includes('[White "You"]') && handed.includes("1. e4"), handed);
+  localStorage.removeItem("human-chess-site.analyse");
+});
+
 run();

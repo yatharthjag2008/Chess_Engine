@@ -145,4 +145,14 @@ test("fetching: bad names, unknown players and unreachable sites say why", async
   assert(!$("fetch").disabled, "the button works again");
 });
 
+test("a game handed over by the play page: your moves are estimated", async () => {
+  localStorage.setItem("human-chess-site.analyse", JSON.stringify(
+    `[White "You"]\n[Black "Bot 1500"]\n[Result "*"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 *\n`));
+  const result = await analyse.openHandedGame();
+  equal($("player-name").value, "You");
+  equal(result.results.map((r) => [r.side.name, r.estimate.moves]), [["You", 3]]);
+  equal(localStorage.getItem("human-chess-site.analyse"), null, "used once");
+  equal(await analyse.openHandedGame(), null, "nothing handed over");
+});
+
 run();
