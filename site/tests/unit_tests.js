@@ -4,6 +4,7 @@ import { Chess } from "../vendor/chess.js";
 import { assert, equal, run, test } from "./harness.js";
 import { RECIPES, Sounds, soundFor } from "../js/sounds.js";
 import { stored } from "../js/storage.js";
+import { loadOpenings, openingOf, positionKey } from "../js/openings.js";
 import { Clock, TIME_CONTROLS, baseSeconds, formatClock, thinkTime } from "../js/clock.js";
 import { START, canMate, captured, countPieces, describeCaptures, materialOf } from "../js/material.js";
 
@@ -209,6 +210,43 @@ test("the bot's thinking time: quick in the opening, a share of its time later, 
   equal(thinkTime(2000, 40, mid), 150, "two seconds left: a quick move");
   assert(thinkTime(5000, 40, mid) <= 1000, "at most a fifth of what is left");
   assert(thinkTime(180000, 30, () => 0) < thinkTime(180000, 30, () => 0.99), "the spread");
+});
+
+// ------------------------------------------------------------------ openings
+
+/** The positions of a game given in SAN, the start included. */
+function fensOf(...sans) {
+  const chess = new Chess();
+  const fens = [chess.fen()];
+  for (const san of sans) {
+    chess.move(san);
+    fens.push(chess.fen());
+  }
+  return fens;
+}
+
+test("the opening of a game is its latest named position", () => {
+  const table = {
+    [positionKey(fensOf("e4").pop())]: ["B00", "King's Pawn Game"],
+    [positionKey(fensOf("e4", "c5").pop())]: ["B20", "Sicilian Defense"],
+  };
+  equal(openingOf(table, fensOf()), null, "the start position has no name");
+  equal(openingOf(table, fensOf("e4")), { eco: "B00", name: "King's Pawn Game", ply: 1 });
+  equal(openingOf(table, fensOf("e4", "c5", "Nf3", "d6", "a3")), { eco: "B20", name: "Sicilian Defense", ply: 2 },
+        "out of the book: the name stays");
+  equal(openingOf(null, fensOf("e4")), null);
+  equal(positionKey("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"),
+        "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq");
+});
+
+test("the real table: names, transpositions, fetched once", async () => {
+  const table = await loadOpenings("../data/");
+  assert(Object.keys(table).length > 3000);
+  assert((await loadOpenings("../data/")) === table, "cached");
+  equal(openingOf(table, fensOf("e4", "e5", "Nf3", "Nc6", "Bb5")).name, "Ruy Lopez");
+  equal(openingOf(table, fensOf("d4", "Nf6", "c4", "e6", "Nc3", "Bb4")).name, "Nimzo-Indian Defense");
+  const transposed = openingOf(table, fensOf("c4", "e6", "d4", "Nf6", "Nc3", "Bb4"));
+  equal(transposed.name, "Nimzo-Indian Defense", "another move order, the same position");
 });
 
 run();
