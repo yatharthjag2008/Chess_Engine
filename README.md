@@ -10,7 +10,8 @@ sound effects (on/off and volume), captured pieces and the material lead, arrows
 stepping back through the game (arrow keys), games that survive a reload, take back, resign and PGN download,
 and **adaptive difficulty** (the bot follows your level between games, or adjusts live within a game). An
 **Analyse** page estimates a player's rating from pasted games, from a player's recent Lichess or Chess.com games,
-or from the game you just played.
+or from the game you just played, and a **Review** page judges every move with Stockfish running in the browser
+(accuracy, inaccuracies, mistakes, blunders, key moments and an eval graph): free and unlimited, nothing uploaded.
 
 [![The website: the bot is thinking about its 4th move while you have castling queued as a premove (blue)](reports/web/website.png)](https://yatharthjag2008.github.io/Chess_Engine/)
 
@@ -498,5 +499,7 @@ Game data comes from the Lichess open database, released under CC0. Stockfish is
 installed separately (it is not bundled with this repo).
 
 The website bundles [chess.js](https://github.com/jhlywa/chess.js) (BSD-2, `site/vendor/`). The chess pieces in
-`web/pieces/` are the cburnett set by Colin M.L. Burnett (GPLv2+, see `web/pieces/LICENSE.txt`). Opening names come
+`web/pieces/` are the cburnett set by Colin M.L. Burnett (GPLv2+, see `web/pieces/LICENSE.txt`). The website's
+Review page runs Stockfish.js 18 (lite, single-threaded; GPLv3, unmodified, with its license and source links in
+`site/vendor/stockfish/`). Opening names come
 from the [Lichess opening data set](https://github.com/lichess-org/chess-openings) (CC0, `third_party/chess-openings/`).

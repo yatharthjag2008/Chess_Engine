@@ -1305,6 +1305,23 @@ server (the model already runs there, `site/js/engine.js`).
     and blocked requests are explained, with pasting as the fallback.
   - On the play page, **Analyse this game** hands the game over (through local storage) and the Analyse page
     estimates how strong you played.
-  - Each move takes eight network passes, so a long game takes several seconds; the page reports progress and
-    stays responsive.
+  - Each move takes eight network passes, about 0.1 s each in Chrome on this laptop (the network is plain
+    JavaScript), so one side of a 40-move game takes about half a minute; the page reports progress and stays
+    responsive. The Analyse page's tests run in real time for that reason.
+- **Stockfish in the browser** (`site/vendor/stockfish/`, `site/js/stockfish.js`): Stockfish.js 18, the lite
+  single-threaded WebAssembly build (7.3 MB) from the npm package `stockfish@18.0.8`, unmodified and checked against
+  the package's published hashes, with its GPLv3 license. The single-threaded build needs none of the cross-origin
+  isolation headers GitHub Pages cannot send. It runs in a Web Worker behind the interface of the Python
+  `StockfishAnalyzer`: a fixed depth, three MultiPV lines best first, centipawns for the side to move with mates as
+  +-(10000 - n), finished games scored without the engine, a cache, one search at a time. Pages that use a worker
+  are tested in real time (headless Chrome's virtual time does not wait for it) and post their results back to the
+  test server.
+- **Game review** (`site/js/review.js`, `site/review.html`, `site/js/review_page.js`): `scoring.py`,
+  `classify.py` and `analyzer.py` ported; a scripted analyzer reproduces the Python review of 1. e4 e5 2. Qh5 Nc6
+  3. Bc4 Nf6?? 4. Qxf7# to the last digit (Black's accuracy 49.23%). The page is the local app's review page
+  (`web/css/review.css` is shared): board and stepper, the eval graph with errors marked (click to jump), summary,
+  key moments, each move's verdict with Stockfish's top lines and the better move shown on the board. Depth 10, 12
+  or 14 (the full app's). With the real engine the test finds 3...Nf6?? a blunder and 4.Qxf7# the best move.
+  **Review this game** on the play page (and Review on the result banner) hands the game over and reviews it from
+  your side.
 
