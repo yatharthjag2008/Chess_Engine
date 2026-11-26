@@ -5,13 +5,15 @@ import { loadModel } from "./engine.js";
 import { playerGames } from "./games.js";
 import { SOURCES, fetchGames } from "./imports.js";
 import { stored } from "./storage.js";
+import { ScoringPool, scoreSide } from "./pool.js";
 
 const handoff = stored("human-chess-site.analyse");   // a game handed over by the play page
 import { describeEstimate, estimateFromBucketLL, loadRatingData, moveBucketLL } from "./rating.js";
 
 const $ = (id) => document.getElementById(id);
 
-export const page = { model: null, data: null, running: false, fetchImpl: (...args) => fetch(...args) };
+export const page = { model: null, data: null, running: false, fetchImpl: (...args) => fetch(...args),
+                      pool: null };   // background workers that score the moves (null: on the page)
 
 const pause = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -55,7 +57,7 @@ export async function estimateText(text, { player = "", onProgress = () => {} } 
   const all = [];
   for (const side of games) {
     const before = done;
-    const rows = await sideLikelihoods(page.model, side, (n) => onProgress(before + n, total));
+    const rows = await scoreSide(page.pool, page.model, side, (n) => onProgress(before + n, total));
     done += rows.length;
     all.push(...rows);
     results.push({ side, estimate: estimateFromBucketLL(rows, page.data) });
@@ -161,6 +163,8 @@ export async function init(modelBase = "model/", dataBase = modelBase.replace(/m
   });
   try {
     [page.model, page.data] = await Promise.all([loadModel(modelBase), loadRatingData(dataBase)]);
+    page.pool = typeof Worker === "undefined" ? null : new ScoringPool({ modelBase });
+    if (page.pool) page.pool.start().catch(() => { page.pool = null; });   // warm up while you paste
   } catch (err) {
     $("estimate-status").textContent = `The model could not be loaded (${err.message}).`;
     return;

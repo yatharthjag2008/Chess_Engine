@@ -17,7 +17,7 @@ from test_web_js import _Quiet, browser_or_skip, check_results, dump_dom
 ROOT = Path(__file__).resolve().parents[1]
 UNIT_TESTS = 41     # tests in site/tests/unit_tests.js
 PLAY_TESTS = 57    # tests in site/tests/play_tests.js
-ANALYSE_TESTS = 8  # tests in site/tests/analyse_tests.js
+ANALYSE_TESTS = 9  # tests in site/tests/analyse_tests.js
 STOCKFISH_TESTS = 7  # tests in site/tests/stockfish_tests.js
 REVIEW_TESTS = 7  # tests in site/tests/review_tests.js
 
@@ -43,7 +43,7 @@ def test_assemble_copies_the_site_and_the_shared_files(tmp_path) -> None:
             "model/model.json", "model/model.bin", ".nojekyll", "pieces/wK.svg", "pieces/bP.svg",
             "pieces/LICENSE.txt", "data/openings.json", "js/openings.js",
             "analyse.html", "js/analyse.js", "js/rating.js", "js/games.js", "data/rating.json",
-            "js/stockfish.js", "vendor/stockfish/stockfish-18-lite-single.js",
+            "js/stockfish.js", "js/pool.js", "js/rating_worker.js", "vendor/stockfish/stockfish-18-lite-single.js",
             "vendor/stockfish/stockfish-18-lite-single.wasm", "vendor/stockfish/COPYING.txt",
             "review.html", "js/review.js", "js/review_page.js", "css/review.css"} <= set(files)
     assert not any(f.startswith("tests/") for f in files), "tests are not published"

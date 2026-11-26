@@ -8,7 +8,8 @@ import { CLASSES, SYMBOLS, evalGraph, keyMoments, reviewMoves, summary } from ".
 import { splitPgn, playerGames } from "./games.js";
 import { loadModel } from "./engine.js";
 import { coachGame } from "./coach.js";
-import { estimateFromBucketLL, loadRatingData, moveBucketLL } from "./rating.js";
+import { estimateFromBucketLL, loadRatingData } from "./rating.js";
+import { ScoringPool, scoreSide } from "./pool.js";
 import { stored } from "./storage.js";
 
 const $ = (id) => document.getElementById(id);
@@ -414,13 +415,9 @@ async function ensureModel() {
 async function estimateRating(color, onProgress) {
   const data = await loadRatingData(ui.modelBase.replace(/model\/$/, "data/"));
   const side = playerGames(ui.pgn).games.find((g) => g.color === (color === "white" ? "w" : "b"));
-  const rows = [];
-  for (const move of side ? side.moves : []) {
-    rows.push(moveBucketLL(ui.model, { fen: move.fen, uci: move.uci, oppRating: side.oppRating, clock: move.clock,
-                                       oppClock: move.oppClock }, side.base, side.increment));
-    onProgress(rows.length, side.moves.length);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  }
+  if (!side) return 1500;
+  if (ui.pool === undefined) ui.pool = typeof Worker === "undefined" ? null : new ScoringPool({ modelBase: ui.modelBase });
+  const rows = await scoreSide(ui.pool, ui.model, side, (d) => onProgress(d, side.moves.length));
   return rows.length ? Math.round(estimateFromBucketLL(rows, data).estimate / 50) * 50 : 1500;
 }
 

@@ -7,6 +7,7 @@ const doc = new DOMParser().parseFromString(html, "text/html");
 doc.querySelectorAll("script").forEach((s) => s.remove());
 document.getElementById("page").replaceChildren(...doc.body.children);
 const analyse = await import("../js/analyse.js");
+const { ScoringPool, split, workerCount } = await import("../js/pool.js");
 await analyse.init("../model/");
 const $ = (id) => document.getElementById(id);
 
@@ -153,6 +154,28 @@ test("a game handed over by the play page: your moves are estimated", async () =
   equal(result.results.map((r) => [r.side.name, r.estimate.moves]), [["You", 3]]);
   equal(localStorage.getItem("human-chess-site.analyse"), null, "used once");
   equal(await analyse.openHandedGame(), null, "nothing handed over");
+});
+
+test("workers: the moves are shared out, and the results equal the page's own, move for move", async () => {
+  equal([workerCount(8), workerCount(2), workerCount(1), workerCount(64)], [7, 1, 1, 8]);
+  equal(split([1, 2, 3, 4, 5], 2), [[1, 2, 3], [4, 5]]);
+  equal(split([1, 2], 4), [[1], [2]], "no empty chunks");
+  const text = `[White "a"]\n[Black "b"]\n[WhiteElo "1400"]\n[BlackElo "1500"]\n[Result "*"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 *\n`;
+  const pool = analyse.page.pool;
+  assert(pool, "the page started its workers");
+  $("player-name").value = "";
+  const withWorkers = await analyse.estimateText(text);
+  analyse.page.pool = null;
+  try {
+    const onPage = await analyse.estimateText(text);
+    equal(withWorkers.results.map((r) => r.estimate), onPage.results.map((r) => r.estimate), "identical estimates");
+  } finally {
+    analyse.page.pool = pool;
+  }
+  const broken = new ScoringPool({ modelBase: "../no-such-model/", size: 1 });
+  let failed = false;
+  try { await broken.start(); } catch { failed = true; }
+  assert(failed, "a pool that cannot start says so (the page then scores the moves itself)");
 });
 
 run();
