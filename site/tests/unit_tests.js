@@ -15,6 +15,7 @@ import { clockOf, parseTimeControl, playerGames, readGame, splitPgn } from "../j
 import { classify, describeSide, evalGraph, gameAccuracy, keyMoments, moveAccuracy, reviewMoves, summary,
          winPercent } from "../js/review.js";
 import { MATE_CP, finishedEval } from "../js/stockfish.js";
+import { coachGame, explainLevel, explainMistake, hangingPieces, newlyHanging } from "../js/coach.js";
 import { ADAPTIVE, LiveAdjuster, botRatingFor, expectedScore, readProfile, recordGame, scoreFor,
          updateRating } from "../js/adaptive.js";
 
@@ -496,6 +497,81 @@ test("review: a scripted game is judged exactly as the Python review judges it",
   try { await reviewMoves(new Chess().fen(), ["e2e5"], analyzer); } catch { threw = true; }
   assert(threw, "an illegal move is refused");
   equal(MATE_CP, 10000);
+});
+
+// ------------------------------------------------------------------ the coach
+
+test("coach: hanging pieces, as features.py finds them", () => {
+  equal(hangingPieces(new Chess("4k3/8/8/3p4/4N3/8/8/4K2R w - - 0 1"), "w"), [{ square: "e4", type: "n" }],
+        "attacked by a cheaper piece");
+  equal(newlyHanging("r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3", "f3g5"),
+        [{ square: "g5", type: "n" }]);
+  equal(newlyHanging("r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3", "f1c4"), []);
+});
+
+test("coach: mistakes explained with the Python sentences, rule by rule", () => {
+  const move = (fen, uci, bestUci, bestCp, playedCp, winBefore, winAfter) => {
+    const chess = new Chess(fen);
+    const san = chess.move(uci).san;
+    const bestSan = new Chess(fen).move(bestUci).san;
+    return { fenBefore: fen, uci, san, bestUci, bestSan, bestCp, playedCp, winBefore, winAfter };
+  };
+  const cases = [
+    [move("6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1", "h2h3", "a1a8", 9999, 0, 100, 50),
+     "There was mate in one: Ra8#. Your winning chances dropped from 100% to 50%."],
+    [move("6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1", "g1f1", "h2h3", 0, -9998, 50, 0),
+     "This allows a forced mate. Your winning chances dropped from 50% to 0%."],
+    [move("r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3", "f3g5", "f1c4", 40, -250, 54, 29),
+     "This leaves your knight on g5 undefended. Your winning chances dropped from 54% to 29%."],
+    [move("rnb1kbnr/pppp1ppp/8/4p1q1/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3", "a2a3", "f3g5", 900, 0, 96, 50),
+     "You could have won a queen with Nxg5. Your winning chances dropped from 96% to 50%."],
+    [move("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "g2g4", "e2e4", 30, -120, 53, 39),
+     "e4 was stronger (+0.3 instead of -1.2). Your winning chances dropped from 53% to 39%."],
+    [move("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2", "d1g4", "g1f3", -4, -150, 50, 36),
+     "Nf3 was stronger (-0.0 instead of -1.5). Your winning chances dropped from 50% to 36%."],
+  ];
+  for (const [m, text] of cases) equal(explainMistake(m), text);
+});
+
+test("coach: level differences in words", () => {
+  const yours = { rating: 1200, san: "Nf6", uci: "g8f6", prob: 0.5, win: 3.5 };
+  const stronger = { rating: 1400, san: "g6", uci: "g7g6", prob: 0.6, win: 50 };
+  const moment = (playedUci, playedSan, playedWin) => ({ playedUci, playedSan, playedWin, comparison: { yours, stronger } });
+  equal(explainLevel(moment("g8f6", "Nf6", 3.5)), "Players around 1200 usually play Nf6 here (50%). Players around 1400 "
+    + "prefer g6 (60%), which keeps 50% winning chances instead of 4%. You played Nf6, like most players at your level.");
+  assert(explainLevel(moment("g7g6", "g6", 50)).endsWith("You found g6: that is the stronger players' move."));
+  assert(explainLevel(moment("a7a6", "a6", 20)).endsWith("You played a6 (20%)."));
+  equal(explainLevel({ comparison: { yours, stronger: null } }), "Players around 1200 usually play Nf6 here (50%). Stronger players agree.");
+});
+
+test("coach: a whole game, with the levels disagreeing where it matters", async () => {
+  const analyzer = scripted({
+    [keyOf("e4", "e5", "Qh5", "Nc6", "Bc4")]: ["g7g6", 0, { g8f6: -900 }],
+    [keyOf("e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6")]: ["h5f7", 900, {}],
+  });
+  const chess = new Chess();
+  for (const san of ["e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6", "Qxf7#"]) chess.move(san);
+  const review = await reviewMoves(new Chess().fen(), chess.history({ verbose: true }).map((m) => m.lan), analyzer);
+  const before = keyOf("e4", "e5", "Qh5", "Nc6", "Bc4");
+  const model = {                        // players below 1400 play Nf6 there, stronger ones g6; elsewhere the game's move
+    predict(position, rating) {
+      const fen = position.fen();
+      const legal = position.moves({ verbose: true });
+      const at = review.moves.find((m) => m.fenBefore === fen);
+      const favourite = fen.split(" ").slice(0, 2).join(" ") === before ? (rating < 1400 ? "g8f6" : "g7g6") : at.uci;
+      const top = legal.find((m) => m.lan === favourite);
+      const rest = legal.filter((m) => m.lan !== favourite).slice(0, 2);
+      return { moves: [{ uci: top.lan, san: top.san, prob: 0.6 }, ...rest.map((m) => ({ uci: m.lan, san: m.san, prob: 0.1 }))] };
+    },
+  };
+  const progress = [];
+  const report = await coachGame(review, "black", 1200, model, analyzer, { onProgress: (d, t) => progress.push(`${d}/${t}`) });
+  equal(progress, ["1/3", "2/3", "3/3"]);
+  equal(report.notes.map((n) => [n.moveNumber, n.san, n.kinds]), [["3...", "Nf6", ["mistake", "level"]]]);
+  equal(report.notes[0].text, "g6 was stronger (+0.0 instead of -9.0). Your winning chances dropped from 50% to 4%. "
+    + "Players around 1200 usually play Nf6 here (60%). Players around 1400 prefer g6 (60%), which keeps 50% winning "
+    + "chances instead of 4%. You played Nf6, like most players at your level.");
+  equal([report.yourLevelMatch, report.nextLevelMatch, report.nextLevel], [1, 2 / 3, 1400]);
 });
 
 run();
