@@ -65,3 +65,8 @@
 .fetch-games { border: 0; padding: 0; margin: 0 0 10px; }
 .fetch-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .fetch-row input[type="text"] { flex: 1 1 140px; width: auto; }
+
+/* The Review page's game box fills its panel */
+#review-pgn { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: 0.85rem; }
+.review-options { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.review-options .primary { flex: 1 1 140px; }
