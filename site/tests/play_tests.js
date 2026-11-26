@@ -218,4 +218,18 @@ test("each player's captures are shown next to their name", async () => {
   site.ui.board.flip();
 });
 
+test("take back and a new game update the captures", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1500, color: "white" });
+  site.ui.chess.load("rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2");
+  site.render();
+  await site.play("e4d5");
+  assert($("bottom-captured").querySelector('[data-piece="bp"]'), "a pawn taken");
+  site.takeback();
+  equal($("bottom-captured").querySelectorAll(".piece").length, 0, "taken back");
+  await site.play("e4d5");
+  await site.newGame({ rating: 1500, color: "white" });
+  equal(document.querySelectorAll(".captured .piece").length, 0, "a new game starts level");
+});
+
 run();

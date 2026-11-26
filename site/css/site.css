@@ -11,5 +11,10 @@
 .captured .piece { width: 22px; height: 22px; cursor: default; flex: none; }
 .captured .piece + .piece { margin-left: -13px; }     /* same kind: overlapped */
 .captured .score { color: var(--ink-2); font-size: 0.85rem; font-weight: 600; }
+@media (max-width: 520px) {                           /* phones: smaller icons, so a full row still fits */
+  .captured { gap: 4px; }
+  .captured .piece { width: 17px; height: 17px; }
+  .captured .piece + .piece { margin-left: -10px; }
+}
 .volume { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 0.9rem; }
 .volume input { width: 90px; }
