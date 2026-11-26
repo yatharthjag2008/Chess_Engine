@@ -485,6 +485,11 @@ export async function init(modelBase = "model/", dataBase = modelBase.replace(/m
   rating.addEventListener("input", show);
   show();
   applySettings(saved.settings.load());
+  const showMode = () => {
+    $("position-fields").hidden = $("new-game").elements.mode.value !== "position";
+  };
+  for (const radio of $("new-game").elements.mode) radio.addEventListener("change", showMode);
+  showMode();
   $("new-game").addEventListener("submit", (event) => {
     event.preventDefault();
     const data = new FormData($("new-game"));

@@ -38,6 +38,15 @@
     <aside class="side-column">
       <form id="new-game" class="panel" autocomplete="off">
         <h2>New game</h2>
+        <div class="segmented mode-switch" role="radiogroup" aria-label="Game mode">
+          <label><input type="radio" name="mode" value="standard" checked><span>Standard game</span></label>
+          <label><input type="radio" name="mode" value="position"><span>From a position</span></label>
+        </div>
+        <div id="position-fields" class="field" hidden>
+          <label for="position-text">A position (FEN) or a game (PGN) to carry on from</label>
+          <textarea id="position-text" name="position" rows="3" spellcheck="false"
+            placeholder="8/8/8/4k3/8/8/4K3/4Q3 w - - 0 1"></textarea>
+        </div>
         <label class="field">
           <span>Bot rating <output id="rating-value">1500</output></span>
           <input id="rating" name="rating" type="range" min="800" max="2400" step="50" value="1500">

@@ -622,4 +622,18 @@ test("the PGN names the opening (ECO and Opening headers)", async () => {
   assert(/\[ECO "E2\d"\]/.test(text), text);
 });
 
+test("the game modes: a standard game, or from a position (a box for a FEN or a PGN)", () => {
+  const mode = (value) => {
+    const radio = $("new-game").querySelector(`input[name="mode"][value="${value}"]`);
+    radio.checked = true;
+    radio.dispatchEvent(new Event("change"));
+  };
+  assert($("position-fields").hidden, "standard: no position box");
+  mode("position");
+  assert(!$("position-fields").hidden, "from a position: the box");
+  assert($("position-text").placeholder.includes(" w "), "an example FEN as the placeholder");
+  mode("standard");
+  assert($("position-fields").hidden);
+});
+
 run();
