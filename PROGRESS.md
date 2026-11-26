@@ -1324,4 +1324,18 @@ server (the model already runs there, `site/js/engine.js`).
   or 14 (the full app's). With the real engine the test finds 3...Nf6?? a blunder and 4.Qxf7# the best move.
   **Review this game** on the play page (and Review on the result banner) hands the game over and reviews it from
   your side.
+- **The coach** (`site/js/coach.js`, on the Review page): `level_compare.py`, `coach.py` and `features.py` ported.
+  For the side at the bottom, at the rating you type, else the game's, else estimated from your moves, each move is
+  compared with the model's favourite at your rating and at +200 / +400; where the levels disagree and Stockfish
+  says the stronger choice keeps at least 8 win-% points more, the move gets a note. Mistakes are explained by the
+  same five rules (mate in one missed, allows mate, leaves a piece hanging, missed winning material, a stronger
+  move), word for word as in Python (tested on six positions and on a whole game). The panel shows how often you
+  played your level's and the next level's favourite move; Next note jumps between notes.
+- **Hints** (`site/js/hints.js`, on the play page): `hints.py` ported. Hint (or `h`) gives a nudge, then the
+  piece (its square marked), then the move; asking again in the same position goes one tier further for free.
+  The nudge is vaguer for moves players at your rating usually find (the model's probability: 35% or more) and
+  names the piece type for rarely found ones (under 10%), and warns when only one move works (15 win-% points
+  ahead of the second). Ten positions give the Python themes and texts word for word. 1, 3, 5 or 20 hints per
+  game, or off; a hinted game is unrated (badge, PGN headers, no adaptive rating change). Stockfish (depth 12,
+  two lines) starts on the first hint.
 

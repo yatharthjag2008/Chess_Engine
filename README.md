@@ -11,7 +11,9 @@ stepping back through the game (arrow keys), games that survive a reload, take b
 and **adaptive difficulty** (the bot follows your level between games, or adjusts live within a game). An
 **Analyse** page estimates a player's rating from pasted games, from a player's recent Lichess or Chess.com games,
 or from the game you just played, and a **Review** page judges every move with Stockfish running in the browser
-(accuracy, inaccuracies, mistakes, blunders, key moments and an eval graph): free and unlimited, nothing uploaded.
+(accuracy, inaccuracies, mistakes, blunders, key moments and an eval graph) with a **coach** that compares your
+moves with your level and the next and explains your mistakes: free and unlimited, nothing uploaded. **Hints**
+while you play (a nudge, then the piece, then the move) come from Stockfish too.
 
 [![The website: the bot is thinking about its 4th move while you have castling queued as a premove (blue)](reports/web/website.png)](https://yatharthjag2008.github.io/Chess_Engine/)
 
