@@ -7,7 +7,8 @@ browser, no install needed.
 On the website: a standard game or one **from a position** (paste a FEN or PGN, or pick a practice position),
 clocks (1, 3, 5 or 10 minutes; the bot thinks like a human and feels time pressure), premoves,
 sound effects (on/off and volume), captured pieces and the material lead, arrows and circles (right-click), the opening's name,
-stepping back through the game (arrow keys), games that survive a reload, take back, resign and PGN download.
+stepping back through the game (arrow keys), games that survive a reload, take back, resign and PGN download,
+and **adaptive difficulty** (the bot follows your level between games, or adjusts live within a game).
 
 [![The website: the bot is thinking about its 4th move while you have castling queued as a premove (blue)](reports/web/website.png)](https://yatharthjag2008.github.io/Chess_Engine/)
 

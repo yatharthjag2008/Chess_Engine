@@ -1269,3 +1269,22 @@ Basic features players expect, each built in its own series of commits with brow
 
 All of this was built in 8 series of 8 commits, each tested in headless Chrome (site/tests/unit_tests.js for the
 modules, play_tests.js for the page, reload_tests.js for a real reload).
+
+## The website, round three: the local app's features in the browser (2026-11-26)
+
+GitHub Pages only serves files, so the website had only the play page; review, coach, hints, styles and adaptive
+difficulty all called the Python backend. Round three ports them to the browser, one at a time, so the site needs no
+server (the model already runs there, `site/js/engine.js`).
+
+- **Adaptive difficulty** (`site/js/adaptive.js`, a port of `src/chess_engine/bot/adaptive.py` with the same
+  defaults; its tests check the Python numbers). Difficulty on the new-game form:
+  - *Fixed*: the rating you choose.
+  - *Follow my level*: your rating is kept like an Elo rating in this browser (K 80 for the first five games, then
+    40) and the next bot plays at it, rounded to 50. The result banner shows the change and the next bot.
+  - *Live*: the bot starts at the rating you choose and, from its seventh move, plays 50 stronger when its own value
+    head says it is losing (expected score below 0.35, averaged over its last three moves) or 50 weaker when winning
+    (above 0.65), at most every four moves and never more than 200 from the start. The result counts against the
+    rating it played at on average.
+  - Games from a position do not count (a won position says little about your level). Your last ten rated games are
+    listed, and the rating can start again. The mode and the live state survive a reload; the PGN gets an Adaptive
+    header (and the live changes).
