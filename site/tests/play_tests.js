@@ -269,4 +269,32 @@ test("click a move in the list to look at it; the move shown is highlighted", as
   equal(site.ui.view, null, "the last move is the game itself");
 });
 
+const key = (name) => document.dispatchEvent(new KeyboardEvent("keydown", { key: name, cancelable: true }));
+
+test("arrow keys step through the moves; Home and End jump to the start and back to the game", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1500, color: "white" });
+  await site.play("e2e4");
+  await site.play("b1c3");                         // 4 half-moves
+  key("ArrowLeft");
+  equal(site.ui.view, 3);
+  key("ArrowLeft");
+  key("ArrowLeft");
+  equal(site.ui.view, 1);
+  key("ArrowRight");
+  equal(site.ui.view, 2);
+  key("Home");
+  equal(site.ui.view, 0);
+  key("ArrowLeft");
+  equal(site.ui.view, 0, "not before the start");
+  key("End");
+  equal(site.ui.view, null);
+  key("ArrowRight");
+  equal(site.ui.view, null, "not past the game");
+  key("ArrowUp");
+  equal(site.ui.view, 0);
+  key("ArrowDown");
+  equal(site.ui.view, null);
+});
+
 run();

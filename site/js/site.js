@@ -96,6 +96,18 @@ export function showPly(ply) {
   render();
 }
 
+/** Step `delta` moves back (negative) or forward from the position shown. */
+export function step(delta) {
+  if (!ui.chess) return;
+  const plies = ui.chess.history().length;
+  showPly((ui.view ?? plies) + delta);
+}
+
+const NAVIGATION = {
+  ArrowLeft: () => step(-1), ArrowRight: () => step(1),
+  Home: () => showPly(0), ArrowUp: () => showPly(0), End: () => showPly(null), ArrowDown: () => showPly(null),
+};
+
 export function render() {
   const c = ui.chess;
   const history = c.history({ verbose: true });
@@ -359,6 +371,10 @@ export async function init(modelBase = "model/") {
     if (typing || event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.key === "f") $("flip").click();
     if (event.key === "m") $("sound").click();
+    if (NAVIGATION[event.key] && ui.chess) {
+      event.preventDefault();                                // not scrolling the page
+      NAVIGATION[event.key]();
+    }
     if (event.key === "Escape") ui.board.cancelPremove();   // drops the selection and any premove
   });
   try {
