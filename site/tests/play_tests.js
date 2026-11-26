@@ -858,4 +858,30 @@ test("Live: the bot gets stronger while it is losing, within the cap, and the re
   difficulty("off");
 });
 
+test("your rated games are listed, newest first, and the rating can start again", async () => {
+  site.ui.random = () => 0.5;
+  site.resetProfile(1200);
+  difficulty("between");
+  assert($("adaptive-history").hidden, "nothing to list yet");
+  await site.startFromForm();
+  site.resign();
+  await site.startFromForm();
+  site.resign();
+  assert(!$("adaptive-history").hidden);
+  const rows = [...$("adaptive-games").querySelectorAll("li")].map((li) => li.textContent);
+  equal(rows.length, 2);
+  assert(/: lost vs\. bot 1150, 1160 \u2192 1\d{3} \(-\d+\)$/.test(rows[0]), rows[0]);
+  assert(rows[1].endsWith("lost vs. bot 1200, 1200 \u2192 1160 (-40)"), rows[1]);
+  const confirm = window.confirm;
+  window.confirm = () => true;
+  try {
+    $("adaptive-reset").click();
+  } finally {
+    window.confirm = confirm;
+  }
+  equal([site.profile().rating, site.profile().games], [1200, 0]);
+  assert($("adaptive-history").hidden);
+  difficulty("off");
+});
+
 run();

@@ -56,6 +56,7 @@ export function renderAdaptiveNote() {
   note.hidden = mode === "off";
   $("rating").disabled = following;
   const p = profile();
+  renderAdaptiveHistory(p, mode);
   if (!following) {
     $("rating-value").textContent = $("rating").value;
     note.textContent = `The bot starts at the rating you choose, then plays a step stronger while it is losing or `
@@ -67,6 +68,22 @@ export function renderAdaptiveNote() {
   note.textContent = p.games
     ? `Your rating: ${Math.round(p.rating)} after ${p.games} game${p.games === 1 ? "" : "s"}. The bot plays at ${next}.`
     : `Your first game starts at ${next}; after each game the bot moves towards your level.`;
+}
+
+const RESULT_WORDS = { 1: "won", 0.5: "drew", 0: "lost" };
+
+/** Your latest rated games, newest first, with how each moved your rating. */
+function renderAdaptiveHistory(p, mode) {
+  $("adaptive-history").hidden = mode === "off" || !p.games;
+  const rows = p.history.slice(-10).reverse().map((g) => {
+    const li = document.createElement("li");
+    const change = Math.round(g.ratingAfter) - Math.round(g.ratingBefore);
+    li.textContent = `${g.date}: ${RESULT_WORDS[g.score] || "played"} vs. bot ${g.botRating}, `
+      + `${Math.round(g.ratingBefore)} \u2192 ${Math.round(g.ratingAfter)} (${change >= 0 ? "+" : ""}${change})`
+      + (g.mode === "live" ? ", live" : "");
+    return li;
+  });
+  $("adaptive-games").replaceChildren(...rows);
 }
 
 /** Start your adaptive-difficulty rating again (at `rating`, else the usual start). */
@@ -618,6 +635,9 @@ export async function init(modelBase = "model/", dataBase = modelBase.replace(/m
   show();
   applySettings(saved.settings.load());
   for (const radio of $("new-game").elements.difficulty) radio.addEventListener("change", renderAdaptiveNote);
+  $("adaptive-reset").addEventListener("click", () => {
+    if (window.confirm("Start your rating again from 1200? Your rated games here are forgotten.")) resetProfile();
+  });
   renderAdaptiveNote();
   const showMode = () => {
     $("position-fields").hidden = $("new-game").elements.mode.value !== "position";

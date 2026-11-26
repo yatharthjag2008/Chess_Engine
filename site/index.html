@@ -80,6 +80,11 @@
             <label title="During the game the bot gets stronger when it is losing and weaker when it is winning"><input type="radio" name="difficulty" value="live"><span>Live</span></label>
           </div>
           <p class="hint" id="adaptive-note" hidden></p>
+          <details id="adaptive-history" class="adaptive-history" hidden>
+            <summary>Your rated games</summary>
+            <ol id="adaptive-games"></ol>
+            <button type="button" id="adaptive-reset">Start my rating again</button>
+          </details>
         </fieldset>
         <button type="submit" class="primary" id="play" disabled>Play</button>
       </form>
