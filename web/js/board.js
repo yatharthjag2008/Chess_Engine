@@ -116,6 +116,14 @@ export function squareOrder(orientation) {
 export const BRUSHES = { green: "#15781b", red: "#882020", blue: "#003088", yellow: "#e68f00" };
 const SVG = "http://www.w3.org/2000/svg";
 
+/** The colour of a shape from the keys held while drawing: none green, Shift red, Alt blue, both yellow. */
+export function brushFor(event) {
+  if (event.shiftKey && event.altKey) return "yellow";
+  if (event.shiftKey) return "red";
+  if (event.altKey) return "blue";
+  return "green";
+}
+
 function svgEl(name, attrs) {
   const el = document.createElementNS(SVG, name);
   for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, String(value));
@@ -208,7 +216,7 @@ export class Board {
     const orig = this.squareAt(event.clientX, event.clientY);
     if (!orig) return;
     event.preventDefault();
-    this.drawing = { orig, dest: orig };
+    this.drawing = { orig, dest: orig, brush: brushFor(event) };
     const move = (e) => this.annotateMove(e);
     const up = (e) => {
       window.removeEventListener("pointermove", move);
@@ -249,15 +257,19 @@ export class Board {
       this.renderShapes();                                   // released off the board: nothing drawn
       return;
     }
-    this.toggleShape(dest === drawing.orig ? { orig: drawing.orig } : { orig: drawing.orig, dest });
+    const shape = dest === drawing.orig ? { orig: drawing.orig } : { orig: drawing.orig, dest };
+    if (drawing.brush !== "green") shape.brush = drawing.brush;
+    this.toggleShape(shape);
   }
 
-  /** Add a shape, or remove it if the same one is already drawn. */
+  /** Add a shape; the same one in the same colour is removed, in another colour recoloured. */
   toggleShape(shape) {
     const same = (s) => s.orig === shape.orig && (s.dest || null) === (shape.dest || null);
     const index = this.shapes.findIndex(same);
-    if (index >= 0) this.shapes = this.shapes.filter((_, i) => i !== index);
-    else this.shapes = [...this.shapes, shape];
+    const brush = (s) => s.brush || "green";
+    if (index < 0) this.shapes = [...this.shapes, shape];
+    else if (brush(this.shapes[index]) === brush(shape)) this.shapes = this.shapes.filter((_, i) => i !== index);
+    else this.shapes = this.shapes.map((s, i) => (i === index ? shape : s));
     this.render();
   }
 

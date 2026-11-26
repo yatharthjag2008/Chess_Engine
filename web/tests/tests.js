@@ -412,6 +412,20 @@ test("right-drag draws an arrow, shown faintly while dragging; the same arrow ag
   equal(board.shapes.length, 1, "released off the board: nothing");
 });
 
+test("colours: Shift red, Alt blue, both yellow; the same shape in another colour is recoloured", () => {
+  const board = new Board(fixture());
+  rightDrag(board, "a1", "a8", { shiftKey: true });
+  rightDrag(board, "b1", "b8", { altKey: true });
+  rightDrag(board, "c1", "c8", { shiftKey: true, altKey: true });
+  rightDrag(board, "d1");
+  equal(board.shapes.map((s) => s.brush || "green"), ["red", "blue", "yellow", "green"]);
+  equal(board.el.querySelectorAll(".shapes line.red, .shapes line.blue, .shapes line.yellow").length, 3);
+  rightDrag(board, "a1", "a8");
+  equal(board.shapes[0], { orig: "a1", dest: "a8" }, "recoloured green, not removed");
+  rightDrag(board, "a1", "a8");
+  equal(board.shapes.length, 3, "now removed");
+});
+
 test("a right-click that cancels a premove draws nothing", () => {
   const board = premoveBoard();
   board.squareEl("g1").click();
