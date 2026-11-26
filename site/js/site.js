@@ -8,6 +8,7 @@ import { START, canMate, captured, describeCaptures } from "./material.js";
 import { stored } from "./storage.js";
 import { Clock, baseSeconds, formatClock, thinkTime } from "./clock.js";
 import { loadOpenings, openingOf } from "./openings.js";
+import { parsePosition } from "./position.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -410,14 +411,17 @@ export function readForm() {
   const data = new FormData($("new-game"));
   let color = data.get("color");
   if (color === "random") color = ui.random() < 0.5 ? "white" : "black";
-  return { rating: Number(data.get("rating")), color, time: data.get("time") || "none" };
+  return { rating: Number(data.get("rating")), color, time: data.get("time") || "none",
+           mode: data.get("mode") || "standard", position: data.get("position") || "" };
 }
 
-export async function newGame({ rating, color, time = "none" }) {
-  ui.chess = new Chess();
+/** A new game: `start` (a chess.js game, see position.js) to carry on from a position, else the usual start. */
+export async function newGame({ rating, color, time = "none", start = null }) {
+  ui.chess = start || new Chess();
   ui.time = baseSeconds(time) ? String(time) : "none";
   ui.clock = baseSeconds(time) ? new Clock(baseSeconds(time)) : null;   // null: an untimed game
-  ui.startFen = ui.chess.fen();
+  const history = ui.chess.history({ verbose: true });
+  ui.startFen = history.length ? history[0].before : ui.chess.fen();
   ui.view = null;
   ui.thoughts = {};
   ui.rating = rating;
@@ -428,7 +432,22 @@ export async function newGame({ rating, color, time = "none" }) {
   ui.board.setOrientation(color === "black" ? "black" : "white");
   ui.sounds.play("start");
   render();
-  if (ui.human === "b") await botTurn();
+  if (ui.chess.turn() !== ui.human) await botTurn();          // the bot's move first (Black, or its turn in a position)
+}
+
+/** What the Play button does: a standard game, or one from the pasted position (an error shown if it cannot be). */
+export async function startFromForm() {
+  const form = readForm();
+  const error = $("position-error");
+  error.hidden = true;
+  if (form.mode !== "position") return newGame(form);
+  const { chess, error: problem } = parsePosition(form.position);
+  if (problem) {
+    error.textContent = problem;
+    error.hidden = false;
+    return undefined;
+  }
+  return newGame({ ...form, start: chess });
 }
 
 export function takeback() {
@@ -494,7 +513,7 @@ export async function init(modelBase = "model/", dataBase = modelBase.replace(/m
     event.preventDefault();
     const data = new FormData($("new-game"));
     saved.settings.save({ rating: Number(data.get("rating")), color: data.get("color"), time: data.get("time") });
-    newGame(readForm());
+    startFromForm();
   });
   $("flip").addEventListener("click", () => { ui.board.flip(); if (ui.chess) render(); });
   $("board").addEventListener("click", (event) => {         // a click on the board returns to the game

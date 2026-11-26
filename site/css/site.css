@@ -35,5 +35,7 @@
 #position-fields textarea { font: 0.85rem ui-monospace, monospace; padding: 6px 8px; border-radius: 6px; resize: vertical;
   border: 1px solid var(--line); background: var(--page); color: var(--ink); width: 100%; }
 
+.form-error { color: var(--danger); font-size: 0.85rem; margin: 2px 0 0; }
+
 .volume { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 0.9rem; }
 .volume input { width: 90px; }

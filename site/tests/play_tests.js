@@ -636,4 +636,57 @@ test("the game modes: a standard game, or from a position (a box for a FEN or a 
   assert($("position-fields").hidden);
 });
 
+/** Fill in the new-game form for a game from a position. */
+function positionForm(text, color = "white") {
+  const radio = $("new-game").querySelector('input[name="mode"][value="position"]');
+  radio.checked = true;
+  radio.dispatchEvent(new Event("change"));
+  $("position-text").value = text;
+  $("new-game").querySelector(`input[name="color"][value="${color}"]`).checked = true;
+}
+
+function standardForm() {
+  const radio = $("new-game").querySelector('input[name="mode"][value="standard"]');
+  radio.checked = true;
+  radio.dispatchEvent(new Event("change"));
+  $("new-game").querySelector('input[name="color"][value="white"]').checked = true;
+}
+
+test("from a position: a FEN, and the bot moves first when it is its turn", async () => {
+  site.ui.random = () => 0.5;
+  positionForm("8/8/8/4k3/8/8/4K3/4Q3 w - - 0 1");
+  await site.startFromForm();
+  equal(site.ui.chess.fen(), "8/8/8/4k3/8/8/4K3/4Q3 w - - 0 1");
+  equal(site.ui.board.mover, "white", "your move: you are White and White is to move");
+  positionForm("8/8/8/4k3/8/8/4K3/4Q3 b - - 0 1");
+  await site.startFromForm();
+  equal(site.ui.chess.history().length, 1, "Black to move and you are White: the bot moved");
+  equal(site.ui.board.mover, "white");
+  standardForm();
+});
+
+test("from a position: a PGN's moves are kept in the move list", async () => {
+  site.ui.random = () => 0.5;
+  positionForm('[Event "Club game"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 *', "black");
+  await site.startFromForm();
+  equal(site.ui.chess.history().slice(0, 6), ["e4", "e5", "Nf3", "Nc6", "Bb5", "a6"]);
+  equal(site.ui.chess.history().length, 7, "White (the bot) played its 4th move");
+  equal($("move-list").querySelectorAll(".san[data-ply]").length, 7);
+  standardForm();
+});
+
+test("from a position: what cannot be played says so, and no game starts", async () => {
+  await site.newGame({ rating: 1500, color: "white" });
+  const before = site.ui.chess;
+  positionForm("this is not a position");
+  await site.startFromForm();
+  assert(!$("position-error").hidden, "an error shown");
+  assert($("position-error").textContent.startsWith("That FEN is not valid"), $("position-error").textContent);
+  assert(site.ui.chess === before, "the game in progress is untouched");
+  positionForm("8/8/8/4k3/8/8/4K3/4Q3 w - - 0 1");
+  await site.startFromForm();
+  assert($("position-error").hidden, "a good one clears the error");
+  standardForm();
+});
+
 run();
