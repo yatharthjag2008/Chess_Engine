@@ -46,3 +46,17 @@
 
 .volume { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 0.9rem; }
 .volume input { width: 90px; }
+
+/* Pages: Play and Analyse */
+.site-nav { display: flex; gap: 14px; flex-wrap: wrap; margin: 4px 0 6px; font-size: 0.95rem; }
+.site-nav a { color: inherit; opacity: 0.75; text-decoration: none; border-bottom: 2px solid transparent; }
+.site-nav a:hover { opacity: 1; }
+.site-nav a[aria-current="page"] { opacity: 1; border-bottom-color: currentColor; font-weight: 600; }
+
+/* The Analyse page */
+.analyse-layout { max-width: 820px; margin: 0 auto; padding: 0 16px 24px; display: grid; gap: 16px; }
+.analyse-layout textarea { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: 0.85rem; }
+.analyse-layout input[type="text"] { width: 100%; box-sizing: border-box; }
+.estimate-list { padding-left: 1.2em; line-height: 1.5; }
+.estimate-list li { margin-bottom: 6px; }
+.estimate-overall { font-weight: 600; margin: 8px 0; }

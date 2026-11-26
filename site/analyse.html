@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Analyse a Game</title>
+  <meta name="description" content="Estimate a player's rating from their moves, with the human-like chess model running in your browser.">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Analyse a game</h1>
+    <nav class="site-nav" aria-label="Pages"><a href="./">Play the bot</a> <a href="analyse.html" aria-current="page">Analyse a game</a></nav>
+    <p class="tagline">Paste one or more games. The model scores every move at every rating to estimate how strong
+      each player played. Everything runs in your browser; nothing is uploaded.</p>
+  </header>
+
+  <main class="analyse-layout">
+    <form id="estimate-form" class="panel" autocomplete="off">
+      <h2>Estimate a rating</h2>
+      <label class="field" for="pgn-text"><span>Games (PGN)</span></label>
+      <textarea id="pgn-text" name="pgn" rows="10" spellcheck="false"
+        placeholder="[White &quot;...&quot;]&#10;[Black &quot;...&quot;]&#10;&#10;1. e4 e5 2. Nf3 ..."></textarea>
+      <label class="field">
+        <span>Player (optional: only their side, and one estimate from all their games)</span>
+        <input id="player-name" name="player" type="text" placeholder="a username in the PGN">
+      </label>
+      <button type="submit" class="primary" id="estimate" disabled>Estimate</button>
+      <p class="form-error" id="estimate-error" role="alert" hidden></p>
+      <p class="status" id="estimate-status" role="status" aria-live="polite">Loading the model...</p>
+    </form>
+
+    <section class="panel" id="estimate-results" hidden>
+      <h2>Estimates</h2>
+      <p class="hint">The estimate is the rating whose players most often make moves like these; the range holds
+        80% of the likely ratings. From one game it is rough (about 250 points off on average with this model), and
+        more games narrow it.</p>
+      <div id="overall" class="estimate-overall" hidden></div>
+      <ol id="estimate-list" class="estimate-list"></ol>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <a href="https://github.com/yatharthjag2008/Chess_Engine">Source and results on GitHub</a> ·
+    rules of chess by <a href="https://github.com/jhlywa/chess.js">chess.js</a> (BSD-2)
+  </footer>
+
+  <script type="module" src="js/analyse.js"></script>
+</body>
+</html>

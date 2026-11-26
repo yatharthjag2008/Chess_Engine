@@ -16,6 +16,7 @@ from test_web_js import _Quiet, browser_or_skip, check_results, dump_dom
 ROOT = Path(__file__).resolve().parents[1]
 UNIT_TESTS = 32     # tests in site/tests/unit_tests.js
 PLAY_TESTS = 52    # tests in site/tests/play_tests.js
+ANALYSE_TESTS = 4  # tests in site/tests/analyse_tests.js
 
 
 def _build_site():
@@ -37,7 +38,8 @@ def test_assemble_copies_the_site_and_the_shared_files(tmp_path) -> None:
     files = build.assemble(tmp_path / "out")
     assert {"index.html", "js/engine.js", "js/board.js", "css/style.css", "vendor/chess.js",
             "model/model.json", "model/model.bin", ".nojekyll", "pieces/wK.svg", "pieces/bP.svg",
-            "pieces/LICENSE.txt", "data/openings.json", "js/openings.js"} <= set(files)
+            "pieces/LICENSE.txt", "data/openings.json", "js/openings.js",
+            "analyse.html", "js/analyse.js", "js/rating.js", "js/games.js", "data/rating.json"} <= set(files)
     assert not any(f.startswith("tests/") for f in files), "tests are not published"
     with_tests = build.assemble(tmp_path / "out", tests=True)
     assert "tests/engine.html" in with_tests and "tests/harness.js" in with_tests
@@ -106,6 +108,11 @@ def test_the_site_modules(tmp_path) -> None:
 
 def test_the_play_page_end_to_end(tmp_path) -> None:
     _run_page(tmp_path, "play.html", PLAY_TESTS)
+
+
+def test_the_analyse_page_end_to_end(tmp_path) -> None:
+    """Rating estimates in the browser, checked against Python's for a real game."""
+    _run_page(tmp_path, "analyse.html", ANALYSE_TESTS, budget_ms=60000)
 
 
 def test_a_game_survives_a_reload(tmp_path) -> None:
