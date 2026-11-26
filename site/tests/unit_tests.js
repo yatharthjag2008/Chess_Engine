@@ -8,6 +8,8 @@ import { loadOpenings, openingOf, positionKey } from "../js/openings.js";
 import { PRESETS, parsePosition } from "../js/position.js";
 import { Clock, TIME_CONTROLS, baseSeconds, formatClock, thinkTime } from "../js/clock.js";
 import { START, canMate, captured, countPieces, describeCaptures, materialOf } from "../js/material.js";
+import { ADAPTIVE, LiveAdjuster, botRatingFor, expectedScore, readProfile, recordGame, scoreFor,
+         updateRating } from "../js/adaptive.js";
 
 // ------------------------------------------------------------------ sounds
 
@@ -282,6 +284,52 @@ test("what cannot be played from says why", () => {
   assert(parsePosition("1. e4 e5 2. Ke3 Ke6 3. Qxh8").error.startsWith("That PGN could not be read"));
   equal(parsePosition("7k/6Q1/6K1/8/8/8/8/8 b - - 0 1").error,
         "The game is already over in that position (mate, stalemate or a draw).");
+});
+
+// ------------------------------------------------------------------ adaptive difficulty
+
+const near = (a, b, tol = 1e-9) => Math.abs(a - b) < tol;
+
+test("adaptive: the Elo update matches the Python numbers", () => {
+  assert(near(expectedScore(1500, 1500), 0.5));
+  assert(near(updateRating(1200, 1400, 1, 0), 1260.7797541318366), "a win while new: K 80");
+  equal(updateRating(1500, 1500, 0.5, 9), 1500, "a draw at your level changes nothing");
+  assert(near(updateRating(1500, 1300, 0, 7), 1469.6101229340816), "a loss later: K 40");
+  equal(updateRating(2390, 2400, 1, 9), 2400, "kept in range");
+  equal([botRatingFor(1437), botRatingFor(3000), botRatingFor(100)], [1450, 2400, 800]);
+  let threw = false;
+  try { updateRating(1500, 1500, 2, 0); } catch { threw = true; }
+  assert(threw, "a score above 1 is refused");
+  equal([scoreFor("w", "w"), scoreFor("b", "w"), scoreFor(null, "b")], [1, 0, 0.5]);
+});
+
+test("adaptive: the profile records games and survives broken storage", () => {
+  equal(readProfile(null), { rating: ADAPTIVE.startRating, games: 0, history: [] });
+  equal(readProfile({ rating: "nonsense" }).rating, ADAPTIVE.startRating);
+  equal(readProfile({ rating: 5000, games: 3 }).rating, 2400);
+  let profile = readProfile(null);
+  profile = recordGame(profile, 1200, 1, "between", { date: new Date("2026-11-26T12:00:00Z") });
+  equal(profile.games, 1);
+  equal(profile.history[0], { date: "2026-11-26", botRating: 1200, score: 1, ratingBefore: 1200, ratingAfter: 1240,
+                              mode: "between" });
+  for (let i = 0; i < 60; i++) profile = recordGame(profile, 1200, 0.5, "between");
+  equal(profile.history.length, 50, "the latest 50 games are kept");
+});
+
+test("adaptive: live changes follow the bot's chances, with a cap", () => {
+  const losing = new LiveAdjuster(1400);
+  const changes = [];
+  for (let i = 0; i < 12; i++) changes.push(losing.observe([0.2, 0.1, 0.7]));
+  equal(changes, [null, null, null, null, null, null, 1450, null, null, null, 1500, null], "the Python sequence");
+  equal(losing.meanRating, 1425);
+  const winningAtTheBottom = new LiveAdjuster(800);
+  for (let i = 0; i < 12; i++) equal(winningAtTheBottom.observe([0.9, 0.05, 0.05]), null, "already as weak as it gets");
+  const capped = new LiveAdjuster(1400);
+  for (let i = 0; i < 60; i++) capped.observe([0, 0, 1]);
+  equal(capped.rating, 1600, "never more than 200 from the start");
+  equal(new LiveAdjuster(1400).observe(null), null, "no value head: no change");
+  const copy = LiveAdjuster.fromJSON(JSON.parse(JSON.stringify(losing)));
+  equal([copy.rating, copy.meanRating, copy.changes.length], [1500, 1425, 2], "saved and restored");
 });
 
 run();
