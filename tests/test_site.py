@@ -72,6 +72,22 @@ def test_a_fresh_export_matches_pytorch(tmp_path) -> None:
     check_results(dom, 7)
 
 
+def _run_page(tmp_path, page: str, minimum: int, budget_ms: int = 30000) -> None:
+    out = tmp_path / "site"
+    _build_site().assemble(out, tests=True)
+    server, url = _serve(out)
+    try:
+        dom = dump_dom(browser_or_skip(), f"{url}/tests/{page}", tmp_path / "profile", budget_ms=budget_ms)
+    finally:
+        server.shutdown()
+    check_results(dom, minimum)
+
+
+def test_the_site_modules(tmp_path) -> None:
+    """Sounds, material, clocks and the other modules of the play page, one by one."""
+    _run_page(tmp_path, "unit.html", 3)
+
+
 def test_the_play_page_end_to_end(tmp_path) -> None:
     out = tmp_path / "site"
     _build_site().assemble(out, tests=True)
