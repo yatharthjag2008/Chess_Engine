@@ -315,4 +315,21 @@ test("the step buttons, disabled at either end", async () => {
   equal(site.ui.view, null);
 });
 
+test("while looking back the status says where you are; a click on the board returns", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1500, color: "white" });
+  await site.play("e2e4");
+  site.showPly(1);
+  equal($("status").textContent, "Looking at the position after 1.e4. End, or a click on the board, returns to the game.");
+  site.showPly(2);
+  equal(site.ui.view, null, "ply 2 is the game");
+  site.showPly(0);
+  assert($("status").textContent.startsWith("Looking at the starting position."));
+  assert(site.ui.board.el.classList.contains("viewing"), "the board is marked");
+  click("e2");
+  equal(site.ui.view, null, "back to the game");
+  equal(site.ui.board.selected, null, "that click selected nothing");
+  assert($("status").textContent.startsWith("Your move"), $("status").textContent);
+});
+
 run();

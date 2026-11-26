@@ -88,6 +88,13 @@ function positionAt(history, ply) {
   return { fen: move.after, move };
 }
 
+/** "Looking at the position after 12...Nf6." for a chess.js move (null: the start). */
+function lookingAt(move) {
+  if (!move) return "Looking at the starting position.";
+  const number = Number(move.before.split(" ")[5]);          // the full-move number before the move
+  return `Looking at the position after ${number}${move.color === "w" ? "." : "..."}${move.san}.`;
+}
+
 /** Look at an earlier position (`ply` half-moves in); null, or the last ply, returns to the game. */
 export function showPly(ply) {
   if (!ui.chess) return;
@@ -133,7 +140,9 @@ export function render() {
   $("takeback").disabled = ui.over || ui.busy || humanMoves === 0;
   $("resign").disabled = ui.over || ui.busy;
   const end = outcome();
-  if (ui.over) setStatus(ui.overText);
+  ui.board.el.classList.toggle("viewing", viewing);
+  if (viewing) setStatus(`${lookingAt(shown.move)} End, or a click on the board, returns to the game.`);
+  else if (ui.over) setStatus(ui.overText);
   else if (ui.busy) setStatus("The bot is thinking...");
   else if (humanToMove) setStatus(`Your move${c.inCheck() ? ": you are in check" : ""}.`);
   if (end && !ui.over) finish(end.text, end.winner);
@@ -352,6 +361,11 @@ export async function init(modelBase = "model/") {
     newGame(readForm());
   });
   $("flip").addEventListener("click", () => { ui.board.flip(); if (ui.chess) render(); });
+  $("board").addEventListener("click", (event) => {         // a click on the board returns to the game
+    if (ui.view === null) return;
+    event.stopPropagation();
+    showPly(null);
+  }, true);
   $("first").addEventListener("click", () => showPly(0));
   $("prev").addEventListener("click", () => step(-1));
   $("next").addEventListener("click", () => step(1));

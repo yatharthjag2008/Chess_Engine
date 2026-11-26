@@ -19,6 +19,8 @@
 .move-list .san[data-ply] { cursor: pointer; }
 .move-list .san[data-ply]:hover { background: var(--line); }
 
+.board.viewing { outline: 3px solid var(--accent); outline-offset: 2px; }   /* not the game's position */
+
 .step-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
 .step-buttons button { padding: 6px 0; font-size: 0.95rem; line-height: 1; }
 .step-buttons button:disabled { opacity: 0.4; }
