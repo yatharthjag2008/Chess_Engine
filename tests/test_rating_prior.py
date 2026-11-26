@@ -42,3 +42,28 @@ def test_the_committed_file_is_a_proper_prior() -> None:
     assert data["centers"] == [900, 1100, 1300, 1500, 1700, 1900, 2100, 2300]
     t = data["test"]
     assert t["low"] < t["median"] < t["high"] and t["moves"] == 12
+
+
+def test_the_opponent_prior_is_fitted_and_scored_on_held_out_games() -> None:
+    data = json.loads((ROOT / "site" / "data" / "rating.json").read_text(encoding="utf-8"))
+    o = data["opponent"]
+    assert o["sigma"] > 0 and o["temper"] >= 1
+    assert abs(o["val"]["coverage"] - 0.8) <= 0.02, "calibrated on the validation games"
+    assert o["test"]["mae"] < 100, "far better than from the moves alone (about 250)"
+    assert o["test"]["players"] > 1000
+    assert o["test_vector"]["low"] < o["test_vector"]["estimate"] < o["test_vector"]["high"]
+
+
+def test_opponent_log_prior_multiplies_over_games() -> None:
+    from chess_engine.eval.rating_estimation import opponent_log_prior
+
+    grid = np.arange(1000, 2001, 100, dtype=float)
+    one = opponent_log_prior(grid, [1500], 100)
+    assert one.argmax() == 5 and one[5] == 0 and one[6] == pytest.approx(-0.5)
+    two = opponent_log_prior(grid, [1400, 1600], 100)
+    assert two.argmax() == 5 and two[5] == pytest.approx(-1.0), "between them, and sharper"
+    with pytest.raises(ValueError):
+        opponent_log_prior(grid, [], 100)
+    with pytest.raises(ValueError):
+        opponent_log_prior(grid, [1500], 0)
+

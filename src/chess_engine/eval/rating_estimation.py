@@ -181,6 +181,22 @@ def make_log_prior(cfg: RatingEstimationConfig, dataset_dir: str | Path | None =
     return data_log_prior(training_player_ratings(dataset_dir), grid, cfg.prior_smoothing)
 
 
+def opponent_log_prior(grid: np.ndarray, opp_ratings: Sequence[float], sigma: float) -> np.ndarray:
+    """Log of a prior centred on the opponents' ratings: Lichess pairs players of similar strength, so a player's
+    rating is near their opponent's. Several games (several opponents) multiply: ``sum_i -((r - opp_i) / sigma)^2 / 2``.
+
+    This prior carries most of the information when the opponent's rating is known (see
+    ``scripts/build_rating_prior.py`` for how much); it is wrong for games against a bot whose rating was chosen.
+    """
+    if sigma <= 0:
+        raise ValueError("sigma must be positive")
+    opp = np.asarray(list(opp_ratings), dtype=np.float64)
+    if len(opp) == 0:
+        raise ValueError("no opponent ratings")
+    grid = np.asarray(grid, dtype=np.float64)
+    return -0.5 * (((grid[None, :] - opp[:, None]) / sigma) ** 2).sum(axis=0)
+
+
 @dataclass(frozen=True)
 class RatingEstimate:
     """A posterior over ratings, summarized."""
