@@ -3,6 +3,7 @@
 import { Chess } from "../vendor/chess.js";
 import { assert, equal, run, test } from "./harness.js";
 import { RECIPES, Sounds, soundFor } from "../js/sounds.js";
+import { stored } from "../js/storage.js";
 import { START, captured, countPieces, describeCaptures, materialOf } from "../js/material.js";
 
 // ------------------------------------------------------------------ sounds
@@ -89,6 +90,44 @@ test("captures in words, for screen readers", () => {
   equal(describeCaptures(["p"], 1), "Captured a pawn; 1 ahead.");
   equal(describeCaptures(["p", "p", "n"], 5), "Captured 2 pawns and a knight; 5 ahead.");
   equal(describeCaptures(["p", "b", "r", "q"]), "Captured a pawn, a bishop, a rook and a queen.");
+});
+
+// ------------------------------------------------------------------ storage
+
+/** An in-memory stand-in for localStorage. */
+function memoryStorage() {
+  const data = new Map();
+  return {
+    getItem: (k) => (data.has(k) ? data.get(k) : null),
+    setItem: (k, v) => data.set(k, String(v)),
+    removeItem: (k) => data.delete(k),
+    data,
+  };
+}
+
+test("stored values round-trip as JSON", () => {
+  const storage = memoryStorage();
+  const game = stored("game", storage);
+  equal(game.load(), null);
+  equal(game.load({ none: true }), { none: true }, "the fallback when nothing is saved");
+  assert(game.save({ moves: ["e2e4"], rating: 1500 }));
+  equal(game.load(), { moves: ["e2e4"], rating: 1500 });
+  game.clear();
+  equal(game.load(), null);
+  storage.setItem("game", "{not json");
+  equal(game.load("fallback"), "fallback", "unreadable: as if nothing were saved");
+});
+
+test("storage that throws (private windows, a full quota) never breaks the page", () => {
+  const angry = { getItem() { throw new Error("denied"); }, setItem() { throw new Error("full"); },
+                  removeItem() { throw new Error("denied"); } };
+  const value = stored("x", angry);
+  equal(value.load(7), 7);
+  assert(!value.save(1));
+  value.clear();
+  const none = stored("x", null);
+  equal(none.load(3), 3);
+  assert(!none.save(1));
 });
 
 run();

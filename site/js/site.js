@@ -5,6 +5,7 @@ import { Board, pieceEl } from "./board.js";
 import { loadModel, sampleMove } from "./engine.js";
 import { Sounds, soundFor } from "./sounds.js";
 import { START, captured, describeCaptures } from "./material.js";
+import { stored } from "./storage.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -25,21 +26,17 @@ export const ui = {
   sounds: new Sounds(),
 };
 
-const SOUND_KEY = "human-chess-site.sound";
-const VOLUME_KEY = "human-chess-site.volume";
+const saved = {
+  sound: stored("human-chess-site.sound"),      // "on" / "off"
+  volume: stored("human-chess-site.volume"),    // 0-100
+};
 
 /** Volume from 0 to 100 (remembered like the on/off switch). */
 export function setVolume(percent, { save = true } = {}) {
   const value = Math.min(100, Math.max(0, Number(percent) || 0));
   ui.sounds.volume = value / 100;
   $("volume").value = String(value);
-  if (save) {
-    try { localStorage.setItem(VOLUME_KEY, String(value)); } catch { /* not remembered */ }
-  }
-}
-
-function savedVolume() {
-  try { return localStorage.getItem(VOLUME_KEY) ?? 70; } catch { return 70; }
+  if (save) saved.volume.save(value);
 }
 
 /** Sound on or off (remembered in this browser when it allows). */
@@ -48,12 +45,7 @@ export function setSound(on, { save = true } = {}) {
   const button = $("sound");
   button.textContent = `Sound: ${on ? "on" : "off"}`;
   button.setAttribute("aria-pressed", String(on));
-  if (!save) return;
-  try { localStorage.setItem(SOUND_KEY, on ? "on" : "off"); } catch { /* private mode: not remembered */ }
-}
-
-function savedSound() {
-  try { return localStorage.getItem(SOUND_KEY) !== "off"; } catch { return true; }
+  if (save) saved.sound.save(on ? "on" : "off");
 }
 
 /** Make a move on the game (UCI or SAN) and play its sound; returns chess.js's move. */
@@ -388,10 +380,10 @@ export async function init(modelBase = "model/") {
     for (const type of ["pointerdown", "keydown"]) document.removeEventListener(type, unlock, true);
   };
   for (const type of ["pointerdown", "keydown"]) document.addEventListener(type, unlock, true);
-  setSound(savedSound(), { save: false });
+  setSound(saved.sound.load("on") !== "off", { save: false });
   $("volume").addEventListener("input", () => setVolume($("volume").value));
   $("volume").addEventListener("change", () => ui.sounds.play("move"));   // a sample at the new volume
-  setVolume(savedVolume(), { save: false });
+  setVolume(saved.volume.load(70), { save: false });
   document.addEventListener("keydown", (event) => {
     const typing = event.target instanceof Element && event.target.closest("input, select, textarea, button");
     if (typing || event.ctrlKey || event.metaKey || event.altKey) return;

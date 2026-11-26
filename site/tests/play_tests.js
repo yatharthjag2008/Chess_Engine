@@ -168,13 +168,13 @@ test("the sound button (and the m key) mutes and unmutes, and is remembered", as
   $("sound").click();
   equal($("sound").textContent, "Sound: off");
   equal($("sound").getAttribute("aria-pressed"), "false");
-  equal(localStorage.getItem("human-chess-site.sound"), "off");
+  equal(localStorage.getItem("human-chess-site.sound"), '"off"');
   site.ui.sounds.log = [];
   await site.play("e2e4");
   equal(site.ui.sounds.log, [], "silent");
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "m" }));
   equal($("sound").textContent, "Sound: on");
-  equal(localStorage.getItem("human-chess-site.sound"), "on");
+  equal(localStorage.getItem("human-chess-site.sound"), '"on"');
 });
 
 test("the volume slider sets the volume and is remembered", () => {
