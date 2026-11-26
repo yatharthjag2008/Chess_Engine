@@ -161,4 +161,18 @@ test("a game starts and ends with a sound: win, lose or draw", async () => {
   equal(site.ui.sounds.log.slice(-1), ["draw"]);
 });
 
+test("the sound button (and the m key) mutes and unmutes, and is remembered", async () => {
+  await site.newGame({ rating: 1500, color: "white" });
+  $("sound").click();
+  equal($("sound").textContent, "Sound: off");
+  equal($("sound").getAttribute("aria-pressed"), "false");
+  equal(localStorage.getItem("human-chess-site.sound"), "off");
+  site.ui.sounds.log = [];
+  await site.play("e2e4");
+  equal(site.ui.sounds.log, [], "silent");
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "m" }));
+  equal($("sound").textContent, "Sound: on");
+  equal(localStorage.getItem("human-chess-site.sound"), "on");
+});
+
 run();

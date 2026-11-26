@@ -21,6 +21,22 @@ export const ui = {
   sounds: new Sounds(),
 };
 
+const SOUND_KEY = "human-chess-site.sound";
+
+/** Sound on or off (remembered in this browser when it allows). */
+export function setSound(on, { save = true } = {}) {
+  ui.sounds.enabled = on;
+  const button = $("sound");
+  button.textContent = `Sound: ${on ? "on" : "off"}`;
+  button.setAttribute("aria-pressed", String(on));
+  if (!save) return;
+  try { localStorage.setItem(SOUND_KEY, on ? "on" : "off"); } catch { /* private mode: not remembered */ }
+}
+
+function savedSound() {
+  try { return localStorage.getItem(SOUND_KEY) !== "off"; } catch { return true; }
+}
+
 /** Make a move on the game (UCI or SAN) and play its sound; returns chess.js's move. */
 function makeMove(move) {
   const made = ui.chess.move(move);
@@ -249,10 +265,13 @@ export async function init(modelBase = "model/") {
   $("takeback").addEventListener("click", takeback);
   $("resign").addEventListener("click", resign);
   $("download").addEventListener("click", download);
+  $("sound").addEventListener("click", () => setSound(!ui.sounds.enabled));
+  setSound(savedSound(), { save: false });
   document.addEventListener("keydown", (event) => {
     const typing = event.target instanceof Element && event.target.closest("input, select, textarea, button");
     if (typing || event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.key === "f") $("flip").click();
+    if (event.key === "m") $("sound").click();
     if (event.key === "Escape") ui.board.cancelPremove();   // drops the selection and any premove
   });
   try {
