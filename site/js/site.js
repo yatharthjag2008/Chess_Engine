@@ -2,7 +2,7 @@
 
 import { Chess } from "../vendor/chess.js";
 import { Board, pieceEl } from "./board.js";
-import { loadModel, sampleMove } from "./engine.js";
+import { loadModel, loadStyle, loadStyles, sampleMove } from "./engine.js";
 import { Sounds, soundFor } from "./sounds.js";
 import { START, canMate, captured, describeCaptures } from "./material.js";
 import { stored } from "./storage.js";
@@ -38,7 +38,68 @@ export const ui = {
   hint: null,          // the latest hint: { fen, data }, shown while that position is on the board
   hintEngine: null,    // Stockfish and the model, started on the first hint
   makeHintEngine: () => new HintEngine(ui.model, new StockfishAnalyzer({ depth: HINTS.depth, multipv: HINTS.multipv })),
+  styles: [],          // the styles and ghosts the site offers (styles/index.json)
+  style: null,         // this game's style (its adapter), or null for players of the rating
+  styleName: "",
+  styleReady: Promise.resolve(),
+  stylesBase: "styles/",
+  fetchStyle: (name) => loadStyle(name, ui.stylesBase),   // replaceable in tests
 };
+
+/** "Ann: style, 120 games" / "me: ghost, games up to 2025-05-31". */
+export function styleLabel(style) {
+  const what = style.kind === "ghost" ? `ghost, games up to ${style.until}` : `style, ${style.games} games`;
+  return `${style.player}: ${what}`;
+}
+
+/** The bot's name: its rating, and whose style it plays in. */
+export function botName(rating = ui.rating) {
+  return `Bot ${rating}` + (ui.style ? ` (${ui.style.player} ${ui.style.kind})` : "");
+}
+
+/** The players' names above and below the board. */
+function renderNames() {
+  const bottomIsHuman = ui.board.orientation === colorName(ui.human);
+  $("top-name").textContent = bottomIsHuman ? botName() : "You";
+  $("bottom-name").textContent = bottomIsHuman ? "You" : botName();
+}
+
+/** Fill the Style choice (hidden when the site has no styles). */
+export function setStyles(list, chosen = "") {
+  ui.styles = Array.isArray(list) ? list : [];
+  const select = $("style");
+  select.replaceChildren(new Option("Players of the rating", ""));
+  for (const style of ui.styles) select.append(new Option(styleLabel(style), style.name));
+  $("style-field").hidden = !ui.styles.length;
+  if (ui.styles.some((s) => s.name === chosen)) select.value = chosen;
+  const note = () => {
+    const style = ui.styles.find((s) => s.name === select.value);
+    $("style-note").textContent = style
+      ? `The bot plays like ${style.player}${style.kind === "ghost" ? ` up to ${style.until}` : ""}, at the rating you choose.`
+      : "";
+  };
+  select.onchange = note;
+  note();
+}
+
+/** Use the style called `name` for this game ("" for none); the bot waits for it to load. */
+function chooseStyle(name) {
+  ui.styleName = name || "";
+  ui.style = null;
+  if (!ui.styleName) {
+    ui.styleReady = Promise.resolve();
+    return ui.styleReady;
+  }
+  ui.styleReady = ui.fetchStyle(ui.styleName).then((style) => {
+    if (ui.styleName === name) ui.style = style;
+  }).catch(() => {
+    if (ui.styleName === name) {
+      ui.styleName = "";
+      setStatus(`The style ${name} could not be loaded: the bot plays like players of its rating.`);
+    }
+  });
+  return ui.styleReady;
+}
 
 const saved = {
   sound: stored("human-chess-site.sound"),      // "on" / "off"
@@ -149,6 +210,7 @@ export function snapshot() {
     time: ui.time || "none",
     adaptive: ui.adaptive,
     hints: ui.hints.toJSON(),
+    style: ui.styleName,
     clock: ui.clock ? ui.clock.toJSON() : null,           // carries on after a reload, time running as on a server
     savedAt: Date.now(),
   };
@@ -245,9 +307,7 @@ export function render() {
   const botToMove = !viewing && !ui.over && c.turn() !== ui.human;   // meanwhile you may premove
   ui.board.setLegalMoves(humanToMove ? legalMoves() : [], humanToMove ? colorName(ui.human) : null,
                          { premover: botToMove ? colorName(ui.human) : null });
-  const bottomIsHuman = ui.board.orientation === colorName(ui.human);
-  $("top-name").textContent = bottomIsHuman ? `Bot ${ui.rating}` : "You";
-  $("bottom-name").textContent = bottomIsHuman ? "You" : `Bot ${ui.rating}`;
+  renderNames();
   $("game-panel").hidden = false;
   renderMoves(history, viewing ? ui.view : history.length);
   const shownPly = viewing ? ui.view : history.length;
@@ -536,7 +596,7 @@ export function clockContext() {
 /** The bot picks a move as often as players of its rating play it. */
 export function botMove() {
   const c = ui.chess;
-  const { moves, wdl } = ui.model.predict(c, ui.rating, clockContext());
+  const { moves, wdl } = ui.model.predict(c, ui.rating, { ...clockContext(), style: ui.style });
   const choice = sampleMove(moves, 1, ui.random);
   makeMove(choice.uci);
   ui.last = { san: choice.san, uci: choice.uci, prob: choice.prob, candidates: moves };
@@ -566,7 +626,8 @@ function botTurn() {
   ui.busy = true;
   render();
   return new Promise((resolve) => {
-    setTimeout(() => {
+    const delay = botDelay();
+    ui.styleReady.then(() => setTimeout(() => {
       if (ui.over) {                                         // its time ran out while it was thinking
         ui.busy = false;
         resolve();
@@ -576,7 +637,7 @@ function botTurn() {
       ui.busy = false;
       render();
       resolve();
-    }, botDelay());
+    }, delay));
   });
 }
 
@@ -595,11 +656,14 @@ export function readForm() {
   if (color === "random") color = ui.random() < 0.5 ? "white" : "black";
   return { rating: Number(data.get("rating")), color, time: data.get("time") || "none",
            mode: data.get("mode") || "standard", position: data.get("position") || "",
-           difficulty: data.get("difficulty") || "off", hints: Number(data.get("hints") ?? HINTS.limit) };
+           difficulty: data.get("difficulty") || "off", hints: Number(data.get("hints") ?? HINTS.limit),
+           style: data.get("style") || "" };
 }
 
 /** A new game: `start` (a chess.js game, see position.js) to carry on from a position, else the usual start. */
-export async function newGame({ rating, color, time = "none", start = null, difficulty = "off", hints = HINTS.limit }) {
+export async function newGame({ rating, color, time = "none", start = null, difficulty = "off", hints = HINTS.limit,
+                                style = "" }) {
+  chooseStyle(style);
   ui.chess = start || new Chess();
   const mode = ["between", "live"].includes(difficulty) ? difficulty : "off";
   if (mode === "between") rating = botRatingFor(profile().rating);   // the bot plays at your level
@@ -632,7 +696,7 @@ export async function playFromHere() {
   const start = new Chess(history.length ? history[0].before : ui.chess.fen());
   for (const move of history.slice(0, ui.view)) start.move(move.lan);
   await newGame({ rating: ui.adaptive.start, color: colorName(ui.human), time: ui.time || "none", start,
-                 difficulty: ui.adaptive.mode, hints: ui.hints.limit });
+                 difficulty: ui.adaptive.mode, hints: ui.hints.limit, style: ui.styleName });
 }
 
 /** What the Play button does: a standard game, or one from the pasted position (an error shown if it cannot be). */
@@ -686,7 +750,7 @@ export function pgn() {
   }
   const a = ui.adaptive;
   const changed = a.live && a.live.changes.length;
-  c.setHeader(ui.human === "w" ? "Black" : "White", changed ? `Bot ${a.start}-${ui.rating}` : `Bot ${ui.rating}`);
+  c.setHeader(ui.human === "w" ? "Black" : "White", changed ? botName(`${a.start}-${ui.rating}`) : botName());
   if (a.mode !== "off") {
     c.setHeader("Adaptive", a.mode);                          // as the local app writes it
     if (changed) c.setHeader("AdaptiveChanges", a.live.changes.map((x) => `${x.botMove}:${x.rating}`).join(" "));
@@ -778,7 +842,8 @@ export async function init(modelBase = "model/", dataBase = modelBase.replace(/m
     event.preventDefault();
     const data = new FormData($("new-game"));
     saved.settings.save({ rating: Number($("rating").value), color: data.get("color"), time: data.get("time"),
-                          difficulty: data.get("difficulty") || "off", hints: data.get("hints") });
+                          difficulty: data.get("difficulty") || "off", hints: data.get("hints"),
+                          style: data.get("style") || "" });
     startFromForm();
   });
   $("flip").addEventListener("click", () => { ui.board.flip(); if (ui.chess) render(); });
@@ -826,6 +891,7 @@ export async function init(modelBase = "model/", dataBase = modelBase.replace(/m
     }
     if (event.key === "Escape") ui.board.cancelPremove();   // drops the selection and any premove
   });
+  loadStyles(ui.stylesBase).then((list) => setStyles(list, (saved.settings.load() || {}).style || ""));
   try {
     ui.model = await loadModel(modelBase);
   } catch (err) {
@@ -861,6 +927,8 @@ export function restore(snap = saved.game.load()) {
   ui.clock = snap.clock ? Clock.fromJSON(snap.clock) : null;
   ui.thoughts = snap.thoughts || {};
   ui.hints = snap.hints ? HintBudget.fromJSON(snap.hints) : new HintBudget(0);
+  chooseStyle(typeof snap.style === "string" ? snap.style : "");
+  if (ui.styleName) ui.styleReady.then(() => { if (ui.chess === chess) renderNames(); });   // the name, once loaded
   ui.hint = null;
   const a = snap.adaptive || {};
   const mode = ["between", "live"].includes(a.mode) ? a.mode : "off";

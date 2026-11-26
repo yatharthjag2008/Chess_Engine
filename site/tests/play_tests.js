@@ -443,7 +443,7 @@ test("the new-game choices are remembered (rating and side, random included)", a
   $("new-game").querySelector('input[value="random"]').checked = true;
   $("new-game").dispatchEvent(new Event("submit", { cancelable: true }));
   await until(() => !site.ui.busy, "the game started");
-  equal(JSON.parse(localStorage.getItem("human-chess-site.settings")), { rating: 1850, color: "random", time: "none", difficulty: "off", hints: "3" });
+  equal(JSON.parse(localStorage.getItem("human-chess-site.settings")), { rating: 1850, color: "random", time: "none", difficulty: "off", hints: "3", style: "" });
   $("rating").value = "1000";
   $("new-game").querySelector('input[value="white"]').checked = true;
   site.applySettings({ rating: 1850, color: "random" });
@@ -987,6 +987,45 @@ test("hints: the limit, Off, a reload, and no rating change in Follow my level",
   equal($("result-banner").querySelector(".adaptive-result").textContent, "Hints were used, so your rating is unchanged.");
   await site.newGame({ rating: 1500, color: "white", hints: 0 });
   assert($("hint").hidden, "hints off");
+});
+
+test("styles: the Style choice appears when the site has some, and the bot plays like that player", async () => {
+  site.ui.random = () => 0.5;
+  equal(site.ui.styles.length, 0, "this test site has no styles");
+  assert($("style-field").hidden);
+  site.setStyles([{ name: "ann", kind: "style", player: "Ann", games: 200, rating: 1500, until: null },
+                  { name: "me", kind: "ghost", player: "me", games: 40, rating: 1300, until: "2026-05-31" }]);
+  assert(!$("style-field").hidden);
+  equal([...$("style").options].map((o) => o.textContent),
+        ["Players of the rating", "Ann: style, 200 games", "me: ghost, games up to 2026-05-31"]);
+  $("style").value = "me";
+  $("style").onchange();
+  equal($("style-note").textContent, "The bot plays like me up to 2026-05-31, at the rating you choose.");
+  const model = site.ui.model;
+  const policyBias = new Float32Array(model.meta.vocabulary.length);
+  policyBias[model.vocab.get("a2a3")] = 30;                  // "always 1. a3" (from the mover's side: ...a6 as Black)
+  const ann = { name: "ann", kind: "style", player: "Ann", weight: 1,
+                offset: new Float32Array(model.channels), blockShift: new Float32Array(model.meta.blocks * 2 * model.channels),
+                policyBias };
+  const asked = [];
+  site.ui.fetchStyle = async (name) => { asked.push(name); return ann; };
+  await site.newGame({ rating: 1500, color: "black", style: "ann" });
+  equal(asked, ["ann"]);
+  equal(site.ui.chess.history()[0], "a3", "the styled bot opens 1. a3");
+  equal($("top-name").textContent, "Bot 1500 (Ann style)");
+  assert(site.pgn().includes('[White "Bot 1500 (Ann style)"]'));
+  const snap = JSON.parse(JSON.stringify(site.snapshot()));
+  equal(snap.style, "ann");
+  await site.newGame({ rating: 1500, color: "white" });
+  equal($("top-name").textContent, "Bot 1500", "no style");
+  assert(site.restore(snap));
+  await site.ui.styleReady;
+  equal($("top-name").textContent, "Bot 1500 (Ann style)", "the style comes back after a reload");
+  site.ui.fetchStyle = async () => { throw new Error("gone"); };
+  await site.newGame({ rating: 1500, color: "black", style: "ann" });
+  equal($("top-name").textContent, "Bot 1500", "a style that cannot load: the plain bot");
+  site.setStyles([]);
+  assert($("style-field").hidden);
 });
 
 run();
