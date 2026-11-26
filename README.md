@@ -372,7 +372,8 @@ python scripts/serve.py          # then open http://127.0.0.1:8000
 ```
 
 Pick the difficulty (a fixed rating, your level, or live), your side, a time control and how many hints you want,
-then click or drag pieces. After each bot move the side panel shows what players of that rating usually choose
+then click or drag pieces (while the bot thinks you can premove: the move is played as soon as it is your turn,
+if it is still legal). After each bot move the side panel shows what players of that rating usually choose
 in that position. Games can be resigned, taken back (untimed games), downloaded as PGN and reviewed; reloading
 the page continues the game. The screenshot shows a hint's first tier and the Unrated badge it brings.
 
@@ -485,3 +486,6 @@ The 20-step build plan is in [PLAN.md](PLAN.md) (all done); progress, measuremen
 
 Game data comes from the Lichess open database, released under CC0. Stockfish is GPL-3.0 and is
 installed separately (it is not bundled with this repo).
+
+The website bundles [chess.js](https://github.com/jhlywa/chess.js) (BSD-2, `site/vendor/`). The chess pieces in
+`web/pieces/` are the cburnett set by Colin M.L. Burnett (GPLv2+, see `web/pieces/LICENSE.txt`).
