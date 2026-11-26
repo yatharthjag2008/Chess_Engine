@@ -18,7 +18,7 @@ built, what was measured (with real runs), and the decisions behind it.
 | 9. API | FastAPI backend for games, moves, takebacks, PGN | one process, games in memory |
 | 10. Web play | Board, clocks, what players of that rating play, result banner | plain HTML/JS, no build step |
 | 11. Elo dial | Bots vs. Stockfish levels and each other, fitted Elo | strength rises with the dial, in steps |
-| 12. Rating estimation | Rating with a range from a player's moves | weak: 253 Elo error from one game |
+| 12. Rating estimation | Rating with a range from a player's moves | weak: 253 Elo error from one game (60 with the opponent's rating) |
 | 13. Game import | Pasted PGN, Lichess and Chess.com by username, cached | Chess.com's live API returned 404 here (open) |
 | 14. Review engine | Stockfish per move, best / good / inaccuracy / mistake / blunder, accuracy, key moments | a blitz game in about a minute, cached |
 | 15. Coach | Your level vs. +200 / +400, mistake explanations from board facts | levels rarely disagree yet (weak rating sense) |
@@ -1363,4 +1363,22 @@ export (4) and a real reload.
   four fast cores do the work, so machines with more fast cores should gain more. Workers and the page give
   identical estimates, and the page scores the moves itself if workers cannot start. Faster passes also speed up
   the bot's own moves and the coach.
+- **The opponent's rating in rating estimates** (`opponent_log_prior` in `rating_estimation.py`,
+  `build_rating_prior.py`, the Analyse page). Step 12 kept the opponent's rating out of the evidence on purpose;
+  when a game records it, it is now used as a prior centred on it (several games multiply), with its own width and
+  temper fitted on the validation games (the smallest error among settings whose 80% ranges are calibrated to
+  within 2 points) and scored once on the test games:
+
+  | held-out test games (4,888 player-games) | average error | 80% range holds the truth |
+  |---|---|---|
+  | the moves alone (step 12) | 252.6 Elo | 79% |
+  | guessing the opponent's rating | 60.6 Elo | |
+  | the moves with the opponent prior (sigma 70, temper 2.0) | 60.3 Elo | 83% |
+
+  So the gain is almost entirely the opponent's rating: the moves move the answer by about a point on average.
+  The Analyse page therefore shows both estimates for each player (with the opponent's rating, and from the moves
+  alone) and says where the accuracy comes from; in the browser they match Python within 2 Elo on a real game
+  (player01, rated 1825: 1790 with the opponent's rating, 1754 from the moves). The opponent prior is never used for
+  games against the bot, whose rating is chosen rather than paired (the play page's PGN has no ratings). A better
+  rating sense in the model (the bigger training run) is what would make the moves count.
 

@@ -58,7 +58,7 @@ from one month of Lichess blitz). Each row links to the full report or to the st
 | Does it predict the human move? | **41.7%** top-1 / 79.6% top-5 on 172k held-out positions; Stockfish's best move 37.6%, the most common move 12.6%, random 6.3% ([report](reports/eval/laptop_64x6_best_model/report.md)) |
 | Is it better than Stockfish at imitating people? | yes below 2000: +9 to +10 points at 800-1199, a tie around 2000 |
 | Does the rating dial change its strength? | yes, in steps: rank correlation 0.94, but 800 ≈ 1100 and 2000 ≈ 1700 ([report](reports/elo/laptop_64x6_best_model/report.md)) |
-| Can it estimate a rating from one game? | weakly: 253 Elo average error, pulled towards the middle ([report](reports/rating/laptop_64x6_best_model/report.md)) |
+| Can it estimate a rating from one game? | from the moves alone, weakly: 253 Elo average error, pulled towards the middle ([report](reports/rating/laptop_64x6_best_model/report.md)); with the opponent's rating as well, 60 Elo, but that is the opponent's rating doing the work (guessing it alone: 61) |
 | Do hints adapt to how hard a move is? | yes: moves the player found had a median 54% find rate at their rating, missed ones 6.5% (step 17) |
 | Does adaptive difficulty find a balance? | yes, in the model's own units: a bot fixed at 1000 balances the adaptive bot at 1400-1450 (step 18) |
 | Do styles imitate a player better? | a little, even from 25 games: held-out loss lower for 8 of 10 real players, top-1 +1.8 points (step 19) |
@@ -351,6 +351,12 @@ into an estimate with a likely range. With the current model the estimate is **w
 253 Elo on average and is pulled towards the middle (low ratings estimated too high, high ratings too low), only a
 little better than guessing the average rating, and far worse than guessing the opponent's rating (61 Elo).
 See the [report](reports/rating/laptop_64x6_best_model/report.md).
+
+When the opponent's rating is known, a prior centred on it (Lichess pairs players of similar strength) gives
+**60 Elo** average error on the same held-out games, with 80% ranges that hold the true rating 83% of the time
+(fitted on the validation games by `scripts/build_rating_prior.py`). That is barely better than the opponent's
+rating alone, so the moves add little until the model's rating sense improves. The website shows both numbers,
+and never uses the opponent prior for games against the bot, whose rating you choose.
 
 ## Play the bot
 
