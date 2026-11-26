@@ -110,6 +110,60 @@ test("a game handed over by the play page: reviewed, from your side", async () =
   equal(await page.openHandedGame(), null);
 });
 
+test("the coach: Black's blunder explained, with the stronger players' move", async () => {
+  page.ui.makeAnalyzer = () => scripted({
+    [keyOf("e4", "e5", "Qh5", "Nc6", "Bc4")]: ["g7g6", 0, { g8f6: -900 }],
+    [keyOf("e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6")]: ["h5f7", 900, {}],
+  });
+  page.ui.analyzer = null;
+  await page.startReview(BLUNDER_GAME.replace('[Black "Bob"]', '[Black "Bob"]\n[BlackElo "1250"]'), 12);
+  assert(!$("coach-panel").hidden);
+  equal($("coach-start").textContent, "Coach White");
+  $("flip").click();
+  equal($("coach-start").textContent, "Coach Black", "the coach follows the side at the bottom");
+  equal($("coach-rating").placeholder, "1250", "the game's rating");
+  const before = keyOf("e4", "e5", "Qh5", "Nc6", "Bc4");
+  page.ui.model = {
+    predict(position, rating) {
+      const fen = position.fen();
+      const legal = position.moves({ verbose: true });
+      const at = page.ui.review.moves.find((m) => m.fenBefore === fen);
+      const favourite = fen.split(" ").slice(0, 2).join(" ") === before ? (rating < 1450 ? "g8f6" : "g7g6") : at.uci;
+      const top = legal.find((m) => m.lan === favourite);
+      return { moves: [{ uci: top.lan, san: top.san, prob: 0.6 }] };
+    },
+  };
+  const result = await page.startCoach();
+  equal([result.report.rating, result.ratingSource], [1250, "pgn"]);
+  const stats = [...$("coach-panel").querySelectorAll(".coach-stats")].map((p) => p.textContent);
+  equal(stats, ["Coaching Black, rated about 1250 (from the game).",
+                "You played your level's favourite move 100% of the time, and the 1450-level move 67%."]);
+  equal($("coach-note").textContent, "Step to one of your moves for its note.");
+  $("next-note").click();
+  equal(page.ui.ply, 6);
+  assert($("coach-note").textContent.startsWith("g6 was stronger (+0.0 instead of -9.0)."), $("coach-note").textContent);
+  assert($("coach-note").textContent.includes("Players around 1450 prefer g6 (60%)"), $("coach-note").textContent);
+  page.goTo(4);
+  equal($("coach-note").textContent, "Nothing to add about this move.");
+  $("coach-again").click();
+  assert($("coach-rating"), "ask again at another rating");
+});
+
+test("the coach estimates your rating when the game has none (the real model)", async () => {
+  page.ui.makeAnalyzer = () => scripted({});
+  page.ui.analyzer = null;
+  page.ui.model = null;
+  page.ui.modelBase = "../model/";
+  await page.startReview(`[White "You"]\n[Black "Bot 1500"]\n[Result "*"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bc4 *\n`, 12);
+  const result = await page.startCoach();
+  equal(result.ratingSource, "estimated");
+  assert(result.report.rating >= 800 && result.report.rating <= 2400 && result.report.rating % 50 === 0,
+         String(result.report.rating));
+  assert($("coach-panel").textContent.includes("(estimated from your moves)"));
+  const typed = await page.startCoach(1700);
+  equal([typed.report.rating, typed.ratingSource], [1700, "given"]);
+});
+
 test("with the real Stockfish: the blunder is found and the mate is the best move", async () => {
   page.ui.makeAnalyzer = (depth) => new StockfishAnalyzer({ depth, multipv: 3 });
   page.ui.analyzer = null;

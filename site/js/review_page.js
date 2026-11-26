@@ -5,7 +5,10 @@ import { Chess } from "../vendor/chess.js";
 import { Board } from "./board.js";
 import { MATE_CP, StockfishAnalyzer } from "./stockfish.js";
 import { CLASSES, SYMBOLS, evalGraph, keyMoments, reviewMoves, summary } from "./review.js";
-import { splitPgn } from "./games.js";
+import { splitPgn, playerGames } from "./games.js";
+import { loadModel } from "./engine.js";
+import { coachGame } from "./coach.js";
+import { estimateFromBucketLL, loadRatingData, moveBucketLL } from "./rating.js";
 import { stored } from "./storage.js";
 
 const $ = (id) => document.getElementById(id);
@@ -18,6 +21,10 @@ export const ui = {
   running: false,
   makeAnalyzer: (depth) => new StockfishAnalyzer({ depth, multipv: 3 }),   // replaceable in tests
   analyzer: null,
+  model: null,         // the move model, loaded when the coach is first asked (replaceable in tests)
+  modelBase: "model/",
+  coach: null,         // { report, ratingSource }
+  coaching: false,
 };
 
 const handoff = stored("human-chess-site.review");    // a game handed over by the play page
@@ -99,6 +106,7 @@ export async function startReview(text = $("review-pgn").value, depth = Number($
     review.moments = keyMoments(review);
     review.graph = evalGraph(review);
     ui.review = review;
+    ui.pgn = splitPgn(text)[0];
     ui.side = sideFor(game.headers);
     showReview();
     return review;
@@ -114,7 +122,8 @@ export async function startReview(text = $("review-pgn").value, depth = Number($
 }
 
 export function hideReview() {
-  for (const id of ["stepper", "graph", "summary-panel", "detail-panel", "moves-panel"]) $(id).hidden = true;
+  for (const id of ["stepper", "graph", "summary-panel", "detail-panel", "moves-panel", "coach-panel"]) $(id).hidden = true;
+  ui.coach = null;
   clearBestSquares();
 }
 
@@ -125,6 +134,7 @@ export function showReview() {
   renderMoveList();
   renderGraph();
   renderSummary();
+  renderCoachStart();
   $("moves-panel").hidden = false;
   $("stepper").hidden = false;
   setStatus(`Reviewed ${review.moves.length} moves at depth ${review.depth}.`);
@@ -163,6 +173,8 @@ export function goTo(ply) {
   $("next").disabled = $("last").disabled = ui.ply === moves.length;
   moveGraphCursor(ui.ply);
   renderDetail(move);
+  const note = $("coach-note");
+  if (note && ui.coach) note.textContent = coachText();
 }
 
 export function step(delta) {
@@ -357,6 +369,135 @@ export function renderMoveList() {
   $("move-list").replaceChildren(...items);
 }
 
+// ------------------------------------------------------------------ the coach
+
+const SOURCES = { given: "as you set it", pgn: "from the game", estimated: "estimated from your moves" };
+const pct = (x) => `${Math.round(x * 100)}%`;
+const sideName = (color) => (color === "white" ? "White" : "Black");
+
+function button(id, text, onClick) {
+  const node = el("button", null, text);
+  node.type = "button";
+  if (id) node.id = id;
+  node.addEventListener("click", onClick);
+  return node;
+}
+
+/** The side's rating in the game's headers, or null. */
+function headerRating(color) {
+  const value = (ui.review.headers || {})[color === "white" ? "WhiteElo" : "BlackElo"];
+  return /^\d+$/.test(String(value || "")) ? Number(value) : null;
+}
+
+/** Before the coach is asked: whose moves, at what rating (optional), and the button. */
+function renderCoachStart() {
+  const panel = $("coach-panel");
+  const color = ui.side;
+  const rating = el("input");
+  Object.assign(rating, { type: "number", id: "coach-rating", min: "800", max: "2400", step: "50",
+                          placeholder: String(headerRating(color) || "estimated") });
+  rating.setAttribute("aria-label", "Your rating");
+  const row = el("div", "side-choice");
+  row.append(rating, button("coach-start", `Coach ${sideName(color)}`, () => startCoach()));
+  panel.replaceChildren(el("h2", null, "Coach"),
+    el("p", "coach-stats", "Compare your moves with what players of your level and stronger players play, and get "
+      + "your mistakes explained. Your rating: leave it empty to use the game's, or have it estimated."), row);
+  panel.hidden = false;
+}
+
+async function ensureModel() {
+  if (!ui.model) ui.model = await loadModel(ui.modelBase);
+  return ui.model;
+}
+
+/** Your rating from your moves in this game (the Analyse page's estimate). */
+async function estimateRating(color, onProgress) {
+  const data = await loadRatingData(ui.modelBase.replace(/model\/$/, "data/"));
+  const side = playerGames(ui.pgn).games.find((g) => g.color === (color === "white" ? "w" : "b"));
+  const rows = [];
+  for (const move of side ? side.moves : []) {
+    rows.push(moveBucketLL(ui.model, { fen: move.fen, uci: move.uci, oppRating: side.oppRating, clock: move.clock,
+                                       oppClock: move.oppClock }, side.base, side.increment));
+    onProgress(rows.length, side.moves.length);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  return rows.length ? Math.round(estimateFromBucketLL(rows, data).estimate / 50) * 50 : 1500;
+}
+
+/** Ask the coach about the side at the bottom (`rating`: typed, else the game's, else estimated). */
+export async function startCoach(rating = Number($("coach-rating") ? $("coach-rating").value : 0) || null) {
+  if (!ui.review || ui.coaching) return null;
+  ui.coaching = true;
+  const color = ui.side;
+  const panel = $("coach-panel");
+  const status = el("p", "coach-stats", "Loading the model...");
+  panel.replaceChildren(el("h2", null, "Coach"), status);
+  try {
+    await ensureModel();
+    let source = "given";
+    if (!rating) {
+      rating = headerRating(color);
+      source = "pgn";
+    }
+    if (!rating) {
+      source = "estimated";
+      rating = await estimateRating(color, (d, t) => { status.textContent = `Estimating your rating: move ${d} of ${t}...`; });
+    }
+    rating = Math.max(800, Math.min(2400, rating));
+    const report = await coachGame(ui.review, color, rating, ui.model, ui.analyzer, {
+      oppRating: headerRating(color === "white" ? "black" : "white"),
+      onProgress: (d, t) => { status.textContent = `Comparing your move ${d} of ${t} with the levels...`; },
+    });
+    ui.coach = { report, ratingSource: source };
+    renderCoach();
+    return ui.coach;
+  } catch (err) {
+    panel.replaceChildren(el("h2", null, "Coach"), el("p", "coach-stats", `The coach is unavailable: ${err.message}`));
+    return null;
+  } finally {
+    ui.coaching = false;
+  }
+}
+
+/** The coach's note on the move that led to `ply` (only the coached side's moves get notes), or null. */
+export function noteAt(ply) {
+  if (!ui.coach || !ply) return null;
+  const move = ui.review.moves[ply - 1];
+  return ui.coach.report.notes.find((n) => n.ply === move.ply) || null;
+}
+
+/** What the coach says at the current position. */
+export function coachText() {
+  const report = ui.coach.report;
+  const note = noteAt(ui.ply);
+  if (note) return note.text;
+  if (!report.notes.length) return "No mistakes, and nothing stronger players would do clearly better. Well played.";
+  const move = ui.ply ? ui.review.moves[ui.ply - 1] : null;
+  return move && move.color === report.color ? "Nothing to add about this move." : "Step to one of your moves for its note.";
+}
+
+export function renderCoach() {
+  const { report, ratingSource } = ui.coach;
+  const note = el("p", "coach-note", coachText());
+  note.id = "coach-note";
+  const actions = el("div", "side-choice");
+  if (report.notes.length) actions.append(button("next-note", `Next note (${report.notes.length})`, jumpToNextNote));
+  actions.append(button("coach-again", "Another rating", () => renderCoachStart()));
+  $("coach-panel").replaceChildren(
+    el("h2", null, "Coach"),
+    el("p", "coach-stats", `Coaching ${sideName(report.color)}, rated about ${report.rating} (${SOURCES[ratingSource]}).`),
+    el("p", "coach-stats", `You played your level's favourite move ${pct(report.yourLevelMatch)} of the time, `
+      + `and the ${report.nextLevel}-level move ${pct(report.nextLevelMatch)}.`),
+    note, actions);
+  $("coach-panel").hidden = false;
+}
+
+/** Go to the position after your next move with a note (wrapping round to the first). */
+export function jumpToNextNote() {
+  const plies = ui.coach.report.notes.map((n) => n.ply + 1);
+  goTo(plies.find((p) => p > ui.ply) || plies[0]);
+}
+
 // ------------------------------------------------------------------ the page
 
 function onKey(event) {
@@ -395,6 +536,7 @@ export async function init() {
     ui.side = ui.side === "white" ? "black" : "white";
     ui.board.setOrientation(ui.side);
     renderNames();
+    if (ui.review && !ui.coach && !ui.coaching) renderCoachStart();   // the coach follows the side at the bottom
   });
   $("move-list").addEventListener("click", (event) => {
     const cell = event.target.closest(".san[data-ply]");
