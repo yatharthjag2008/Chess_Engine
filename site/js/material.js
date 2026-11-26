@@ -23,11 +23,14 @@ export function materialOf(counts) {
   return Object.entries(counts).reduce((sum, [type, n]) => sum + VALUES[type] * n, 0);
 }
 
-/** The pieces of `side` missing since `startFen` (the ones the other side captured), cheapest first. */
+/** The pieces of one side missing since the start (the ones the other side captured), cheapest first.
+ *  A pawn that promoted was not captured: every piece beyond the start's count came from a pawn. */
 function missing(start, now) {
+  const promoted = ["n", "b", "r", "q"].reduce((sum, type) => sum + Math.max(0, now[type] - start[type]), 0);
   const pieces = [];
   for (const type of ORDER) {
-    for (let i = 0; i < start[type] - now[type]; i++) pieces.push(type);
+    const gone = start[type] - now[type] - (type === "p" ? promoted : 0);
+    for (let i = 0; i < gone; i++) pieces.push(type);
   }
   return pieces;
 }

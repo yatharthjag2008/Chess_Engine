@@ -76,4 +76,12 @@ test("captured pieces and the material balance", () => {
   equal(captured(START, trade), { w: ["p", "q"], b: ["p", "p"], diff: 8 });
 });
 
+test("a promoted pawn is not a captured one", () => {
+  const promoted = "rnbqkbnr/pppppppp/8/8/8/8/1PPPPPPP/RNBQKBNQ w Qkq - 0 1";   // a pawn fewer, a rook fewer, a queen more
+  equal(captured(START, promoted), { w: [], b: ["r"], diff: 3 }, "a pawn became a queen, a rook was taken");
+  const twoQueens = "rnbqkbnr/pppppppp/8/8/8/8/2PPPPPP/RNBQKBNR w KQkq - 0 1".replace("RNBQKBNR w", "RNBQKQQR w");
+  equal(captured(START, twoQueens), { w: [], b: ["n", "b"], diff: 10 },
+        "two pawns became queens; the knight and bishop they replace were taken");
+});
+
 run();
