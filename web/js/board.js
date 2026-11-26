@@ -158,6 +158,7 @@ export class Board {
     const to = this.squareAt(event.clientX, event.clientY);
     const moves = this.targetsFrom(drag.from).filter((m) => m.to_square === to);
     if (moves.length) {
+      this.dragged = true;
       this.commit(moves);
     } else {
       this.select(null);                          // dropped off target: the piece goes back
@@ -209,6 +210,8 @@ export class Board {
       move = moves.find((m) => m.promotion === type);
     }
     this.selected = null;
+    if (this.dragged) this.dropped = move.uci;    // already where it was dropped: no slide
+    this.dragged = false;
     this.render();
     if (this.onMove) this.onMove(move.uci);
   }
@@ -250,12 +253,38 @@ export class Board {
     this.setOrientation(this.orientation === "white" ? "black" : "white");
   }
 
-  /** Show `fen`; `lastMove` (UCI) is highlighted, and the king of the side to move if `check`. */
+  /** Show `fen`; `lastMove` (UCI) is highlighted, and the king of the side to move if `check`.
+   *  When `lastMove` leads from the position shown to this one, its piece slides there. */
   setPosition(fen, { lastMove = null, check = false } = {}) {
+    const slide = lastMove && lastMove !== this.dropped && this.movedBy(lastMove, fen) ? lastMove : null;
+    this.dropped = null;
     this.fen = fen;
     this.lastMove = lastMove;
     this.check = check;
     this.render();
+    if (slide) this.slide(slide);
+  }
+
+  /** Did `uci` take the piece on its from-square in the shown position to its to-square in `fen`? */
+  movedBy(uci, fen) {
+    const before = parseFen(this.fen).pieces.get(uci.slice(0, 2));
+    const after = parseFen(fen).pieces.get(uci.slice(2, 4));
+    return Boolean(before && after && before.color === after.color && fen !== this.fen);
+  }
+
+  /** Animate the piece on `uci`'s to-square from its from-square. */
+  slide(uci) {
+    const from = this.squareEl(uci.slice(0, 2));
+    const to = this.squareEl(uci.slice(2, 4));
+    const piece = to && to.querySelector(".piece");
+    if (!from || !piece || !piece.animate || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const a = from.getBoundingClientRect();
+    const b = to.getBoundingClientRect();
+    piece.style.zIndex = 5;                       // above the pieces it passes
+    const animation = piece.animate(
+      [{ transform: `translate(${a.left - b.left}px, ${a.top - b.top}px)` }, { transform: "none" }],
+      { duration: 200, easing: "cubic-bezier(0.2, 0.7, 0.3, 1)" });
+    animation.onfinish = () => { piece.style.zIndex = ""; };
   }
 
   /** Extra classes on squares, e.g. { e2: "hint-from" }; {} clears them. */

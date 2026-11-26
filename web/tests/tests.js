@@ -205,6 +205,27 @@ test("dropping off a target or a tiny drag plays nothing", () => {
   equal(played, []);
 });
 
+test("a move slides its piece; a dropped piece or a step back does not", () => {
+  const board = new Board(fixture(), { onMove: () => {} });
+  const sliding = (square) => board.squareEl(square).querySelector(".piece").getAnimations().length;
+  board.setPosition("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1", { lastMove: "e2e4" });
+  equal(sliding("e4"), 1, "the pawn slides from e2 to e4");
+  const after = "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2";
+  board.setPosition(after, { lastMove: "e7e5" });
+  equal(sliding("e5"), 1);
+  board.setPosition("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1", { lastMove: "e2e4" });
+  equal(sliding("e4"), 0, "stepping back shows the earlier position without replaying its move");
+  board.setPosition(after, { lastMove: "e7e5" });
+  board.setLegalMoves([{ uci: "g1f3", from_square: "g1", to_square: "f3", promotion: null }], "white");
+  const [x0, y0] = centre(board, "g1");
+  const [x1, y1] = centre(board, "f3");
+  pointer("pointerdown", board.squareEl("g1").querySelector(".piece"), x0, y0);
+  pointer("pointermove", window, x1, y1);
+  pointer("pointerup", window, x1, y1);
+  board.setPosition("rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2", { lastMove: "g1f3" });
+  equal(sliding("f3"), 0, "a dragged piece is already there");
+});
+
 test("marks stay on squares across renders and can be cleared", () => {
   const board = new Board(fixture());
   board.setMarks({ e2: "hint-from", e4: "hint-to best-to" });
