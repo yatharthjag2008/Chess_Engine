@@ -367,4 +367,24 @@ test("looking back at a bot move shows what players weighed there; take back ret
   equal(site.ui.chess.history().length, 2);
 });
 
+const savedGame = () => JSON.parse(localStorage.getItem("human-chess-site.game"));
+
+test("the game is saved in the browser after every move, and how it ended", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1700, color: "black" });
+  let game = savedGame();
+  equal(game.moves.length, 1, "the bot's first move");
+  equal([game.human, game.rating, game.orientation, game.over], ["b", 1700, "black", null]);
+  equal(game.start, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+  assert(game.thoughts["1"].candidates.length <= 8, "the bot's thinking, trimmed");
+  const reply = site.ui.chess.moves({ verbose: true })[0].lan;
+  await site.play(reply);
+  game = savedGame();
+  equal(game.moves.length, 3);
+  equal(game.moves[1], reply);
+  site.resign();
+  game = savedGame();
+  equal(game.over, { text: "You resigned: White wins", winner: "w" });
+});
+
 run();

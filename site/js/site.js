@@ -29,7 +29,27 @@ export const ui = {
 const saved = {
   sound: stored("human-chess-site.sound"),      // "on" / "off"
   volume: stored("human-chess-site.volume"),    // 0-100
+  game: stored("human-chess-site.game"),        // the game in progress (or just finished), see snapshot()
 };
+
+/** Everything needed to carry on with the game after a reload. */
+export function snapshot() {
+  const c = ui.chess;
+  const history = c.history({ verbose: true });
+  const trim = (t) => t && { ...t, candidates: t.candidates.slice(0, 8) };
+  return {
+    version: 1,
+    start: history.length ? history[0].before : c.fen(),   // the position the moves are played from
+    startFen: ui.startFen,
+    moves: history.map((m) => m.lan),
+    human: ui.human,
+    rating: ui.rating,
+    orientation: ui.board.orientation,
+    over: ui.over ? { text: ui.overText, winner: ui.winner ?? null } : null,
+    thoughts: Object.fromEntries(Object.entries(ui.thoughts).map(([ply, t]) => [ply, trim(t)])),
+    savedAt: Date.now(),
+  };
+}
 
 /** Volume from 0 to 100 (remembered like the on/off switch). */
 export function setVolume(percent, { save = true } = {}) {
@@ -140,6 +160,7 @@ export function render() {
   else if (ui.busy) setStatus("The bot is thinking...");
   else if (humanToMove) setStatus(`Your move${c.inCheck() ? ": you are in check" : ""}.`);
   if (end && !ui.over) finish(end.text, end.winner);
+  saved.game.save(snapshot());
 }
 
 function setStatus(text) {
@@ -235,6 +256,7 @@ function renderThinking(move) {
 function finish(text, winner) {
   ui.over = true;
   ui.overText = text;
+  ui.winner = winner;
   setStatus(text);
   ui.sounds.play(winner === null ? "draw" : winner === ui.human ? "win" : "lose");
   const banner = $("result-banner");
@@ -258,6 +280,7 @@ function finish(text, winner) {
   banner.hidden = false;
   ui.board.setLegalMoves([], null);
   $("takeback").disabled = $("resign").disabled = true;
+  saved.game.save(snapshot());
 }
 
 /** The bot picks a move as often as players of its rating play it. */
