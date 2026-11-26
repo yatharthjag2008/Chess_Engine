@@ -364,6 +364,10 @@ test("rating: the ends of the scale, and whether an opponent's rating fits the m
   assert(!middle.atTop && !middle.atBottom && describeEstimate(middle).startsWith("about 800"));
   const alone = { wide: { low: 1280, high: 2190 } };
   equal([opponentFits(alone, 1500), opponentFits(alone, 578), opponentFits(alone, 2500)], [true, false, false]);
+  const strongest = { wide: { low: 1900, high: 2400 } };
+  const centers = [900, 1100, 1300, 1500, 1700, 1900, 2100, 2300];
+  equal([opponentFits(strongest, 3120), opponentFits(strongest, 3120, centers), opponentFits(alone, 578, centers)],
+        [false, true, false], "beyond the model's top bucket the moves cannot tell: 3120 counts as 2300");
 });
 
 test("rating: the estimate matches Python's for the same move likelihoods", async () => {

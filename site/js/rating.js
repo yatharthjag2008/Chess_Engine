@@ -109,9 +109,12 @@ export function describeEstimate(est) {
 }
 
 /** Does the opponent's rating fit what the moves alone say (inside their 95% range)? When it does not, the game was
- *  probably not between similarly rated players (a casual challenge, say), and the opponent says little. */
-export function opponentFits(movesOnly, oppRating) {
-  return oppRating >= movesOnly.wide.low && oppRating <= movesOnly.wide.high;
+ *  probably not between similarly rated players (a casual challenge, say), and the opponent says little. The moves
+ *  cannot tell ratings apart beyond the model's outer rating buckets, so the opponent's rating is first brought
+ *  within them (`centers`): a 3100-rated opponent fits a player whose moves look like the model's strongest. */
+export function opponentFits(movesOnly, oppRating, centers = null) {
+  const opp = centers ? Math.min(Math.max(oppRating, centers[0]), centers[centers.length - 1]) : oppRating;
+  return opp >= movesOnly.wide.low && opp <= movesOnly.wide.high;
 }
 
 // --------------------------------------------------------------------------- per-move likelihoods

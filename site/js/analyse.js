@@ -62,7 +62,7 @@ export async function estimateText(text, { player = "", onProgress = () => {} } 
     all.push(...rows);
     const movesOnly = estimateFromBucketLL(rows, page.data);
     const paired = side.oppRating ? estimateFromBucketLL(rows, page.data, { oppRatings: [side.oppRating] }) : null;
-    const fits = Boolean(paired && paired.withOpponent && opponentFits(movesOnly, side.oppRating));
+    const fits = Boolean(paired && paired.withOpponent && opponentFits(movesOnly, side.oppRating, page.data.centers));
     results.push({ side, estimate: paired || movesOnly, movesOnly, fits });
   }
   let overall = null;

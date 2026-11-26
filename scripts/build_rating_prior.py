@@ -87,8 +87,10 @@ def fit_check(cfg, ratings, log_prior: np.ndarray, temper: float, held_out: Path
     rng = np.random.default_rng(seed)
     wrong = rng.choice(len(test.rating), int(len(test.rating) * wrong_share), replace=False)
     random_opp = rng.uniform(cfg.rating_min, cfg.rating_max, len(wrong))
-    return {"interval": FIT_INTERVAL, "flagged_real": float(((test.opp_rating < low) | (test.opp_rating > high)).mean()),
-            "flagged_random": float(((random_opp < low[wrong]) | (random_opp > high[wrong])).mean())}
+    within = lambda r: np.clip(r, centers[0], centers[-1])   # noqa: E731 - the moves cannot tell ratings apart beyond
+    real, rand = within(test.opp_rating), within(random_opp)
+    return {"interval": FIT_INTERVAL, "flagged_real": float(((real < low) | (real > high)).mean()),
+            "flagged_random": float(((rand < low[wrong]) | (rand > high[wrong])).mean())}
 
 
 def opponent_test_vector(cfg, ratings, opponent: dict) -> dict:
