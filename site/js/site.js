@@ -7,6 +7,7 @@ import { Sounds, soundFor } from "./sounds.js";
 import { START, canMate, captured, describeCaptures } from "./material.js";
 import { stored } from "./storage.js";
 import { Clock, baseSeconds, formatClock, thinkTime } from "./clock.js";
+import { loadOpenings, openingOf } from "./openings.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -16,6 +17,7 @@ export const ui = {
   chess: null,
   startFen: START,     // where the game began (captures are counted from here)
   view: null,          // null: the game as it stands; a number: looking at the position after that many moves
+  openings: null,      // the opening-name table, once loaded
   thoughts: {},        // what the bot weighed, by the ply its move made: { san, uci, prob, candidates }
   human: "w",          // "w" or "b"
   rating: 1500,
@@ -169,6 +171,7 @@ export function render() {
   $("first").disabled = $("prev").disabled = shownPly === 0;
   $("next").disabled = $("last").disabled = !viewing;
   renderCaptured(shown.fen);
+  renderOpening(history);
   updateClocks();
   renderThinking(viewing ? ui.thoughts[ui.view] || null : ui.last);
   const humanMoves = history.filter((m) => m.color === ui.human).length;
@@ -241,6 +244,16 @@ export function tickClocks() {
   if (canMate(ui.chess.fen(), other)) finish(`${name(other)} wins on time`, other);
   else finish(`${name(flagged)} ran out of time, but ${name(other)} cannot checkmate: a draw`, null);
   render();
+}
+
+/** The opening's name and ECO code above the move list (hidden until there is one). */
+function renderOpening(history) {
+  const fens = [history.length ? history[0].before : ui.chess.fen(), ...history.map((m) => m.after)];
+  const opening = openingOf(ui.openings, fens);
+  $("opening").hidden = !opening;
+  if (!opening) return;
+  $("opening-eco").textContent = opening.eco;
+  $("opening-name").textContent = opening.name;
 }
 
 /** Next to each player, the pieces they have captured. */
@@ -445,7 +458,11 @@ function download() {
   URL.revokeObjectURL(link.href);
 }
 
-export async function init(modelBase = "model/") {
+export async function init(modelBase = "model/", dataBase = modelBase.replace(/model\/$/, "data/")) {
+  loadOpenings(dataBase).then((table) => {                 // names appear once loaded; the game does not wait
+    ui.openings = table;
+    if (ui.chess) render();
+  }).catch(() => {});
   ui.board = new Board($("board"), {
     promotionEl: $("promotion"),
     onMove: (uci) => play(uci),

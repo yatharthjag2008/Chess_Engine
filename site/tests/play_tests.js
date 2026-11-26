@@ -580,4 +580,21 @@ test("draw arrows during a game; your next move clears them", async () => {
   equal(site.ui.board.shapes, [], "a new position clears them");
 });
 
+test("the opening's name is shown above the moves", async () => {
+  await until(() => site.ui.openings, "the name table");
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1500, color: "white" });
+  assert($("opening").hidden, "no name at the start");
+  site.ui.chess.move("e4");
+  site.ui.chess.move("c5");
+  site.render();
+  assert(!$("opening").hidden);
+  equal($("opening-name").textContent, "Sicilian Defense");
+  equal($("opening-eco").textContent, "B20");
+  site.ui.chess.move("Nf3");
+  site.ui.chess.move("d6");
+  site.render();
+  equal($("opening-name").textContent, "Sicilian Defense: Modern Variations");
+});
+
 run();

@@ -27,5 +27,8 @@
 
 .segmented span { white-space: nowrap; }
 
+.opening { margin: -4px 0 10px; color: var(--ink-2); font-size: 0.9rem; }
+.opening .eco { font: 600 0.8rem ui-monospace, monospace; color: var(--ink-muted); margin-right: 4px; }
+
 .volume { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 0.9rem; }
 .volume input { width: 90px; }
