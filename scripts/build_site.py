@@ -5,8 +5,8 @@ Usage:
     python scripts/build_site.py               # assemble the site into _site/ (standard library only)
     python -m http.server -d _site 8001        # look at it: http://localhost:8001
 
-The site is site/ (its page, scripts, the exported model and the opening names from scripts/build_openings.py) plus the board and styles shared with the local web
-app (web/js/board.js, web/css/style.css, web/pieces/). The exported model is committed, so the GitHub Actions workflow
+The site is site/ (its page, scripts, the exported model and the opening names from scripts/build_openings.py)
+plus the board and styles shared with the local web app (web/js/board.js, web/css/style.css, web/pieces/). The exported model is committed, so the GitHub Actions workflow
 (.github/workflows/pages.yml) only runs the second command and publishes _site/.
 """
 

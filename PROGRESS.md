@@ -1255,3 +1255,8 @@ Basic features players expect, each built in its own series of commits with brow
   shape again removes it, in another colour recolours it. Knight moves are drawn as an L. A left-click or a new
   position clears them; a right-click that cancels a premove draws nothing. Drawn as SVG over the squares, turning
   with the board.
+- **Opening names** (`scripts/build_openings.py`, `site/js/openings.js`): the Lichess opening data set (3,865 lines,
+  CC0, in `third_party/chess-openings/`) is played out with python-chess and each name filed under the position it
+  reaches, so transpositions are found (3,864 positions, 456 kB, loaded in the background). The name and ECO code
+  show above the moves, follow the position when looking back, stay once the game leaves the book, and go into the
+  PGN's ECO and Opening headers. A test rebuilds the table and checks the committed one matches.
