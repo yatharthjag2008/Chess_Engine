@@ -408,4 +408,15 @@ test("a saved game is carried on: position, side, rating, the bot's thinking", a
   assert(!site.restore(null));
 });
 
+test("reloaded while the bot was thinking: it moves after the restore", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1500, color: "white" });
+  const snap = { ...site.snapshot(), moves: ["e2e4"] };    // your move made, the bot's not yet
+  assert(site.restore(snap));
+  await until(() => site.ui.chess.history().length === 2 && !site.ui.busy, "the bot's reply");
+  equal(site.ui.board.mover, "white");
+  assert(site.restore({ ...snap, moves: ["e2e4", "e7e5"] }));
+  assert($("status").textContent.startsWith("Welcome back"), $("status").textContent);
+});
+
 run();

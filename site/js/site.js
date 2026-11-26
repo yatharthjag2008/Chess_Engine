@@ -459,6 +459,11 @@ export function restore(snap = saved.game.load()) {
   $("result-banner").hidden = true;
   ui.board.setOrientation(snap.orientation === "black" ? "black" : "white");
   render();
+  if (!ui.over && chess.turn() !== ui.human) {
+    botTurn();                                              // reloaded while the bot was thinking
+  } else if (!ui.over) {
+    setStatus(`Welcome back: your game continues. Your move${chess.inCheck() ? ": you are in check" : ""}.`);
+  }
   return true;
 }
 
