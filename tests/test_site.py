@@ -131,7 +131,7 @@ def _run_page(tmp_path, page: str, minimum: int, budget_ms: int = 30000, attempt
 
 def test_the_site_modules(tmp_path) -> None:
     """Sounds, material, clocks and the other modules of the play page, one by one."""
-    _run_page(tmp_path, "unit.html", UNIT_TESTS)
+    _run_page_live(tmp_path, "unit.html", UNIT_TESTS)
 
 
 def test_the_play_page_end_to_end(tmp_path) -> None:

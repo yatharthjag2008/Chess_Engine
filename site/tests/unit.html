@@ -5,5 +5,13 @@
   <!-- Unit tests of the website's modules (sounds, material, clocks, ...); tests/test_site.py runs this. -->
   <pre id="results">running</pre>
   <script type="module" src="unit_tests.js"></script>
+  <script>   // run in real time by tests/test_site.py (it loads the model): post the results back
+    const watch = setInterval(() => {
+      const text = document.getElementById("results").textContent;
+      if (!text.includes("RESULT passed=")) return;
+      clearInterval(watch);
+      fetch("/__results", { method: "POST", body: text });
+    }, 100);
+  </script>
 </body>
 </html>
