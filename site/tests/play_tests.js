@@ -196,11 +196,17 @@ test("each player's captures are shown next to their name", async () => {
   equal($("bottom-captured").children.length, 0);
   site.ui.chess.move("exd5");
   site.render();
-  const mine = [...$("bottom-captured").children].map((el) => el.dataset.piece);
+  const mine = [...$("bottom-captured").querySelectorAll(".piece")].map((el) => el.dataset.piece);
   equal(mine, ["bp"], "you (White, at the bottom) took a black pawn");
+  equal($("bottom-captured").querySelector(".piece").getBoundingClientRect().width, 22, "small icons");
   site.ui.board.flip();
   site.render();
-  equal([...$("top-captured").children].map((el) => el.dataset.piece), ["bp"], "flipped: you are at the top");
+  equal([...$("top-captured").querySelectorAll(".piece")].map((el) => el.dataset.piece), ["bp"],
+        "flipped: you are at the top");
+  site.ui.chess.load("4k3/8/8/8/8/8/8/4K3 w - - 0 1");          // White has taken everything but the king
+  site.render();
+  const groups = [...$("top-captured").querySelectorAll(".group")].map((g) => `${g.dataset.type}${g.children.length}`);
+  equal(groups, ["p8", "n2", "b2", "r2", "q1"], "grouped by kind, cheapest first");
   site.ui.board.flip();
 });
 

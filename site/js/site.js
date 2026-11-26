@@ -137,7 +137,17 @@ function renderCaptured(fen) {
   const top = ui.board.orientation === "white" ? "b" : "w";
   for (const [id, side] of [["top-captured", top], ["bottom-captured", top === "w" ? "b" : "w"]]) {
     const opponent = side === "w" ? "black" : "white";
-    $(id).replaceChildren(...taken[side].map((type) => pieceEl(opponent, type)));
+    const groups = [];                                   // one group per kind of piece, overlapped in CSS
+    for (const type of taken[side]) {
+      if (!groups.length || groups[groups.length - 1].dataset.type !== type) {
+        const group = document.createElement("span");
+        group.className = "group";
+        group.dataset.type = type;
+        groups.push(group);
+      }
+      groups[groups.length - 1].append(pieceEl(opponent, type));
+    }
+    $(id).replaceChildren(...groups);
   }
 }
 
