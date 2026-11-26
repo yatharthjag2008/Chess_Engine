@@ -588,7 +588,13 @@ export function pgn() {
     c.setHeader("FEN", ui.startFen);
   }
   c.setHeader(ui.human === "w" ? "White" : "Black", "You");
-  c.setHeader(ui.human === "w" ? "Black" : "White", `Bot ${ui.rating}`);
+  const a = ui.adaptive;
+  const changed = a.live && a.live.changes.length;
+  c.setHeader(ui.human === "w" ? "Black" : "White", changed ? `Bot ${a.start}-${ui.rating}` : `Bot ${ui.rating}`);
+  if (a.mode !== "off") {
+    c.setHeader("Adaptive", a.mode);                          // as the local app writes it
+    if (changed) c.setHeader("AdaptiveChanges", a.live.changes.map((x) => `${x.botMove}:${x.rating}`).join(" "));
+  }
   return c.pgn() + "\n";
 }
 

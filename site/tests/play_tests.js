@@ -884,4 +884,20 @@ test("your rated games are listed, newest first, and the rating can start again"
   difficulty("off");
 });
 
+test("the PGN says when the bot followed your level", async () => {
+  site.ui.random = () => 0.5;
+  site.resetProfile(1300);
+  await site.newGame({ rating: 1500, color: "white", difficulty: "between" });
+  await site.play("e2e4");
+  const text = site.pgn();
+  assert(text.includes('[Adaptive "between"]') && text.includes('[Black "Bot 1300"]'), text);
+  await site.newGame({ rating: 1500, color: "white" });
+  await site.play("e2e4");
+  assert(!site.pgn().includes("[Adaptive"), "not for a fixed rating");
+  site.ui.adaptive = { ...site.ui.adaptive, mode: "live", live: { changes: [{ botMove: 7, rating: 1550 }] } };
+  site.ui.rating = 1550;
+  const live = site.pgn();
+  assert(live.includes('[Black "Bot 1500-1550"]') && live.includes('[AdaptiveChanges "7:1550"]'), live);
+});
+
 run();
