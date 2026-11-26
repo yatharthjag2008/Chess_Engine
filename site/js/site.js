@@ -13,6 +13,7 @@ export const ui = {
   board: null,
   chess: null,
   startFen: START,     // where the game began (captures are counted from here)
+  view: null,          // null: the game as it stands; a number: looking at the position after that many moves
   human: "w",          // "w" or "b"
   rating: 1500,
   busy: false,
@@ -80,13 +81,30 @@ export function outcome() {
   return null;
 }
 
+/** The position after `ply` half-moves of `history` (chess.js verbose moves), and the move that led there. */
+function positionAt(history, ply) {
+  if (ply === 0) return { fen: history.length ? history[0].before : ui.chess.fen(), move: null };
+  const move = history[ply - 1];
+  return { fen: move.after, move };
+}
+
+/** Look at an earlier position (`ply` half-moves in); null, or the last ply, returns to the game. */
+export function showPly(ply) {
+  if (!ui.chess) return;
+  const plies = ui.chess.history().length;
+  ui.view = ply === null || ply >= plies ? null : Math.max(0, ply);
+  render();
+}
+
 export function render() {
   const c = ui.chess;
   const history = c.history({ verbose: true });
-  const last = history.length ? history[history.length - 1].lan : null;
-  const humanToMove = !ui.over && !ui.busy && c.turn() === ui.human;
-  ui.board.setPosition(c.fen(), { lastMove: last, check: c.inCheck() });
-  const botToMove = !ui.over && c.turn() !== ui.human;           // meanwhile you may premove
+  const viewing = ui.view !== null && ui.view < history.length;
+  if (!viewing) ui.view = null;
+  const shown = positionAt(history, viewing ? ui.view : history.length);
+  const humanToMove = !viewing && !ui.over && !ui.busy && c.turn() === ui.human;
+  ui.board.setPosition(shown.fen, { lastMove: shown.move ? shown.move.lan : null, check: viewing ? false : c.inCheck() });
+  const botToMove = !viewing && !ui.over && c.turn() !== ui.human;   // meanwhile you may premove
   ui.board.setLegalMoves(humanToMove ? legalMoves() : [], humanToMove ? colorName(ui.human) : null,
                          { premover: botToMove ? colorName(ui.human) : null });
   const bottomIsHuman = ui.board.orientation === colorName(ui.human);
@@ -260,6 +278,7 @@ export function readForm() {
 export async function newGame({ rating, color }) {
   ui.chess = new Chess();
   ui.startFen = ui.chess.fen();
+  ui.view = null;
   ui.rating = rating;
   ui.human = color === "black" ? "b" : "w";
   ui.over = false;

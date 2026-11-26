@@ -232,4 +232,25 @@ test("take back and a new game update the captures", async () => {
   equal(document.querySelectorAll(".captured .piece").length, 0, "a new game starts level");
 });
 
+test("stepping back shows an earlier position; the game is kept and you move only at its end", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1500, color: "white" });
+  await site.play("e2e4");
+  await site.play("g1f3");
+  const now = site.ui.chess.fen();
+  site.showPly(1);
+  equal(site.ui.board.fen, "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1", "after 1.e4");
+  equal(site.ui.board.lastMove, "e2e4");
+  equal(site.ui.board.mover, null, "no moves while looking back");
+  equal(site.ui.board.premover, null);
+  equal(site.ui.chess.fen(), now, "the game itself is unchanged");
+  site.showPly(0);
+  equal(site.ui.board.fen.split(" ")[0], "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
+  site.showPly(null);
+  equal(site.ui.board.fen, now);
+  equal(site.ui.board.mover, "white", "back at the game: your move");
+  site.showPly(99);
+  equal(site.ui.view, null, "past the end is the game");
+});
+
 run();
