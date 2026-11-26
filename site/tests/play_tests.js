@@ -297,4 +297,22 @@ test("arrow keys step through the moves; Home and End jump to the start and back
   equal(site.ui.view, null);
 });
 
+test("the step buttons, disabled at either end", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1500, color: "white" });
+  await site.play("e2e4");
+  assert($("next").disabled && $("last").disabled, "at the game: nothing ahead");
+  assert(!$("prev").disabled && !$("first").disabled);
+  $("prev").click();
+  equal(site.ui.view, 1);
+  assert(!$("next").disabled, "now there is");
+  $("first").click();
+  equal(site.ui.view, 0);
+  assert($("prev").disabled && $("first").disabled, "at the start");
+  $("next").click();
+  equal(site.ui.view, 1);
+  $("last").click();
+  equal(site.ui.view, null);
+});
+
 run();

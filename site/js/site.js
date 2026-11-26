@@ -124,6 +124,9 @@ export function render() {
   $("bottom-name").textContent = bottomIsHuman ? "You" : `Bot ${ui.rating}`;
   $("game-panel").hidden = false;
   renderMoves(history, viewing ? ui.view : history.length);
+  const shownPly = viewing ? ui.view : history.length;
+  $("first").disabled = $("prev").disabled = shownPly === 0;
+  $("next").disabled = $("last").disabled = !viewing;
   renderCaptured(c.fen());
   renderThinking();
   const humanMoves = history.filter((m) => m.color === ui.human).length;
@@ -349,6 +352,10 @@ export async function init(modelBase = "model/") {
     newGame(readForm());
   });
   $("flip").addEventListener("click", () => { ui.board.flip(); if (ui.chess) render(); });
+  $("first").addEventListener("click", () => showPly(0));
+  $("prev").addEventListener("click", () => step(-1));
+  $("next").addEventListener("click", () => step(1));
+  $("last").addEventListener("click", () => showPly(null));
   $("move-list").addEventListener("click", (event) => {
     const cell = event.target.closest("[data-ply]");
     if (cell) showPly(Number(cell.dataset.ply));

@@ -19,5 +19,9 @@
 .move-list .san[data-ply] { cursor: pointer; }
 .move-list .san[data-ply]:hover { background: var(--line); }
 
+.step-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
+.step-buttons button { padding: 6px 0; font-size: 0.95rem; line-height: 1; }
+.step-buttons button:disabled { opacity: 0.4; }
+
 .volume { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 0.9rem; }
 .volume input { width: 90px; }
