@@ -352,12 +352,18 @@ export function resign() {
   finish(`You resigned: ${ui.human === "w" ? "Black" : "White"} wins`, ui.human === "w" ? "b" : "w");
 }
 
-function download() {
+/** The game in PGN, with who played whom and, once it is over, the result. */
+export function pgn() {
   const c = ui.chess;
+  if (ui.over) c.setHeader("Result", ui.winner === "w" ? "1-0" : ui.winner === "b" ? "0-1" : "1/2-1/2");
   c.setHeader("Event", "Game vs. human-like bot (in the browser)");
   c.setHeader(ui.human === "w" ? "White" : "Black", "You");
   c.setHeader(ui.human === "w" ? "Black" : "White", `Bot ${ui.rating}`);
-  const blob = new Blob([c.pgn() + "\n"], { type: "application/x-chess-pgn" });
+  return c.pgn() + "\n";
+}
+
+function download() {
+  const blob = new Blob([pgn()], { type: "application/x-chess-pgn" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
   link.download = `game-vs-bot-${ui.rating}.pgn`;
@@ -461,7 +467,9 @@ export function restore(snap = saved.game.load()) {
   render();
   if (!ui.over && chess.turn() !== ui.human) {
     botTurn();                                              // reloaded while the bot was thinking
-  } else if (!ui.over) {
+  } else if (ui.over) {
+    setStatus(`Your last game: ${ui.overText}. Press Play for a new one.`);
+  } else {
     setStatus(`Welcome back: your game continues. Your move${chess.inCheck() ? ": you are in check" : ""}.`);
   }
   return true;

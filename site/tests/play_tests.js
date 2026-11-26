@@ -419,4 +419,22 @@ test("reloaded while the bot was thinking: it moves after the restore", async ()
   assert($("status").textContent.startsWith("Welcome back"), $("status").textContent);
 });
 
+test("a finished game comes back finished, and its PGN has the result", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1500, color: "white" });
+  await site.play("e2e4");
+  site.resign();
+  const snap = site.snapshot();
+  await site.newGame({ rating: 1500, color: "white" });
+  assert(site.restore(snap));
+  assert(site.ui.over, "over");
+  equal($("status").textContent, "Your last game: You resigned: Black wins. Press Play for a new one.");
+  equal(site.ui.board.mover, null);
+  equal(site.ui.board.premover, null);
+  assert($("resign").disabled && $("takeback").disabled);
+  const text = site.pgn();
+  assert(text.includes('[Result "0-1"]') && text.trim().endsWith("0-1"), text);
+  assert(text.includes('[White "You"]') && text.includes('[Black "Bot 1500"]'), text);
+});
+
 run();
