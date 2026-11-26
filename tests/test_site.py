@@ -14,7 +14,7 @@ import pytest
 from test_web_js import _Quiet, browser_or_skip, check_results, dump_dom
 
 ROOT = Path(__file__).resolve().parents[1]
-UNIT_TESTS = 10     # tests in site/tests/unit_tests.js
+UNIT_TESTS = 15     # tests in site/tests/unit_tests.js
 PLAY_TESTS = 28    # tests in site/tests/play_tests.js
 
 
@@ -96,4 +96,4 @@ def test_the_play_page_end_to_end(tmp_path) -> None:
 
 def test_a_game_survives_a_reload(tmp_path) -> None:
     """A real reload in the browser: the saved game is restored."""
-    _run_page(tmp_path, "reload.html", 1)
+    _run_page(tmp_path, "reload.html", 1, budget_ms=120000)   # two page loads, each loading the model

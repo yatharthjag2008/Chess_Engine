@@ -4,6 +4,7 @@ import { Chess } from "../vendor/chess.js";
 import { assert, equal, run, test } from "./harness.js";
 import { RECIPES, Sounds, soundFor } from "../js/sounds.js";
 import { stored } from "../js/storage.js";
+import { Clock, TIME_CONTROLS, baseSeconds, formatClock } from "../js/clock.js";
 import { START, captured, countPieces, describeCaptures, materialOf } from "../js/material.js";
 
 // ------------------------------------------------------------------ sounds
@@ -128,6 +129,66 @@ test("storage that throws (private windows, a full quota) never breaks the page"
   const none = stored("x", null);
   equal(none.load(3), 3);
   assert(!none.save(1));
+});
+
+// ------------------------------------------------------------------ clocks
+
+/** A clock on a fake time line: `t.now` is moved by hand. */
+function fakeClock(base) {
+  const t = { now: 1000 };
+  return { clock: new Clock(base, { now: () => t.now }), t };
+}
+
+test("the time controls: no clock, 1, 3, 5 and 10 minutes", () => {
+  equal(TIME_CONTROLS.map((c) => c.id), ["none", "1", "3", "5", "10"]);
+  equal([baseSeconds("none"), baseSeconds("1"), baseSeconds(3), baseSeconds("5"), baseSeconds("10")],
+        [null, 60, 180, 300, 600]);
+  equal(baseSeconds("7"), null);
+});
+
+test("a clock charges only the side whose time runs", () => {
+  const { clock, t } = fakeClock(60);
+  equal([clock.left("w"), clock.left("b")], [60000, 60000]);
+  clock.start("b");
+  t.now += 5000;
+  equal([clock.left("w"), clock.left("b")], [60000, 55000]);
+  clock.start("w");
+  t.now += 2500;
+  equal([clock.left("w"), clock.left("b")], [57500, 55000]);
+  clock.stop();
+  t.now += 99999;
+  equal([clock.left("w"), clock.left("b")], [57500, 55000], "stopped: nobody's time runs");
+  equal(clock.flagged(), null);
+});
+
+test("running out of time, and never below zero", () => {
+  const { clock, t } = fakeClock(1);
+  clock.start("w");
+  t.now += 1500;
+  equal(clock.left("w"), 0);
+  equal(clock.flagged(), "w");
+});
+
+test("a saved clock carries on, the running side charged for the time since", () => {
+  const { clock, t } = fakeClock(180);
+  clock.start("b");
+  t.now += 10000;
+  const saved = JSON.parse(JSON.stringify(clock));
+  equal(saved, { base: 180, remaining: { w: 180000, b: 170000 }, running: "b", at: t.now });
+  t.now += 4000;                                   // the page was closed for 4 seconds
+  const back = Clock.fromJSON(saved, { now: () => t.now });
+  equal([back.left("w"), back.left("b")], [180000, 166000]);
+  equal(Clock.fromJSON({ ...saved, running: null }).left("b"), 170000);
+});
+
+test("clock faces: minutes and seconds, tenths under ten seconds", () => {
+  equal(formatClock(600000), "10:00");
+  equal(formatClock(179001), "3:00", "a part-second counts as a whole one");
+  equal(formatClock(61000), "1:01");
+  equal(formatClock(10000), "0:10");
+  equal(formatClock(9400), "9.4");
+  equal(formatClock(50), "0.0");
+  equal(formatClock(-5), "0.0");
 });
 
 run();
