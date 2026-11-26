@@ -612,4 +612,14 @@ test("looking back, the opening is the one at that point of the game", async () 
   equal($("opening-name").textContent, "Sicilian Defense: Modern Variations");
 });
 
+test("the PGN names the opening (ECO and Opening headers)", async () => {
+  await until(() => site.ui.openings, "the name table");
+  await site.newGame({ rating: 1500, color: "white" });
+  for (const san of ["d4", "Nf6", "c4", "e6", "Nc3", "Bb4"]) site.ui.chess.move(san);
+  site.render();
+  const text = site.pgn();
+  assert(text.includes('[Opening "Nimzo-Indian Defense"]'), text);
+  assert(/\[ECO "E2\d"\]/.test(text), text);
+});
+
 run();

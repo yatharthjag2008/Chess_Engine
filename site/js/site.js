@@ -246,10 +246,16 @@ export function tickClocks() {
   render();
 }
 
+/** The game's opening after `plies` half-moves (all of them by default), or null. */
+export function openingAt(plies = Infinity) {
+  const history = ui.chess.history({ verbose: true });
+  const fens = [history.length ? history[0].before : ui.chess.fen(), ...history.map((m) => m.after)];
+  return openingOf(ui.openings, fens.slice(0, plies + 1));
+}
+
 /** The opening's name and ECO code above the move list, as of the position shown (hidden until there is one). */
 function renderOpening(history, shownPly) {
-  const fens = [history.length ? history[0].before : ui.chess.fen(), ...history.map((m) => m.after)];
-  const opening = openingOf(ui.openings, fens.slice(0, shownPly + 1));
+  const opening = openingAt(shownPly);
   $("opening").hidden = !opening;
   if (!opening) return;
   $("opening-eco").textContent = opening.eco;
@@ -443,6 +449,11 @@ export function resign() {
 export function pgn() {
   const c = ui.chess;
   if (ui.over) c.setHeader("Result", ui.winner === "w" ? "1-0" : ui.winner === "b" ? "0-1" : "1/2-1/2");
+  const opening = openingAt();
+  if (opening) {
+    c.setHeader("ECO", opening.eco);
+    c.setHeader("Opening", opening.name);
+  }
   c.setHeader("Event", "Game vs. human-like bot (in the browser)");
   c.setHeader(ui.human === "w" ? "White" : "Black", "You");
   c.setHeader(ui.human === "w" ? "Black" : "White", `Bot ${ui.rating}`);
