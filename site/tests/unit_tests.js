@@ -361,6 +361,17 @@ test("rating: the estimate matches Python's for the same move likelihoods", asyn
   equal(est.moves, data.test.moves);
 });
 
+test("rating: with the opponents' ratings, the estimate matches Python's opponent prior", async () => {
+  const data = await loadRatingData("../data/");
+  const v = data.opponent.test_vector;
+  const est = estimateFromBucketLL(v.bucket_ll, data, { oppRatings: v.opp_ratings });
+  assert(est.withOpponent);
+  for (const key of ["estimate", "low", "high"]) assert(near(est[key], v[key], 1e-6), `${key}: ${est[key]} vs ${v[key]}`);
+  equal(estimateFromBucketLL(v.bucket_ll, data, { oppRatings: [] }).withOpponent, false, "no opponents: the data prior");
+  equal(estimateFromBucketLL(v.bucket_ll, { ...data, opponent: undefined }, { oppRatings: [1500] }).withOpponent, false,
+        "no fitted opponent prior: the data prior");
+});
+
 test("rating: a move's likelihood at each rating is PyTorch's probability", async () => {
   const model = await loadModel("../model/");
   for (const t of model.meta.tests.slice(0, 2)) {

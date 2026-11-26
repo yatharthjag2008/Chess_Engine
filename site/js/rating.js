@@ -64,15 +64,28 @@ export function summarize(grid, probabilities, interval = 0.8, moves = 0) {
   return { estimate, median: quantile(0.5), low: quantile(tail), high: quantile(1 - tail), interval, moves };
 }
 
-/** The estimate from per-move bucket log-likelihoods (moves x buckets), with the prior and temper of `data`. */
-export function estimateFromBucketLL(bucketLL, data, { temper = data.temper } = {}) {
+/** A prior centred on the opponents' ratings (one per game; several games multiply), as opponent_log_prior. */
+export function opponentLogPrior(grid, oppRatings, sigma) {
+  return grid.map((r) => oppRatings.reduce((acc, opp) => acc - 0.5 * ((r - opp) / sigma) ** 2, 0));
+}
+
+/**
+ * The estimate from per-move bucket log-likelihoods (moves x buckets), with the data prior and temper of `data`.
+ * With `oppRatings` (the opponent's rating in each game) and a fitted opponent prior in `data`, the prior is centred
+ * on them instead (and its own temper is used): far more accurate when players were paired by rating, but then
+ * mostly the opponent's rating rather than the moves. Never for games against a bot of a chosen rating.
+ */
+export function estimateFromBucketLL(bucketLL, data, { temper = null, oppRatings = null } = {}) {
   const k = data.centers.length;
   const summed = new Array(k).fill(0);
   for (const row of bucketLL) row.forEach((v, b) => { summed[b] += v; });
   const grid = ratingGrid(data.grid);
   const total = grid.map((r) => interp(r, data.centers, summed));
-  const prior = data.log_prior || new Array(grid.length).fill(0);
-  return summarize(grid, posterior(total, prior, temper), data.interval, bucketLL.length);
+  const useOpponent = Boolean(oppRatings && oppRatings.length && data.opponent);
+  const prior = useOpponent ? opponentLogPrior(grid, oppRatings, data.opponent.sigma)
+    : data.log_prior || new Array(grid.length).fill(0);
+  const t = temper ?? (useOpponent ? data.opponent.temper : data.temper);
+  return { ...summarize(grid, posterior(total, prior, t), data.interval, bucketLL.length), withOpponent: useOpponent };
 }
 
 /** "about 1430 (80% range 1250-1620, from 31 moves)". */

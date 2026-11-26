@@ -24,15 +24,21 @@ test("a real game: the estimates match Python's (estimate_rating with the same m
   $("player-name").value = "";
   const result = await analyse.estimate();
   equal(result.results.length, 2);
-  // Python: player01 1753.78 (1421.44-2060.46), player02 2023.71 (1672.91-2351.50), 60 moves each.
-  const expected = [[1753.78, 1421.44, 2060.46], [2023.71, 1672.91, 2351.5]];
-  result.results.forEach(({ estimate }, i) => {
-    const got = [estimate.estimate, estimate.low, estimate.high];
-    got.forEach((v, j) => assert(Math.abs(v - expected[i][j]) < 2, `${got} vs ${expected[i]}`));
-    equal(estimate.moves, 60);
+  // Python, moves alone: player01 1753.78 (1421.44-2060.46), player02 2023.71 (1672.91-2351.50), 60 moves each;
+  // with the opponent prior: player01 1790.22 (1696.72-1874.11), player02 1835.29 (1740.93-1919.47).
+  const alone = [[1753.78, 1421.44, 2060.46], [2023.71, 1672.91, 2351.5]];
+  const paired = [[1790.22, 1696.72, 1874.11], [1835.29, 1740.93, 1919.47]];
+  result.results.forEach(({ estimate, movesOnly }, i) => {
+    for (const [e, expected] of [[movesOnly, alone[i]], [estimate, paired[i]]]) {
+      const got = [e.estimate, e.low, e.high];
+      got.forEach((v, j) => assert(Math.abs(v - expected[j]) < 2, `${got} vs ${expected}`));
+      equal(e.moves, 60);
+    }
+    assert(estimate.withOpponent && !movesOnly.withOpponent);
   });
   const rows = [...$("estimate-list").querySelectorAll("li")].map((li) => li.textContent);
-  assert(rows[0].startsWith("player01 (White, rated 1825 in the game, against 1790): about 1750 (80% range 1420-2060, from 60 moves)"), rows[0]);
+  assert(rows[0].startsWith("player01 (White, rated 1825 in the game, against 1790): about 1790 (80% range 1700-1870, "
+    + "from 60 moves), with the opponent's rating. From the moves alone: about 1750 (80% range 1420-2060, from 60 moves)."), rows[0]);
   assert(rows[1].includes("vs. player01, 2026.10.01, 1/2-1/2"), rows[1]);
   assert($("overall").hidden, "no combined estimate without a player");
   equal($("estimate-status").textContent, "Done: 120 moves scored at every rating.");

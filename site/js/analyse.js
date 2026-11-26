@@ -60,22 +60,33 @@ export async function estimateText(text, { player = "", onProgress = () => {} } 
     const rows = await scoreSide(page.pool, page.model, side, (n) => onProgress(before + n, total));
     done += rows.length;
     all.push(...rows);
-    results.push({ side, estimate: estimateFromBucketLL(rows, page.data) });
+    const movesOnly = estimateFromBucketLL(rows, page.data);
+    const paired = side.oppRating ? estimateFromBucketLL(rows, page.data, { oppRatings: [side.oppRating] }) : null;
+    results.push({ side, estimate: paired || movesOnly, movesOnly });
   }
-  const overall = player && results.length > 1 ? estimateFromBucketLL(all, page.data) : null;
+  let overall = null;
+  if (player && results.length > 1) {
+    const opps = results.map((r) => r.side.oppRating);
+    overall = estimateFromBucketLL(all, page.data, { oppRatings: opps.every(Boolean) ? opps : null });
+  }
   return { results, overall, unreadable, error: null };
 }
 
 function render({ results, overall, unreadable }, player) {
   $("estimate-results").hidden = false;
   $("overall").hidden = !overall;
-  if (overall) $("overall").textContent = `All ${results.length} games of ${player}: ${describeEstimate(overall)}.`;
-  const items = results.map(({ side, estimate }) => {
+  if (overall) {
+    $("overall").textContent = `All ${results.length} games of ${player}: ${describeEstimate(overall)}`
+      + `${overall.withOpponent ? ", with the opponents' ratings" : ""}.`;
+  }
+  const items = results.map(({ side, estimate, movesOnly }) => {
     const li = document.createElement("li");
     const who = document.createElement("strong");
     who.textContent = sideLabel(side);
     const what = document.createElement("span");
-    what.textContent = `: ${describeEstimate(estimate)}`;
+    what.textContent = estimate.withOpponent
+      ? `: ${describeEstimate(estimate)}, with the opponent's rating. From the moves alone: ${describeEstimate(movesOnly)}.`
+      : `: ${describeEstimate(estimate)}, from the moves alone.`;
     li.append(who, what);
     const opponent = side.color === "w" ? side.headers.Black : side.headers.White;
     if (opponent) {

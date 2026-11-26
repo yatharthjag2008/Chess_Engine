@@ -15,7 +15,7 @@ import pytest
 from test_web_js import _Quiet, browser_or_skip, check_results, dump_dom
 
 ROOT = Path(__file__).resolve().parents[1]
-UNIT_TESTS = 41     # tests in site/tests/unit_tests.js
+UNIT_TESTS = 42     # tests in site/tests/unit_tests.js
 PLAY_TESTS = 57    # tests in site/tests/play_tests.js
 ANALYSE_TESTS = 9  # tests in site/tests/analyse_tests.js
 STOCKFISH_TESTS = 7  # tests in site/tests/stockfish_tests.js

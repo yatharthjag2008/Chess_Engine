@@ -45,8 +45,10 @@
     <section class="panel" id="estimate-results" hidden>
       <h2>Estimates</h2>
       <p class="hint">The estimate is the rating whose players most often make moves like these; the range holds
-        80% of the likely ratings. From one game it is rough (about 250 points off on average with this model), and
-        more games narrow it.</p>
+        80% of the likely ratings. From the moves alone it is rough (about 250 points off on average from one game
+        with this model). When the game records the opponent's rating it is used too, since online players are
+        paired with similar ratings: that is about 60 points off, but almost all of that accuracy comes from the
+        opponent's rating rather than the moves. More games narrow both.</p>
       <div id="overall" class="estimate-overall" hidden></div>
       <ol id="estimate-list" class="estimate-list"></ol>
     </section>
