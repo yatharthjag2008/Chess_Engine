@@ -10,6 +10,9 @@ const site = await import("../js/site.js");
 await site.init("../model/");
 site.ui.delay = 0;
 site.ui.thinkScale = 0.01;                       // timed games: the bot thinks 1% of its human-like time
+const DIAL = await (await fetch("../data/dial.json")).json();
+assert(site.ui.dial.calibrated, "the page loaded the honest dial");
+site.setDial(null);                              // most tests: the plain dial (a label is the model's input)
 const $ = (id) => document.getElementById(id);
 
 test("the model loads and checks itself against PyTorch", () => {
@@ -1026,6 +1029,40 @@ test("styles: the Style choice appears when the site has some, and the bot plays
   equal($("top-name").textContent, "Bot 1500", "a style that cannot load: the plain bot");
   site.setStyles([]);
   assert($("style-field").hidden);
+});
+
+test("the honest dial: measured strengths, and the bot imitates the players who play that well", async () => {
+  site.ui.random = () => 0.5;
+  site.setDial(DIAL);
+  equal([$("rating").min, $("rating").max], ["1100", "1750"]);
+  $("rating").value = "1600";
+  $("rating").dispatchEvent(new Event("input"));
+  equal($("rating-value").textContent, "1600");
+  assert($("dial-note").textContent.includes("1100-1750 is the range the bot really plays"), $("dial-note").textContent);
+  assert($("dial-note").textContent.endsWith("At 1600 it imitates players rated about 1640."), $("dial-note").textContent);
+  equal([site.modelRating(1100), site.modelRating(1500), site.modelRating(1700), site.modelRating(1750)], [1106, 1500, 2156, 2288]);
+  const model = site.ui.model;
+  const predict = model.predict.bind(model);
+  const asked = [];
+  model.predict = (chess, rating, options) => { asked.push(rating); return predict(chess, rating, options); };
+  try {
+    await site.newGame({ rating: 1700, color: "white" });
+    await site.play("e2e4");
+  } finally {
+    model.predict = predict;
+  }
+  equal(asked, [2156], "the model imitates 2156-rated players to play at strength 1700");
+  equal($("top-name").textContent, "Bot 1700");
+  assert($("thinking-caption").textContent.includes("players rated about 2156 chose (the bot plays at strength 1700"),
+         $("thinking-caption").textContent);
+  assert(site.pgn().includes('[BotImitates "2156"]'));
+  await site.newGame({ rating: 2300, color: "white" });
+  equal(site.ui.rating, 1750, "only strengths the bot can play");
+  site.resetProfile(2100);
+  await site.newGame({ rating: 1500, color: "white", difficulty: "between" });
+  equal(site.ui.rating, 1750, "Follow my level stays within the dial too");
+  site.setDial(null);
+  equal([$("rating").min, $("rating").max], ["800", "2400"]);
 });
 
 run();

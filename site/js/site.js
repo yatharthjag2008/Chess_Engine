@@ -10,6 +10,7 @@ import { Clock, baseSeconds, formatClock, thinkTime } from "./clock.js";
 import { loadOpenings, openingOf } from "./openings.js";
 import { PRESETS, parsePosition } from "./position.js";
 import { ADAPTIVE, LiveAdjuster, botRatingFor, readProfile, recordGame, scoreFor } from "./adaptive.js";
+import { loadDial, makeDial } from "./dial.js";
 import { HINTS, HintBudget, HintEngine } from "./hints.js";
 import { StockfishAnalyzer } from "./stockfish.js";
 
@@ -44,7 +45,44 @@ export const ui = {
   styleReady: Promise.resolve(),
   stylesBase: "styles/",
   fetchStyle: (name) => loadStyle(name, ui.stylesBase),   // replaceable in tests
+  dial: makeDial(null),  // the honest rating dial (data/dial.json): labels are measured strength
 };
+
+/** The rating the model is told to imitate for the bot's strength `label` (see dial.js). */
+export function modelRating(label = ui.rating) {
+  return ui.dial.inputFor(label);
+}
+
+/** Adaptive difficulty within the strengths the bot can play. */
+function adaptiveCfg() {
+  return { ...ADAPTIVE, minRating: ui.dial.min, maxRating: ui.dial.max };
+}
+
+/** Use the dial of `data` (dial.json's contents; null: the plain 800-2400 dial): the slider's range and note. */
+export function setDial(data) {
+  ui.dial = makeDial(data);
+  const slider = $("rating");
+  slider.min = String(ui.dial.min);
+  slider.max = String(ui.dial.max);
+  slider.step = String(ui.dial.step);
+  const value = Math.min(ui.dial.max, Math.max(ui.dial.min, Number(slider.value) || ui.dial.anchor));
+  slider.value = String(Math.round(value / ui.dial.step) * ui.dial.step);
+  renderDialNote();
+  renderAdaptiveNote();
+}
+
+/** Under the slider: what the strength means, and which players the bot imitates for it. */
+function renderDialNote() {
+  const note = $("dial-note");
+  if (!ui.dial.calibrated) {
+    note.textContent = "";
+    return;
+  }
+  const label = Number($("rating").value);
+  note.textContent = `Measured strength: steps on this dial are measured Elo steps (bot games against Stockfish), `
+    + `anchored at 1500, and ${ui.dial.min}-${ui.dial.max} is the range the bot really plays. At ${label} it `
+    + `imitates players rated about ${Math.round(modelRating(label) / 10) * 10}.`;
+}
 
 /** "Ann: style, 120 games" / "me: ghost, games up to 2025-05-31". */
 export function styleLabel(style) {
@@ -132,7 +170,7 @@ export function renderAdaptiveNote() {
       + `weaker while it is winning (at most ${ADAPTIVE.liveCap} either way). Your rating: ${Math.round(p.rating)}.`;
     return;
   }
-  const next = botRatingFor(p.rating);
+  const next = botRatingFor(p.rating, adaptiveCfg());
   $("rating-value").textContent = String(next);
   note.textContent = p.games
     ? `Your rating: ${Math.round(p.rating)} after ${p.games} game${p.games === 1 ? "" : "s"}. The bot plays at ${next}.`
@@ -171,7 +209,7 @@ function recordResult(winner) {
   const botRating = a.live ? Math.round(a.live.meanRating) : a.start;   // live: the rating it played at on average
   ui.profile = recordGame(profile(), botRating, scoreFor(winner, ui.human), a.mode);
   saved.profile.save(ui.profile);
-  a.recorded = { before, after: ui.profile.rating, next: botRatingFor(ui.profile.rating) };
+  a.recorded = { before, after: ui.profile.rating, next: botRatingFor(ui.profile.rating, adaptiveCfg()) };
   renderAdaptiveNote();
 }
 
@@ -179,9 +217,9 @@ function recordResult(winner) {
 export function applySettings(settings) {
   if (!settings) return;
   const rating = Number(settings.rating);
-  if (rating >= 800 && rating <= 2400) {
+  if (rating >= 800 && rating <= 2400) {             // the dial (once loaded) keeps it within its range
     $("rating").value = String(rating);
-    $("rating-value").textContent = String(rating);
+    $("rating-value").textContent = $("rating").value;
   }
   if (settings.hints !== undefined && [...$("hint-limit").options].some((o) => o.value === String(settings.hints))) {
     $("hint-limit").value = String(settings.hints);
@@ -507,7 +545,9 @@ export async function askHint() {
 function renderThinking(move) {
   $("thinking-panel").hidden = !move;
   if (!move) return;
-  $("thinking-caption").textContent = `In the position before ${move.san}, players rated about ${ui.rating} chose:`;
+  const imitated = move.imitates || modelRating();
+  $("thinking-caption").textContent = `In the position before ${move.san}, players rated about ${imitated} chose`
+    + (imitated === ui.rating ? ":" : ` (the bot plays at strength ${ui.rating} by imitating them):`);
   const rows = move.candidates.slice(0, 5).map((c) => {
     const li = document.createElement("li");
     li.className = "candidate" + (c.uci === move.uci ? " played" : "");
@@ -596,10 +636,11 @@ export function clockContext() {
 /** The bot picks a move as often as players of its rating play it. */
 export function botMove() {
   const c = ui.chess;
-  const { moves, wdl } = ui.model.predict(c, ui.rating, { ...clockContext(), style: ui.style });
+  const imitates = modelRating();
+  const { moves, wdl } = ui.model.predict(c, imitates, { ...clockContext(), style: ui.style });
   const choice = sampleMove(moves, 1, ui.random);
   makeMove(choice.uci);
-  ui.last = { san: choice.san, uci: choice.uci, prob: choice.prob, candidates: moves };
+  ui.last = { san: choice.san, uci: choice.uci, prob: choice.prob, candidates: moves, imitates };
   ui.thoughts[c.history().length] = ui.last;
   const live = ui.adaptive.live;
   if (live) {                                               // live: its own chances in the position it moved from
@@ -666,14 +707,15 @@ export async function newGame({ rating, color, time = "none", start = null, diff
   chooseStyle(style);
   ui.chess = start || new Chess();
   const mode = ["between", "live"].includes(difficulty) ? difficulty : "off";
-  if (mode === "between") rating = botRatingFor(profile().rating);   // the bot plays at your level
+  if (mode === "between") rating = botRatingFor(profile().rating, adaptiveCfg());   // the bot plays at your level
+  else rating = Math.min(ui.dial.max, Math.max(ui.dial.min, Number(rating)));
   ui.time = baseSeconds(time) ? String(time) : "none";
   ui.clock = baseSeconds(time) ? new Clock(baseSeconds(time)) : null;   // null: an untimed game
   const history = ui.chess.history({ verbose: true });
   ui.startFen = history.length ? history[0].before : ui.chess.fen();
   // Games from a position do not count: a won position says little about your level.
   ui.adaptive = { mode, start: rating, rated: ui.startFen === START, recorded: null, notice: null,
-                  live: mode === "live" ? new LiveAdjuster(rating) : null };
+                  live: mode === "live" ? new LiveAdjuster(rating, adaptiveCfg()) : null };
   ui.view = null;
   ui.thoughts = {};
   ui.hints = new HintBudget(Math.max(0, Number(hints) || 0));
@@ -751,6 +793,7 @@ export function pgn() {
   const a = ui.adaptive;
   const changed = a.live && a.live.changes.length;
   c.setHeader(ui.human === "w" ? "Black" : "White", changed ? botName(`${a.start}-${ui.rating}`) : botName());
+  if (ui.dial.calibrated) c.setHeader("BotImitates", String(modelRating()));   // the model's input for that strength
   if (a.mode !== "off") {
     c.setHeader("Adaptive", a.mode);                          // as the local app writes it
     if (changed) c.setHeader("AdaptiveChanges", a.live.changes.map((x) => `${x.botMove}:${x.rating}`).join(" "));
@@ -819,7 +862,7 @@ export async function init(modelBase = "model/", dataBase = modelBase.replace(/m
   });
   ui.board.setLegalMoves([], null);
   const rating = $("rating");
-  const show = () => { $("rating-value").textContent = rating.value; };
+  const show = () => { $("rating-value").textContent = rating.value; renderDialNote(); };
   rating.addEventListener("input", show);
   show();
   applySettings(saved.settings.load());
@@ -892,6 +935,7 @@ export async function init(modelBase = "model/", dataBase = modelBase.replace(/m
     if (event.key === "Escape") ui.board.cancelPremove();   // drops the selection and any premove
   });
   loadStyles(ui.stylesBase).then((list) => setStyles(list, (saved.settings.load() || {}).style || ""));
+  setDial(await loadDial(dataBase));
   try {
     ui.model = await loadModel(modelBase);
   } catch (err) {
@@ -933,7 +977,7 @@ export function restore(snap = saved.game.load()) {
   const a = snap.adaptive || {};
   const mode = ["between", "live"].includes(a.mode) ? a.mode : "off";
   ui.adaptive = { mode, start: Number(a.start) || ui.rating, rated: a.rated !== false, recorded: a.recorded || null,
-                  notice: null, live: mode === "live" && a.live ? LiveAdjuster.fromJSON(a.live) : null };
+                  notice: null, live: mode === "live" && a.live ? LiveAdjuster.fromJSON(a.live, adaptiveCfg()) : null };
   const plies = snap.moves.length;
   ui.last = ui.thoughts[plies] || null;
   ui.view = null;
