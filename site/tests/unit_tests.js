@@ -16,6 +16,7 @@ import { classify, describeSide, evalGraph, gameAccuracy, keyMoments, moveAccura
          winPercent } from "../js/review.js";
 import { MATE_CP, finishedEval } from "../js/stockfish.js";
 import { coachGame, explainLevel, explainMistake, hangingPieces, newlyHanging } from "../js/coach.js";
+import { HintBudget, HintEngine, detailFor, makeHint, moveThemes, threatenedPiece } from "../js/hints.js";
 import { ADAPTIVE, LiveAdjuster, botRatingFor, expectedScore, readProfile, recordGame, scoreFor,
          updateRating } from "../js/adaptive.js";
 
@@ -572,6 +573,205 @@ test("coach: a whole game, with the levels disagreeing where it matters", async 
     + "Players around 1200 usually play Nf6 here (60%). Players around 1400 prefer g6 (60%), which keeps 50% winning "
     + "chances instead of 4%. You played Nf6, like most players at your level.");
   equal([report.yourLevelMatch, report.nextLevelMatch, report.nextLevel], [1, 2 / 3, 1400]);
+});
+
+// ------------------------------------------------------------------ hints
+
+// From src/chess_engine/bot/hints.py: [fen, move, themes, threatened piece, [nudge at 50%, nudge at 20%,
+// point at 5% (only move), show (only move, winning)]].
+const HINT_CASES = [
+[
+"6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1",
+"a1a8",
+[
+"mate"
+],
+null,
+[
+"There is a forcing move here: look at checks, captures and threats.",
+"There is a checkmate!",
+"There is a checkmate! It's a rook move. Move your rook on a1.",
+"Play Ra8#: checkmate."
+]
+],
+[
+"rnb1kbnr/pppp1ppp/8/4p1q1/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3",
+"f3g5",
+[
+"win_material"
+],
+null,
+[
+"There is a forcing move here: look at checks, captures and threats.",
+"One of your opponent's pieces can be won.",
+"One of your opponent's pieces can be won. It's a knight move. Careful: only one move keeps your position together. Move your knight on f3.",
+"Play Nxg5: it wins material."
+]
+],
+[
+"rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",
+"e4d5",
+[
+"capture"
+],
+null,
+[
+"There is a forcing move here: look at checks, captures and threats.",
+"Look at the captures.",
+"Look at the captures. It's a pawn move. Careful: only one move keeps your position together. Move your pawn on e4.",
+"Play exd5: a capture."
+]
+],
+[
+"4k3/8/8/3p4/4N3/8/8/4K3 w - - 0 1",
+"e4c3",
+[
+"save_piece",
+"threat"
+],
+"p",
+[
+"Before anything else, check that all your pieces are safe.",
+"One of your pieces is in danger: save it.",
+"One of your pieces is in danger: save it. It's a knight move. Careful: only one move keeps your position together. Move your knight on e4.",
+"Play Nc3: it saves the piece, and it creates a threat."
+]
+],
+[
+"r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1",
+"e1g1",
+[
+"defend",
+"castle"
+],
+null,
+[
+"Before anything else, check that all your pieces are safe.",
+"One of your pieces is loose: protect it.",
+"One of your pieces is loose: protect it. It's a king move. Careful: only one move keeps your position together. Move your king on e1.",
+"Play O-O: it protects your loose piece, and it gets your king to safety."
+]
+],
+[
+"rnb1kbnr/pppp1ppp/8/4p3/7q/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+"g2g3",
+[
+"threat"
+],
+"q",
+[
+"You can put your opponent under pressure.",
+"You can attack their queen.",
+"You can attack their queen. It's a pawn move. Careful: only one move keeps your position together. Move your pawn on g2.",
+"Play g3: it creates a threat."
+]
+],
+[
+"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+"e2e4",
+[
+"quiet"
+],
+null,
+[
+"No need for anything sharp: look for a calm, useful move.",
+"Look for a quiet move that improves your position.",
+"Look for a quiet move that improves your position. It's a pawn move. Careful: only one move keeps your position together. Move your pawn on e2.",
+"Play e4."
+]
+],
+[
+"8/1P6/8/8/8/8/k7/7K w - - 0 1",
+"b7b8q",
+[
+"promotion"
+],
+null,
+[
+"There is a forcing move here: look at checks, captures and threats.",
+"One of your pawns can promote.",
+"One of your pawns can promote. It's a pawn move. Careful: only one move keeps your position together. Move your pawn on b7.",
+"Play b8=Q: it promotes."
+]
+],
+[
+"4k3/8/8/8/8/8/8/R3K3 w - - 0 1",
+"a1a8",
+[
+"check"
+],
+null,
+[
+"There is a forcing move here: look at checks, captures and threats.",
+"Look for a strong check.",
+"Look for a strong check. It's a rook move. Careful: only one move keeps your position together. Move your rook on a1.",
+"Play Ra8+: a check."
+]
+],
+[
+"4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 2",
+"e5d6",
+[
+"capture"
+],
+null,
+[
+"There is a forcing move here: look at checks, captures and threats.",
+"Look at the captures.",
+"Look at the captures. It's a pawn move. Careful: only one move keeps your position together. Move your pawn on e5.",
+"Play exd6: a capture."
+]
+]
+];
+
+test("hints: themes and texts are the Python ones, case by case", () => {
+  for (const [fen, uci, themes, threatened, texts] of HINT_CASES) {
+    equal(moveThemes(fen, uci), themes, `${fen} ${uci}`);
+    equal(threatenedPiece(fen, uci), threatened, `${fen} ${uci}`);
+    equal([makeHint(fen, uci, "nudge", 0.5).text, makeHint(fen, uci, "nudge", 0.2).text,
+           makeHint(fen, uci, "point", 0.05, { onlyMove: true }).text,
+           makeHint(fen, uci, "show", 0.05, { onlyMove: true, winning: true }).text], texts, `${fen} ${uci}`);
+  }
+  equal([detailFor(0.35), detailFor(0.2), detailFor(0.09)], ["vague", "theme", "piece"]);
+  const shown = makeHint(HINT_CASES[0][0], "a1a8", "show", 0.3);
+  equal([shown.from, shown.to, shown.san, shown.tier], ["a1", "a8", "Ra8#", "show"]);
+  const pointed = makeHint(HINT_CASES[0][0], "a1a8", "point", 0.3);
+  equal([pointed.from, pointed.to, pointed.san], ["a1", null, null]);
+});
+
+test("hints: the engine's best move, how often your level finds it, and whether it is the only move", async () => {
+  const fen = "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1";
+  let searches = 0;
+  const analyzer = { async analyse() { searches += 1; return { lines: [{ uci: "a1a8", cp: 9999 }, { uci: "h2h3", cp: 10 }], bestCp: 9999 }; } };
+  const model = { predict: () => ({ moves: [{ uci: "h2h3", prob: 0.7 }, { uci: "a1a8", prob: 0.2 }] }) };
+  const engine = new HintEngine(model, analyzer);
+  const nudge = await engine.hint(fen, "nudge", 1200);
+  equal([nudge.findRate, nudge.detail, nudge.onlyMove, nudge.text], [0.2, "theme", true, "There is a checkmate!"]);
+  equal((await engine.hint(fen, "show", 1200)).text, "Play Ra8#: checkmate.");
+  equal(searches, 1, "the position is remembered");
+  let threw = false;
+  try { await engine.best("7k/6Q1/6K1/8/8/8/8/8 b - - 0 1", 1200); } catch { threw = true; }
+  assert(threw, "no hint once the game is over");
+});
+
+test("hints: the per-game budget counts positions, and each request goes one tier further", () => {
+  const budget = new HintBudget(2);
+  const a = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+  const b = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1";
+  const c = "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2";
+  assert(budget.rated);
+  equal([budget.take(a), budget.take(a), budget.take(a), budget.take(a)], ["nudge", "point", "show", "show"]);
+  equal([budget.used, budget.left, budget.rated], [1, 1, false]);
+  equal(budget.take(b.replace(" 0 1", " 5 9")), "nudge", "move counters do not matter");
+  assert(!budget.canTake(c) && budget.canTake(a));
+  let message = null;
+  try { budget.take(c); } catch (err) { message = err.message; }
+  equal(message, "No hints left in this game.");
+  const copy = HintBudget.fromJSON(JSON.parse(JSON.stringify(budget)));
+  equal([copy.used, copy.nextTier(a), copy.nextTier(c)], [2, "show", "nudge"]);
+  message = null;
+  try { new HintBudget(0).take(a); } catch (err) { message = err.message; }
+  equal(message, "Hints are off for this game.");
 });
 
 run();
