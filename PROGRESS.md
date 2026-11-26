@@ -1305,9 +1305,8 @@ server (the model already runs there, `site/js/engine.js`).
     and blocked requests are explained, with pasting as the fallback.
   - On the play page, **Analyse this game** hands the game over (through local storage) and the Analyse page
     estimates how strong you played.
-  - Each move takes eight network passes, about 0.1 s each in Chrome on this laptop (the network is plain
-    JavaScript), so one side of a 40-move game takes about half a minute; the page reports progress and stays
-    responsive. The Analyse page's tests run in real time for that reason.
+  - Each move takes eight network passes (see "Speed" below for how long that takes); the page reports progress
+    and stays responsive. The Analyse page's tests run in real time.
 - **Stockfish in the browser** (`site/vendor/stockfish/`, `site/js/stockfish.js`): Stockfish.js 18, the lite
   single-threaded WebAssembly build (7.3 MB) from the npm package `stockfish@18.0.8`, unmodified and checked against
   the package's published hashes, with its GPLv3 license. The single-threaded build needs none of the cross-origin
@@ -1349,4 +1348,19 @@ server (the model already runs there, `site/js/engine.js`).
 With this, every feature of the plan runs on the website except training new styles and ghosts. The browser tests
 grew to: the modules (41), the play page (57), the Analyse page (8), Stockfish (7), the Review page (7), a style
 export (4) and a real reload.
+- **Speed of the network in the browser** (measured with `scripts/bench_site.py`, which times
+  `site/tests/bench.html` in headless Chrome on this laptop, a Core Ultra 9 288V with 4 fast and 4 low-power
+  cores). A rating estimate scores every move at all eight ratings, so one side of a real 60-move game is 480 passes:
+
+  | | per pass | one side of a 60-move game |
+  |---|---|---|
+  | first version | 69.5 ms | 41 s |
+  | 3x3 convolutions on padded boards, weights unrolled (`engine.js`) | 24.6 ms | 17 s |
+  | and background workers (`pool.js`, `rating_worker.js`) | | 5.3 s |
+
+  The workers (one per core but one, at most eight, each with its own copy of the model) take one move at a time.
+  Here the speed-up stops at four workers (18.7 s with one, 8.4 s with two, 5.1 s with four, 5.2 s with six): the
+  four fast cores do the work, so machines with more fast cores should gain more. Workers and the page give
+  identical estimates, and the page scores the moves itself if workers cannot start. Faster passes also speed up
+  the bot's own moves and the coach.
 
