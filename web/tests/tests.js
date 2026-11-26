@@ -398,11 +398,11 @@ test("right-drag draws an arrow, shown faintly while dragging; the same arrow ag
   const [x1, y1] = centre(board, "f3");
   pointer("pointerdown", board.squareEl("g1"), x0, y0, { button: 2 });
   pointer("pointermove", window, x1, y1, { button: 2 });
-  assert(board.el.querySelector(".shapes line.preview"), "a preview while dragging");
+  assert(board.el.querySelector(".shapes .arrow.preview"), "a preview while dragging");
   equal(board.shapes, [], "not drawn yet");
   pointer("pointerup", window, x1, y1, { button: 2 });
   equal(board.shapes, [{ orig: "g1", dest: "f3" }]);
-  assert(!board.el.querySelector(".shapes line.preview") && board.el.querySelector(".shapes line"), "drawn for real");
+  assert(!board.el.querySelector(".shapes .preview") && board.el.querySelector(".shapes .arrow"), "drawn for real");
   rightDrag(board, "e2", "e4");
   equal(board.shapes.length, 2);
   rightDrag(board, "g1", "f3");
@@ -441,6 +441,17 @@ test("a left-click on the board, or a new position, clears the arrows and circle
   equal(board.shapes.length, 1, "the same position keeps them");
   board.setPosition("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1", { lastMove: "e2e4" });
   equal(board.shapes, [], "a move clears them");
+});
+
+test("a knight's move is drawn as an L", () => {
+  const board = new Board(fixture());
+  board.setShapes([{ orig: "g1", dest: "f3" }, { orig: "b1", dest: "d2" }]);
+  const paths = [...board.el.querySelectorAll(".shapes path.arrow.knight")].map((p) => p.getAttribute("d"));
+  equal(paths, ["M6.5,7.5 L6.5,5.5 L5.82,5.5", "M1.5,7.5 L3.5,7.5 L3.5,6.82"],
+        "g1-f3 up then left; b1-d2 right then up");
+  equal(board.el.querySelectorAll(".shapes line").length, 0, "no straight lines for knights");
+  board.setShapes([{ orig: "e2", dest: "e4" }]);
+  equal(board.el.querySelectorAll(".shapes path.knight").length, 0);
 });
 
 test("a right-click that cancels a premove draws nothing", () => {

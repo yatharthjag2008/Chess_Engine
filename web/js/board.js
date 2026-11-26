@@ -156,6 +156,19 @@ export function shapesLayer(shapes, orientation) {
       continue;
     }
     const [x2, y2] = squareCentre(shape.dest, orientation);
+    const style = { stroke: BRUSHES[brush], "stroke-width": 0.16, "stroke-linecap": "round", fill: "none",
+                    "stroke-linejoin": "round", "marker-end": `url(#arrowhead-${brush})`,
+                    opacity: shape.preview ? 0.45 : 0.8 };
+    const [dx, dy] = [Math.abs(x2 - x1), Math.abs(y2 - y1)];
+    if ((dx === 1 && dy === 2) || (dx === 2 && dy === 1)) {
+      // A knight's move: an L, along the long side first, the head stopping short of the centre.
+      const [cx, cy] = dx === 2 ? [x2, y1] : [x1, y2];
+      const sx = Math.sign(x2 - cx) * 0.32;
+      const sy = Math.sign(y2 - cy) * 0.32;
+      svg.append(svgEl("path", { class: `arrow knight ${brush}${shape.preview ? " preview" : ""}`,
+                                 d: `M${x1},${y1} L${cx},${cy} L${x2 - sx},${y2 - sy}`, ...style }));
+      continue;
+    }
     const length = Math.hypot(x2 - x1, y2 - y1);
     const end = (length - 0.32) / length;                  // stop short so the head ends near the centre
     svg.append(svgEl("line", { class: `arrow ${brush}${shape.preview ? " preview" : ""}`, x1, y1, x2: x1 + (x2 - x1) * end, y2: y1 + (y2 - y1) * end,
