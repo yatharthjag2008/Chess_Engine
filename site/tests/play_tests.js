@@ -826,4 +826,36 @@ test("Follow my level: games from a position do not count, and a reload keeps th
   difficulty("off");
 });
 
+test("Live: the bot gets stronger while it is losing, within the cap, and the result counts", async () => {
+  site.ui.random = () => 0.5;
+  site.resetProfile(1500);
+  difficulty("live");
+  assert(!$("rating").disabled, "you choose where it starts");
+  assert($("adaptive-note").textContent.includes("at most 200 either way"), $("adaptive-note").textContent);
+  await site.newGame({ rating: 1400, color: "white", difficulty: "live" });
+  const model = site.ui.model;
+  const predict = model.predict.bind(model);
+  model.predict = (...args) => ({ ...predict(...args), wdl: [0.05, 0.05, 0.9] });   // the bot sees itself losing
+  try {
+    for (const move of ["a2a3", "b2b3", "c2c3", "d2d3", "e2e3", "g2g3", "h2h3"]) {
+      const before = site.ui.chess.history().length;
+      const legal = site.ui.chess.moves({ verbose: true }).find((m) => m.lan === move);
+      await site.play(legal ? move : site.ui.chess.moves({ verbose: true })[0].lan);
+      equal(site.ui.chess.history().length, before + 2);
+    }
+  } finally {
+    model.predict = predict;
+  }
+  equal(site.ui.rating, 1450, "a step stronger after its seventh move");
+  equal($("top-name").textContent, "Bot 1450");
+  assert($("status").textContent.includes("it now plays stronger: 1450"), $("status").textContent);
+  const snap = JSON.parse(JSON.stringify(site.snapshot()));
+  assert(site.restore(snap));
+  equal(site.ui.adaptive.live.rating, 1450, "the live state survives a reload");
+  site.resign();
+  equal(site.profile().games, 1);
+  equal(site.profile().history[0].botRating, Math.round(site.ui.adaptive.live.meanRating), "against its average");
+  difficulty("off");
+});
+
 run();

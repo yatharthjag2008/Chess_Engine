@@ -9,7 +9,7 @@ import { stored } from "./storage.js";
 import { Clock, baseSeconds, formatClock, thinkTime } from "./clock.js";
 import { loadOpenings, openingOf } from "./openings.js";
 import { PRESETS, parsePosition } from "./position.js";
-import { botRatingFor, readProfile, recordGame, scoreFor } from "./adaptive.js";
+import { ADAPTIVE, LiveAdjuster, botRatingFor, readProfile, recordGame, scoreFor } from "./adaptive.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -50,15 +50,18 @@ export function profile() {
 
 /** Under the Difficulty choice: what "Follow my level" will do (the bot's rating then comes from your profile). */
 export function renderAdaptiveNote() {
-  const following = $("new-game").elements.difficulty.value === "between";
+  const mode = $("new-game").elements.difficulty.value;
+  const following = mode === "between";
   const note = $("adaptive-note");
-  note.hidden = !following;
+  note.hidden = mode === "off";
   $("rating").disabled = following;
+  const p = profile();
   if (!following) {
     $("rating-value").textContent = $("rating").value;
+    note.textContent = `The bot starts at the rating you choose, then plays a step stronger while it is losing or `
+      + `weaker while it is winning (at most ${ADAPTIVE.liveCap} either way). Your rating: ${Math.round(p.rating)}.`;
     return;
   }
-  const p = profile();
   const next = botRatingFor(p.rating);
   $("rating-value").textContent = String(next);
   note.textContent = p.games
@@ -79,7 +82,8 @@ function recordResult(winner) {
   const a = ui.adaptive;
   if (a.mode === "off" || !a.rated || a.recorded) return;
   const before = profile().rating;
-  ui.profile = recordGame(profile(), a.start, scoreFor(winner, ui.human), a.mode);
+  const botRating = a.live ? Math.round(a.live.meanRating) : a.start;   // live: the rating it played at on average
+  ui.profile = recordGame(profile(), botRating, scoreFor(winner, ui.human), a.mode);
   saved.profile.save(ui.profile);
   a.recorded = { before, after: ui.profile.rating, next: botRatingFor(ui.profile.rating) };
   renderAdaptiveNote();
@@ -232,7 +236,8 @@ export function render() {
   if (viewing) setStatus(`${lookingAt(shown.move)} End, or a click on the board, returns to the game.`);
   else if (ui.over) setStatus(ui.overText);
   else if (ui.busy) setStatus("The bot is thinking...");
-  else if (humanToMove) setStatus(`Your move${c.inCheck() ? ": you are in check" : ""}.`);
+  else if (humanToMove) setStatus(`Your move${c.inCheck() ? ": you are in check" : ""}.`
+                                  + (ui.adaptive.notice ? ` ${ui.adaptive.notice}` : ""));
   if (end && !ui.over) finish(end.text, end.winner);
   saved.game.save(snapshot());
 }
@@ -424,11 +429,22 @@ export function clockContext() {
 /** The bot picks a move as often as players of its rating play it. */
 export function botMove() {
   const c = ui.chess;
-  const { moves } = ui.model.predict(c, ui.rating, clockContext());
+  const { moves, wdl } = ui.model.predict(c, ui.rating, clockContext());
   const choice = sampleMove(moves, 1, ui.random);
   makeMove(choice.uci);
   ui.last = { san: choice.san, uci: choice.uci, prob: choice.prob, candidates: moves };
   ui.thoughts[c.history().length] = ui.last;
+  const live = ui.adaptive.live;
+  if (live) {                                               // live: its own chances in the position it moved from
+    const before = ui.rating;
+    const changed = live.observe(wdl);
+    if (changed !== null) {
+      ui.rating = changed;
+      ui.adaptive.notice = changed > before
+        ? `The bot was losing, so it now plays stronger: ${changed}.`
+        : `The bot was winning, so it now plays weaker: ${changed}.`;
+    }
+  }
   return choice;
 }
 
@@ -460,6 +476,7 @@ function botTurn() {
 /** You play ``uci``; the bot answers. */
 export async function play(uci) {
   if (ui.over || ui.busy || ui.chess.turn() !== ui.human) return;
+  ui.adaptive.notice = null;
   makeMove(uci);
   render();
   if (!ui.over) await botTurn();
@@ -477,14 +494,15 @@ export function readForm() {
 /** A new game: `start` (a chess.js game, see position.js) to carry on from a position, else the usual start. */
 export async function newGame({ rating, color, time = "none", start = null, difficulty = "off" }) {
   ui.chess = start || new Chess();
-  const mode = difficulty === "between" ? difficulty : "off";
+  const mode = ["between", "live"].includes(difficulty) ? difficulty : "off";
   if (mode === "between") rating = botRatingFor(profile().rating);   // the bot plays at your level
   ui.time = baseSeconds(time) ? String(time) : "none";
   ui.clock = baseSeconds(time) ? new Clock(baseSeconds(time)) : null;   // null: an untimed game
   const history = ui.chess.history({ verbose: true });
   ui.startFen = history.length ? history[0].before : ui.chess.fen();
   // Games from a position do not count: a won position says little about your level.
-  ui.adaptive = { mode, start: rating, rated: ui.startFen === START, recorded: null };
+  ui.adaptive = { mode, start: rating, rated: ui.startFen === START, recorded: null, notice: null,
+                  live: mode === "live" ? new LiveAdjuster(rating) : null };
   ui.view = null;
   ui.thoughts = {};
   ui.rating = rating;
@@ -504,7 +522,7 @@ export async function playFromHere() {
   const history = ui.chess.history({ verbose: true });
   const start = new Chess(history.length ? history[0].before : ui.chess.fen());
   for (const move of history.slice(0, ui.view)) start.move(move.lan);
-  await newGame({ rating: ui.rating, color: colorName(ui.human), time: ui.time || "none", start,
+  await newGame({ rating: ui.adaptive.start, color: colorName(ui.human), time: ui.time || "none", start,
                  difficulty: ui.adaptive.mode });
 }
 
@@ -693,8 +711,9 @@ export function restore(snap = saved.game.load()) {
   ui.clock = snap.clock ? Clock.fromJSON(snap.clock) : null;
   ui.thoughts = snap.thoughts || {};
   const a = snap.adaptive || {};
-  ui.adaptive = { mode: a.mode === "between" ? a.mode : "off", start: Number(a.start) || ui.rating,
-                  rated: a.rated !== false, recorded: a.recorded || null };
+  const mode = ["between", "live"].includes(a.mode) ? a.mode : "off";
+  ui.adaptive = { mode, start: Number(a.start) || ui.rating, rated: a.rated !== false, recorded: a.recorded || null,
+                  notice: null, live: mode === "live" && a.live ? LiveAdjuster.fromJSON(a.live) : null };
   const plies = snap.moves.length;
   ui.last = ui.thoughts[plies] || null;
   ui.view = null;
