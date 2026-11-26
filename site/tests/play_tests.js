@@ -743,4 +743,35 @@ test("Copy FEN copies the position shown (the one looked at, when looking back)"
   }
 });
 
+test("Play from here: a new game from a position looked at, with the moves that led there", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1400, color: "white" });
+  await site.play("d2d4");
+  await site.play("c2c4");
+  assert($("play-from-here").hidden, "only while looking back");
+  site.showPly(2);
+  assert(!$("play-from-here").hidden);
+  const fen = site.ui.board.fen;
+  $("play-from-here").click();
+  await until(() => site.ui.view === null && site.ui.chess.history().length === 2, "the new game");
+  equal(site.ui.chess.fen(), fen);
+  equal([site.ui.rating, site.ui.human], [1400, "w"], "same rating and side");
+  equal(site.ui.board.mover, "white", "your move, as it was then");
+});
+
+test("a game from a position survives a reload", async () => {
+  site.ui.random = () => 0.5;
+  positionForm("1K1k4/1P6/8/8/8/8/r7/2R5 w - - 0 1");
+  await site.startFromForm();
+  await site.play("c1d1");
+  const snap = site.snapshot();
+  const fen = site.ui.chess.fen();
+  await site.newGame({ rating: 1500, color: "white" });
+  assert(site.restore(snap));
+  equal(site.ui.chess.fen(), fen);
+  equal(site.ui.startFen, "1K1k4/1P6/8/8/8/8/r7/2R5 w - - 0 1");
+  assert(site.pgn().includes('[FEN "1K1k4/1P6/8/8/8/8/r7/2R5 w - - 0 1"]'));
+  standardForm();
+});
+
 run();

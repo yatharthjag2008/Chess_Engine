@@ -171,6 +171,7 @@ export function render() {
   const shownPly = viewing ? ui.view : history.length;
   $("first").disabled = $("prev").disabled = shownPly === 0;
   $("next").disabled = $("last").disabled = !viewing;
+  $("play-from-here").hidden = !viewing;
   renderCaptured(shown.fen);
   renderOpening(history, viewing ? ui.view : history.length);
   updateClocks();
@@ -435,6 +436,15 @@ export async function newGame({ rating, color, time = "none", start = null }) {
   if (ui.chess.turn() !== ui.human) await botTurn();          // the bot's move first (Black, or its turn in a position)
 }
 
+/** A new game from the position looked at, with the moves that led there (same rating, side and clock). */
+export async function playFromHere() {
+  if (ui.view === null) return;
+  const history = ui.chess.history({ verbose: true });
+  const start = new Chess(history.length ? history[0].before : ui.chess.fen());
+  for (const move of history.slice(0, ui.view)) start.move(move.lan);
+  await newGame({ rating: ui.rating, color: colorName(ui.human), time: ui.time || "none", start });
+}
+
 /** What the Play button does: a standard game, or one from the pasted position (an error shown if it cannot be). */
 export async function startFromForm() {
   const form = readForm();
@@ -548,6 +558,7 @@ export async function init(modelBase = "model/", dataBase = modelBase.replace(/m
     event.stopPropagation();
     showPly(null);
   }, true);
+  $("play-from-here").addEventListener("click", playFromHere);
   $("first").addEventListener("click", () => showPly(0));
   $("prev").addEventListener("click", () => step(-1));
   $("next").addEventListener("click", () => step(1));

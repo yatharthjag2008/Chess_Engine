@@ -24,6 +24,7 @@
 .step-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
 .step-buttons button { padding: 6px 0; font-size: 0.95rem; line-height: 1; }
 .step-buttons button:disabled { opacity: 0.4; }
+.play-from-here { width: 100%; margin-top: 8px; }
 
 .segmented span { white-space: nowrap; }
 
