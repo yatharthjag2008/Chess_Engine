@@ -122,7 +122,8 @@ export function render() {
   if (!viewing) ui.view = null;
   const shown = positionAt(history, viewing ? ui.view : history.length);
   const humanToMove = !viewing && !ui.over && !ui.busy && c.turn() === ui.human;
-  ui.board.setPosition(shown.fen, { lastMove: shown.move ? shown.move.lan : null, check: viewing ? false : c.inCheck() });
+  const check = viewing ? Boolean(shown.move && /[+#]$/.test(shown.move.san)) : c.inCheck();
+  ui.board.setPosition(shown.fen, { lastMove: shown.move ? shown.move.lan : null, check });
   const botToMove = !viewing && !ui.over && c.turn() !== ui.human;   // meanwhile you may premove
   ui.board.setLegalMoves(humanToMove ? legalMoves() : [], humanToMove ? colorName(ui.human) : null,
                          { premover: botToMove ? colorName(ui.human) : null });
@@ -134,7 +135,7 @@ export function render() {
   const shownPly = viewing ? ui.view : history.length;
   $("first").disabled = $("prev").disabled = shownPly === 0;
   $("next").disabled = $("last").disabled = !viewing;
-  renderCaptured(c.fen());
+  renderCaptured(shown.fen);
   renderThinking();
   const humanMoves = history.filter((m) => m.color === ui.human).length;
   $("takeback").disabled = ui.over || ui.busy || humanMoves === 0;

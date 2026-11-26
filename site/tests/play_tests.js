@@ -332,4 +332,23 @@ test("while looking back the status says where you are; a click on the board ret
   assert($("status").textContent.startsWith("Your move"), $("status").textContent);
 });
 
+test("looking back, the captures and the check are those of the position shown", async () => {
+  await site.newGame({ rating: 1500, color: "white" });
+  site.ui.chess.load("rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2");
+  site.ui.chess.move("exd5");
+  site.ui.chess.move("Qxd5");
+  site.ui.chess.move("Nc3");
+  site.ui.chess.move("Qe5+");
+  site.render();
+  assert(site.ui.board.check, "in check now");
+  equal(document.querySelectorAll(".captured .piece").length, 2, "a pawn each");
+  site.showPly(1);
+  equal(document.querySelectorAll(".captured .piece").length, 1, "after exd5: only White has taken");
+  assert(!site.ui.board.check, "no check then");
+  site.showPly(3);
+  assert(!site.ui.board.check);
+  site.showPly(null);
+  assert(site.ui.board.check);
+});
+
 run();
