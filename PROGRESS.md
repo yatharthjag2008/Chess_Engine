@@ -1244,3 +1244,9 @@ Basic features players expect, each built in its own series of commits with brow
   position, moves, side, rating, how it ended, the bot's thinking) and replayed with chess.js when the page opens. If
   the page was reloaded while the bot was thinking, it moves; a finished game comes back finished. The new-game
   choices are remembered too. Storage never breaks the page (private windows, full quota); tested with a real reload.
+- **Clocks** (`site/js/clock.js`): 1, 3, 5 or 10 minutes a side (or none). The clock of the side to move runs from
+  White's first move; red when low, tenths under ten seconds. A flag fall loses, or draws when the other side cannot
+  checkmate (a lone king, or king and one minor piece against a lone king). The bot takes a human-like time (quick in
+  the opening, about a thirtieth of its clock later, hurried when short), and the network is given both clocks, as it
+  was in training, so a bot in time trouble chooses like players in time trouble. Clocks survive a reload with the
+  time away charged, as on a server; there is no take back against the clock.
