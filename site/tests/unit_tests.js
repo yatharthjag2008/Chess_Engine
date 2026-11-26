@@ -12,6 +12,9 @@ import { describeEstimate, estimateFromBucketLL, interp, loadRatingData, moveBuc
   from "../js/rating.js";
 import { bucketOf, loadModel } from "../js/engine.js";
 import { clockOf, parseTimeControl, playerGames, readGame, splitPgn } from "../js/games.js";
+import { classify, describeSide, evalGraph, gameAccuracy, keyMoments, moveAccuracy, reviewMoves, summary,
+         winPercent } from "../js/review.js";
+import { MATE_CP, finishedEval } from "../js/stockfish.js";
 import { ADAPTIVE, LiveAdjuster, botRatingFor, expectedScore, readProfile, recordGame, scoreFor,
          updateRating } from "../js/adaptive.js";
 
@@ -419,6 +422,80 @@ test("games: an unreadable game is counted, and the others are still read", () =
   const { games, unreadable } = playerGames(`[White "A"]\n[Black "B"]\n\n1. e4 e5 2. Ke3 Ke6 3. Qxh8 *\n\n${TWO_GAMES}`);
   equal([unreadable, games.length], [1, 4]);
   assert(readGame("1. e4 e5 2. Qxf7").error.startsWith("could not be read"));
+});
+
+// ------------------------------------------------------------------ game review
+
+test("review: win %, move and game accuracy are Lichess's (the Python numbers)", () => {
+  const wins = [0, 100, -250, 1500, 9997, -9990].map(winPercent);
+  const expected = [50, 59.10258971916128, 28.485195256375974, 97.54474363414323, 100, 0];
+  wins.forEach((w, i) => assert(near(w, expected[i], 1e-9), `${w} vs ${expected[i]}`));
+  assert(near(moveAccuracy(60, 40), 41.016818741417126, 1e-9));
+  equal(moveAccuracy(50, 55), 100, "gaining is perfect");
+  assert(near(moveAccuracy(90, 10), 1.000170640274321, 1e-9));
+  assert(near(gameAccuracy([100, 80, 30, 95], [50, 52, 55, 40, 20, 30, 35, 34, 33], [0, 2, 4, 6]), 55.38879709187046, 1e-9));
+  equal([classify(1, false), classify(5, false), classify(12, false), classify(25, false), classify(31, false),
+         classify(50, true)], ["best", "good", "inaccuracy", "mistake", "blunder", "best"]);
+});
+
+/** Python's ScriptedAnalyzer: { "placement side": [bestUci, bestCp, { uci: cp }] }, else the first legal move at 0. */
+function scripted(script) {
+  return {
+    async analyse(fen) {
+      const chess = new Chess(fen);
+      const done = finishedEval(chess);
+      if (done !== null) return { fen, lines: [], bestCp: done };
+      const key = fen.split(" ").slice(0, 2).join(" ");
+      const legal = chess.moves({ verbose: true });
+      const first = legal.map((m) => m.lan).sort()[0];
+      const [bestUci, bestCp, others] = script[key] || [first, 0, {}];
+      const san = (uci) => legal.find((m) => m.lan === uci).san;
+      const lines = [{ uci: bestUci, san: san(bestUci), cp: bestCp },
+                     ...Object.entries(others).map(([uci, cp]) => ({ uci, san: san(uci), cp }))];
+      lines.sort((a, b) => b.cp - a.cp);
+      return { fen, lines, bestCp: lines[0].cp };
+    },
+  };
+}
+
+const keyOf = (...sans) => {
+  const chess = new Chess();
+  for (const san of sans) chess.move(san);
+  return chess.fen().split(" ").slice(0, 2).join(" ");
+};
+
+test("review: a scripted game is judged exactly as the Python review judges it", async () => {
+  const analyzer = scripted({
+    [keyOf("e4", "e5", "Qh5", "Nc6", "Bc4")]: ["g7g6", 0, { g8f6: -900 }],
+    [keyOf("e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6")]: ["h5f7", 900, {}],
+  });
+  const chess = new Chess();
+  for (const san of ["e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6", "Qxf7#"]) chess.move(san);
+  const progress = [];
+  const review = await reviewMoves(new Chess().fen(), chess.history({ verbose: true }).map((m) => m.lan), analyzer,
+                                   { onProgress: (done, total) => progress.push(`${done}/${total}`) });
+  equal(progress.length, 8);
+  equal(progress[7], "8/8");
+  equal(review.moves.map((m) => m.classification), ["best", "best", "best", "best", "best", "blunder", "best"]);
+  const blunder = review.moves[5];
+  equal([blunder.moveNumber, blunder.cpLoss, blunder.evalBefore, blunder.evalAfter, blunder.bestSan],
+        ["3...", 900, 0, 900, "g6"]);
+  assert(near(blunder.winLost, 46.490164802806575, 1e-9) && near(blunder.accuracy, 11.45897404122671, 1e-9));
+  const s = summary(review);
+  equal([s.white.accuracy, s.white.averageCpLoss, s.white.counts.best], [100, 0, 4]);
+  assert(near(s.black.accuracy, 49.22684928745974, 1e-9), String(s.black.accuracy));
+  equal([s.black.averageCpLoss, s.black.counts.blunder], [300, 1]);
+  equal(describeSide(s.black), "Black: accuracy 49%, average loss 300 cp, 1 blunder");
+  equal(describeSide(s.white), "White: accuracy 100%, average loss 0 cp, no errors");
+  equal(keyMoments(review).map((k) => k.text), ["3... Nf6?? dropped Black's chances from 50% to 4%. Better was g6."]);
+  const graph = evalGraph(review);
+  equal(graph.length, 8);
+  equal([graph[6].eval, graph[7].ply], [900, 7]);
+  assert(near(graph[6].whiteWin, 96.49016480280658, 1e-9));
+  let threw = false;
+  try { await reviewMoves(new Chess().fen(), ["e2e5"], analyzer); } catch { threw = true; }
+  assert(threw, "an illegal move is refused");
+  equal(MATE_CP, 10000);
 });
 
 run();
