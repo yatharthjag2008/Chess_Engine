@@ -94,29 +94,68 @@ function linear(x, w, b, outDim) {
   return y;
 }
 
-/** A k x k convolution with zero padding on an 8x8 board: x is (cin, 8, 8), the result (cout, 8, 8). */
+/** A k x k convolution with zero padding on an 8x8 board: x is (cin, 8, 8), the result (cout, 8, 8).
+ *  The 3 x 3 case (nearly all the work) pads each input channel to 10 x 10 once and unrolls the nine weights, so the
+ *  inner loop has no bounds checks; 1 x 1 is a plain per-square matrix product. */
 function conv(x, cin, w, b, cout, k) {
-  const pad = k >> 1;
+  if (k === 3) return conv3(x, cin, w, b, cout);
+  if (k === 1) return conv1(x, cin, w, b, cout);
+  throw new Error(`no ${k} x ${k} convolution`);
+}
+
+const padded = new Map();          // cin -> a reusable (cin, 10, 10) buffer, borders always zero
+
+function pad(x, cin) {
+  let xp = padded.get(cin);
+  if (!xp) {
+    xp = new Float32Array(cin * 100);
+    padded.set(cin, xp);
+  }
+  for (let c = 0; c < cin; c++) {
+    const src = c * 64;
+    const dst = c * 100 + 11;                     // row 1, column 1
+    for (let r = 0; r < 8; r++) xp.set(x.subarray(src + r * 8, src + r * 8 + 8), dst + r * 10);
+  }
+  return xp;
+}
+
+function conv3(x, cin, w, b, cout) {
+  const xp = pad(x, cin);
+  const y = new Float32Array(cout * 64);
+  const acc = new Float32Array(64);
+  for (let o = 0; o < cout; o++) {
+    acc.fill(b[o]);
+    for (let c = 0; c < cin; c++) {
+      const wo = (o * cin + c) * 9;
+      const w0 = w[wo], w1 = w[wo + 1], w2 = w[wo + 2], w3 = w[wo + 3], w4 = w[wo + 4];
+      const w5 = w[wo + 5], w6 = w[wo + 6], w7 = w[wo + 7], w8 = w[wo + 8];
+      const base = c * 100;
+      for (let r = 0; r < 8; r++) {
+        const top = base + r * 10;                // the padded row above output row r
+        const mid = top + 10;
+        const bot = top + 20;
+        const out = r * 8;
+        for (let col = 0; col < 8; col++) {
+          acc[out + col] += w0 * xp[top + col] + w1 * xp[top + col + 1] + w2 * xp[top + col + 2]
+            + w3 * xp[mid + col] + w4 * xp[mid + col + 1] + w5 * xp[mid + col + 2]
+            + w6 * xp[bot + col] + w7 * xp[bot + col + 1] + w8 * xp[bot + col + 2];
+        }
+      }
+    }
+    y.set(acc, o * 64);
+  }
+  return y;
+}
+
+function conv1(x, cin, w, b, cout) {
   const y = new Float32Array(cout * 64);
   for (let o = 0; o < cout; o++) {
     const out = o * 64;
     y.fill(b[o], out, out + 64);
     for (let c = 0; c < cin; c++) {
+      const weight = w[o * cin + c];
       const inp = c * 64;
-      for (let ky = 0; ky < k; ky++) {
-        for (let kx = 0; kx < k; kx++) {
-          const weight = w[((o * cin + c) * k + ky) * k + kx];
-          if (weight === 0) continue;
-          const dy = ky - pad, dx = kx - pad;
-          const r0 = Math.max(0, -dy), r1 = Math.min(8, 8 - dy);
-          const c0 = Math.max(0, -dx), c1 = Math.min(8, 8 - dx);
-          for (let r = r0; r < r1; r++) {
-            const src = inp + (r + dy) * 8 + dx;
-            const dst = out + r * 8;
-            for (let col = c0; col < c1; col++) y[dst + col] += weight * x[src + col];
-          }
-        }
-      }
+      for (let s = 0; s < 64; s++) y[out + s] += weight * x[inp + s];
     }
   }
   return y;
