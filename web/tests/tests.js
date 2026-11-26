@@ -426,6 +426,23 @@ test("colours: Shift red, Alt blue, both yellow; the same shape in another colou
   equal(board.shapes.length, 3, "now removed");
 });
 
+test("a left-click on the board, or a new position, clears the arrows and circles", () => {
+  const played = [];
+  const board = new Board(fixture(), { onMove: (uci) => played.push(uci) });
+  board.setLegalMoves(START_MOVES, "white");
+  rightDrag(board, "e2", "e4");
+  rightDrag(board, "d5");
+  const [x, y] = centre(board, "e2");
+  pointer("pointerdown", board.squareEl("e2").querySelector(".piece"), x, y);
+  pointer("pointerup", window, x, y);
+  equal(board.shapes, [], "cleared by a left press");
+  rightDrag(board, "e2", "e4");
+  board.setPosition(START_FEN);
+  equal(board.shapes.length, 1, "the same position keeps them");
+  board.setPosition("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1", { lastMove: "e2e4" });
+  equal(board.shapes, [], "a move clears them");
+});
+
 test("a right-click that cancels a premove draws nothing", () => {
   const board = premoveBoard();
   board.squareEl("g1").click();

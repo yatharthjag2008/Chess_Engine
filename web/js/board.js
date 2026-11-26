@@ -212,6 +212,11 @@ export class Board {
   /** Right button down: start drawing, a circle if released on the same square, an arrow if dragged to
    *  another (shown faintly meanwhile). A right-click that cancels a premove draws nothing. */
   annotateStart(event) {
+    if (event.button === 0 && this.shapes.length) {        // a left-click clears the drawing
+      this.shapes = [];
+      this.renderShapes();
+      return;
+    }
     if (event.button !== 2 || this.premove || (this.premover && this.selected)) return;
     const orig = this.squareAt(event.clientX, event.clientY);
     if (!orig) return;
@@ -466,6 +471,7 @@ export class Board {
   setPosition(fen, { lastMove = null, check = false } = {}) {
     const slide = lastMove && lastMove !== this.dropped && this.movedBy(lastMove, fen) ? lastMove : null;
     this.dropped = null;
+    if (fen !== this.fen) this.shapes = [];                 // a new position: the old arrows no longer apply
     this.fen = fen;
     this.lastMove = lastMove;
     this.check = check;
