@@ -1260,3 +1260,12 @@ Basic features players expect, each built in its own series of commits with brow
   reaches, so transpositions are found (3,864 positions, 456 kB, loaded in the background). The name and ECO code
   show above the moves, follow the position when looking back, stay once the game leaves the book, and go into the
   PGN's ECO and Opening headers. A test rebuilds the table and checks the committed one matches.
+- **From a position**, a second game mode (`site/js/position.js`): paste a FEN or a PGN (a PGN keeps its moves in
+  the list) or pick a practice position (basic mates, king and pawn, the Lucena position, three opening positions),
+  choose a side and play the bot from there; it moves first when it is its turn. Mistakes are explained under the
+  box (an invalid FEN, an unreadable PGN, a position already over) and the game in progress is left alone. The PGN
+  records the start (SetUp / FEN), captures count from it, and such games survive a reload. Copy FEN copies the
+  position shown, and Play from here starts a new game from any earlier position of a game.
+
+All of this was built in 8 series of 8 commits, each tested in headless Chrome (site/tests/unit_tests.js for the
+modules, play_tests.js for the page, reload_tests.js for a real reload).
