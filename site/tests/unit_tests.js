@@ -5,6 +5,7 @@ import { assert, equal, run, test } from "./harness.js";
 import { RECIPES, Sounds, soundFor } from "../js/sounds.js";
 import { stored } from "../js/storage.js";
 import { loadOpenings, openingOf, positionKey } from "../js/openings.js";
+import { parsePosition } from "../js/position.js";
 import { Clock, TIME_CONTROLS, baseSeconds, formatClock, thinkTime } from "../js/clock.js";
 import { START, canMate, captured, countPieces, describeCaptures, materialOf } from "../js/material.js";
 
@@ -247,6 +248,31 @@ test("the real table: names, transpositions, fetched once", async () => {
   equal(openingOf(table, fensOf("d4", "Nf6", "c4", "e6", "Nc3", "Bb4")).name, "Nimzo-Indian Defense");
   const transposed = openingOf(table, fensOf("c4", "e6", "d4", "Nf6", "Nc3", "Bb4"));
   equal(transposed.name, "Nimzo-Indian Defense", "another move order, the same position");
+});
+
+// ------------------------------------------------------------------ from a position
+
+test("a pasted FEN becomes the position to play from", () => {
+  const { chess, error } = parsePosition("  8/8/8/4k3/8/8/4K3/4Q3 w - - 0 1 \n");
+  equal(error, undefined);
+  equal(chess.fen(), "8/8/8/4k3/8/8/4K3/4Q3 w - - 0 1");
+  equal(chess.history(), []);
+});
+
+test("a pasted PGN keeps its moves", () => {
+  const { chess } = parsePosition('[Event "Casual"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 *');
+  equal(chess.history(), ["e4", "e5", "Nf3", "Nc6", "Bb5"]);
+  equal(chess.turn(), "b");
+  equal(parsePosition("1. d4 d5 2. c4").chess.history().length, 3, "movetext without headers");
+});
+
+test("what cannot be played from says why", () => {
+  assert(parsePosition("").error.startsWith("Paste a position"));
+  assert(parsePosition("rnbqkbnr/pppppppp/8/8 w KQkq - 0 1").error.startsWith("That FEN is not valid"),
+         parsePosition("rnbqkbnr/pppppppp/8/8 w KQkq - 0 1").error);
+  assert(parsePosition("1. e4 e5 2. Ke3 Ke6 3. Qxh8").error.startsWith("That PGN could not be read"));
+  equal(parsePosition("7k/6Q1/6K1/8/8/8/8/8 b - - 0 1").error,
+        "The game is already over in that position (mate, stalemate or a draw).");
 });
 
 run();
