@@ -13,7 +13,8 @@ and **adaptive difficulty** (the bot follows your level between games, or adjust
 or from the game you just played, and a **Review** page judges every move with Stockfish running in the browser
 (accuracy, inaccuracies, mistakes, blunders, key moments and an eval graph) with a **coach** that compares your
 moves with your level and the next and explains your mistakes: free and unlimited, nothing uploaded. **Hints**
-while you play (a nudge, then the piece, then the move) come from Stockfish too.
+while you play (a nudge, then the piece, then the move) come from Stockfish too. Styles and ghosts trained with
+the full app can be published to the site, which then offers a Style choice.
 
 [![The website: the bot is thinking about its 4th move while you have castling queued as a premove (blue)](reports/web/website.png)](https://yatharthjag2008.github.io/Chess_Engine/)
 

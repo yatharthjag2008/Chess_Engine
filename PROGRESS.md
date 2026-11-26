@@ -1338,4 +1338,15 @@ server (the model already runs there, `site/js/engine.js`).
   ahead of the second). Ten positions give the Python themes and texts word for word. 1, 3, 5 or 20 hints per
   game, or off; a hinted game is unrated (badge, PGN headers, no adaptive rating change). Stockfish (depth 12,
   two lines) starts on the first hint.
+- **Styles and ghosts** (`web_export.export_style`, `build_site.py --styles`, `engine.js`): a trained adapter (an
+  offset to the conditioning vector, a shift to each block's modulation, a bias per move) is exported with its
+  blend weight and PyTorch test vectors; the browser applies it and blends it with the base model as the Python
+  `StylePredictor` does, and a fresh export matches PyTorch in the browser. The play page shows a Style choice once
+  `site/styles/index.json` exists; the bot's name and the PGN say whose style; it survives a reload. Training stays
+  in Python (PyTorch). No style is published yet: none is trained on this machine, and which players to imitate
+  publicly is the owner's choice (DEPLOY.md says how).
+
+With this, every feature of the plan runs on the website except training new styles and ghosts. The browser tests
+grew to: the modules (41), the play page (57), the Analyse page (8), Stockfish (7), the Review page (7), a style
+export (4) and a real reload.
 

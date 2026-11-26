@@ -91,3 +91,17 @@ It accepts standard challenges at the speeds you allow and plays one game at a t
 token is only sent to Lichess, in the request header, and is never printed. Lichess's rules for bots apply (the
 account must be marked as a bot and must not play on behalf of a person). This integration is tested against a
 fake Lichess only; it has not been run on a real account.
+
+## Publishing styles and ghosts to the website
+
+A style (or a ghost) is trained with the full app (`python scripts/train_style.py ...`, see the README) and saved in
+the style folder (`data/styles/`). To offer it on the website, export it next to the model and commit the result:
+
+    python scripts/build_site.py --styles            # every trained style, or --styles ann me to pick
+    git add site/styles && git commit -m "site: publish styles"
+
+Each style becomes `site/styles/<name>.json` (about 30 kB: the adapter's numbers, its blend weight and PyTorch test
+vectors) and `site/styles/index.json` lists them; the play page shows a Style choice as soon as the index is there.
+Styles must be retrained if the site's model is re-exported. A style imitates a real person's games, so publish one
+only for a player who is happy with it (yourself, or with their permission).
+
