@@ -79,4 +79,4 @@ def test_the_play_page_end_to_end(tmp_path) -> None:
         dom = dump_dom(browser_or_skip(), f"{url}/tests/play.html", tmp_path / "profile", budget_ms=30000)
     finally:
         server.shutdown()
-    check_results(dom, 5)
+    check_results(dom, 7)

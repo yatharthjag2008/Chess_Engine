@@ -61,4 +61,34 @@ test("checkmate ends the game", async () => {
   equal($("result-banner").querySelector("h2").textContent, "You won");
 });
 
+/** Click a square on the board, as a player would. */
+const click = (square) => $("board").querySelector(`[data-square="${square}"]`).click();
+
+test("castling: click the king, then its target square", async () => {
+  for (const [fen, king, target, san, rook] of [
+    ["r3k2r/pppq1ppp/2npbn2/2b1p3/2B1P3/2NPBN2/PPPQ1PPP/R3K2R w KQkq - 0 1", "e1", "g1", "O-O", "f1"],
+    ["r3k2r/pppq1ppp/2npbn2/2b1p3/2B1P3/2NPBN2/PPPQ1PPP/R3K2R w KQkq - 0 1", "e1", "c1", "O-O-O", "d1"],
+  ]) {
+    await site.newGame({ rating: 1500, color: "white" });
+    site.ui.chess.load(fen);
+    site.render();
+    click(king);
+    click(target);
+    await until(() => site.ui.chess.history().length === 2);
+    equal(site.ui.chess.history()[0], san);
+    equal(site.ui.chess.get(rook).type, "r", "the rook moved too");
+    equal(site.ui.chess.get(target).type, "k");
+  }
+});
+
+test("the bot castles too", async () => {
+  await site.newGame({ rating: 1500, color: "white" });
+  site.ui.chess.load("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R b KQkq - 0 1");
+  const { moves } = site.ui.model.predict(site.ui.chess, 1500);
+  const castles = moves.filter((m) => m.san.startsWith("O-O"));
+  equal(castles.length, 2, "both castling moves are among the bot's choices");
+  assert(castles.every((m) => m.prob > 0), "with some probability");
+  equal(castles.map((m) => m.uci).sort().join(" "), "e8c8 e8g8");
+});
+
 run();
