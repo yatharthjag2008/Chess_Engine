@@ -362,7 +362,10 @@ When the opponent's rating is known, a prior centred on it (Lichess pairs player
 **60 Elo** average error on the same held-out games, with 80% ranges that hold the true rating 83% of the time
 (fitted on the validation games by `scripts/build_rating_prior.py`). That is barely better than the opponent's
 rating alone, so the moves add little until the model's rating sense improves. The website shows both numbers,
-and never uses the opponent prior for games against the bot, whose rating you choose.
+and never uses the opponent prior for games against the bot, whose rating you choose. It only helps when players
+were paired by rating: a casual challenge against a much weaker friend would drag the estimate down, so when the
+opponent's rating is far outside what the moves allow (outside their 95% range; 3.9% of real test games) the page
+says the two disagree and leaves that opponent out of combined estimates.
 
 ## Play the bot
 

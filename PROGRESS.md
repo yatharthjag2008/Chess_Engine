@@ -1404,4 +1404,31 @@ export (4) and a real reload.
   mean what the training data's 1500s play. Each measurement is also uncertain by about +-200 Elo (20 games per
   pairing), so the curve is a best estimate; more validation games would tighten it. The local app (`scripts/serve.py`)
   still uses the plain dial. A model with a stronger rating sense (the bigger training run) would widen the range.
+- **Phone check, screenshots and the real sites** (2026-11-26).
+  - `scripts/site_screenshots.py` drives headless Chrome through its DevTools protocol (a small client on the
+    standard library, as no WebSocket library is installed), sets each page up as a visitor would leave it, in real
+    time so Stockfish and the workers finish, saves desktop (1280) and phone (390) screenshots to
+    `reports/web/site/`, and fails if a page is wider than the screen. Nothing overflows; the one problem found was
+    the Review page's game box at half width, now fixed. The README picture is the play page's top from this script.
+  - **Chess.com from the browser works**: Hikaru's last 10 games in about a second, all with clocks and ratings.
+  - **Lichess refuses headless browsers**: its games export answers `HeadlessChrome` with its HTML 404 page, the
+    same page it gives for an unknown player, so the site said "no player of that name" for a real account. The
+    request is allowed cross-site (`Access-Control-Allow-Origin: *`), so ordinary browsers should be served, but
+    that could not be confirmed here without disguising the test browser, which was not done. A 404 is now checked
+    against Lichess's user endpoint (JSON, which does answer): unknown player, known player whose games were
+    refused, or a refused request, each said plainly, with pasting the PGN as the way round.
+  - **Real games broke the opponent prior twice.** Hikaru (2838) against an opponent rated 578 (a casual challenge)
+    was put at 650, and ten games of his read "about 2800 (80% range 2790-2800)", which is just the end of the
+    estimate's scale (his opponents were rated 3100-3400). A mixture prior did not help: with 10% of the test
+    games given random opponent ratings, those games stayed about 500 Elo off at any mixture weight, because the
+    moves carry too little evidence to overrule the prior. Switching to the moves whenever the two disagree costs
+    too much on real games (60 -> 89 Elo). So the page now:
+    - warns when the opponent's rating is outside the moves-alone 95% range (after bringing it within the model's
+      outer buckets, 900-2300, beyond which the moves cannot tell ratings apart): 3.9% of real test games, 36% of
+      games given a random opponent rating (`build_rating_prior.py` measures both); the warning gives both
+      explanations, a game that was not rating-paired or moves that undersell the player;
+    - leaves such opponents out of a combined estimate (their moves still count);
+    - says "2800 or more" / "600 or less" when an estimate reaches an end of the scale.
+    Hikaru's ten games now read "2800 or more ... (5 games left out where the opponent's rating did not fit the
+    moves)", with the 578 game flagged.
 
