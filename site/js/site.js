@@ -473,7 +473,12 @@ export function pgn() {
     c.setHeader("ECO", opening.eco);
     c.setHeader("Opening", opening.name);
   }
-  c.setHeader("Event", "Game vs. human-like bot (in the browser)");
+  const fromPosition = ui.startFen.split(" ")[0] !== START.split(" ")[0];
+  c.setHeader("Event", `Game vs. human-like bot (in the browser${fromPosition ? ", from a position" : ""})`);
+  if (fromPosition) {                                         // so other programs can replay it
+    c.setHeader("SetUp", "1");
+    c.setHeader("FEN", ui.startFen);
+  }
   c.setHeader(ui.human === "w" ? "White" : "Black", "You");
   c.setHeader(ui.human === "w" ? "Black" : "White", `Bot ${ui.rating}`);
   return c.pgn() + "\n";

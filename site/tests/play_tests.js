@@ -703,4 +703,20 @@ test("from a position: pick a practice position", async () => {
   standardForm();
 });
 
+test("from a position: captures count from there, and the PGN records the position", async () => {
+  site.ui.random = () => 0.5;
+  positionForm("8/8/8/4k3/8/8/4K3/4Q3 w - - 0 1");
+  await site.startFromForm();
+  equal(document.querySelectorAll(".captured .piece").length, 0, "nothing captured: the position had no black queen");
+  equal($("bottom-captured").querySelector(".score").textContent, "+9", "but White is a queen up");
+  await site.play("e1h4");
+  const text = site.pgn();
+  assert(text.includes('[SetUp "1"]') && text.includes('[FEN "8/8/8/4k3/8/8/4K3/4Q3 w - - 0 1"]'), text);
+  assert(text.includes("from a position"), text);
+  standardForm();
+  await site.newGame({ rating: 1500, color: "white" });
+  await site.play("e2e4");
+  assert(!site.pgn().includes("[SetUp"), "a standard game has no SetUp header");
+});
+
 run();
