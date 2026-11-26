@@ -41,6 +41,7 @@ const saved = {
   settings: stored("human-chess-site.settings"), // the new-game form: { rating, color, time, difficulty }
   profile: stored("human-chess-site.adaptive"),  // your adaptive-difficulty rating and recent games
   handoff: stored("human-chess-site.analyse"),   // a game handed to the Analyse page
+  review: stored("human-chess-site.review"),     // a game handed to the Review page
 };
 
 /** Your rating for adaptive difficulty (read once from this browser). */
@@ -405,6 +406,7 @@ function finish(text, winner) {
   recordResult(winner);
   const banner = $("result-banner");
   const heading = document.createElement("h2");
+  heading.className = "result-title";
   heading.textContent = winner === null ? "Draw" : winner === ui.human ? "You won" : "The bot won";
   const p = document.createElement("p");
   p.textContent = text;
@@ -427,7 +429,11 @@ function finish(text, winner) {
   close.type = "button";
   close.textContent = "Close";
   close.addEventListener("click", () => { banner.hidden = true; });
-  actions.append(again, close);
+  const reviewIt = document.createElement("button");
+  reviewIt.type = "button";
+  reviewIt.textContent = "Review";
+  reviewIt.addEventListener("click", () => reviewGame());
+  actions.append(again, reviewIt, close);
   banner.replaceChildren(...lines, actions);
   banner.hidden = false;
   ui.board.setLegalMoves([], null);
@@ -616,15 +622,27 @@ export async function copyFen() {
   return fen;
 }
 
-/** Hand the game to the Analyse page (through this browser's storage) and open it. */
-export function analyseGame({ open = (url) => { window.location.href = url; } } = {}) {
+const openPage = (url) => { window.location.href = url; };
+
+/** Hand the game to another page (through this browser's storage) and open it there. */
+function handOver(store, url, open) {
   if (!ui.chess || !ui.chess.history().length) return false;
-  if (!saved.handoff.save(pgn())) {
+  if (!store.save(pgn())) {
     setStatus("Your browser did not allow handing the game over: download the PGN and paste it there.");
     return false;
   }
-  open("analyse.html#game");
+  open(url);
   return true;
+}
+
+/** The Analyse page estimates how strong you played in this game. */
+export function analyseGame({ open = openPage } = {}) {
+  return handOver(saved.handoff, "analyse.html#game", open);
+}
+
+/** The Review page judges every move of this game with Stockfish. */
+export function reviewGame({ open = openPage } = {}) {
+  return handOver(saved.review, "review.html#game", open);
 }
 
 function download() {
@@ -694,6 +712,7 @@ export async function init(modelBase = "model/", dataBase = modelBase.replace(/m
   $("download").addEventListener("click", download);
   $("copy-fen").addEventListener("click", copyFen);
   $("analyse-game").addEventListener("click", () => analyseGame());
+  $("review-game").addEventListener("click", () => reviewGame());
   $("sound").addEventListener("click", () => setSound(!ui.sounds.enabled));
   const unlock = () => {                                   // audio may only start after a click or key
     ui.sounds.unlock();

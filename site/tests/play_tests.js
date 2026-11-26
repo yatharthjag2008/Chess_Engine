@@ -913,4 +913,18 @@ test("Analyse this game hands the PGN over and opens the Analyse page", async ()
   localStorage.removeItem("human-chess-site.analyse");
 });
 
+test("Review this game hands the PGN to the Review page, also from the result banner", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1500, color: "black" });
+  let opened = null;
+  equal(site.reviewGame({ open: (url) => { opened = url; } }), true, "the bot's first move is a game to review");
+  equal(opened, "review.html#game");
+  const handed = JSON.parse(localStorage.getItem("human-chess-site.review"));
+  assert(handed.includes('[Black "You"]'), handed);
+  localStorage.removeItem("human-chess-site.review");
+  site.resign();
+  const buttons = [...$("result-banner").querySelectorAll("button")].map((b) => b.textContent);
+  equal(buttons, ["New game", "Review", "Close"]);
+});
+
 run();
