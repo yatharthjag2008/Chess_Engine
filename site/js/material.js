@@ -45,3 +45,15 @@ export function captured(startFen, fen) {
     diff: materialOf(now.w) - materialOf(now.b),
   };
 }
+
+const NAMES = { p: ["a pawn", "pawns"], n: ["a knight", "knights"], b: ["a bishop", "bishops"],
+                r: ["a rook", "rooks"], q: ["a queen", "queens"] };
+
+/** In words, for screen readers: "Captured 2 pawns and a knight; 5 ahead." */
+export function describeCaptures(types, lead = 0) {
+  const counts = ORDER.map((type) => [type, types.filter((t) => t === type).length]).filter(([, n]) => n);
+  const parts = counts.map(([type, n]) => (n === 1 ? NAMES[type][0] : `${n} ${NAMES[type][1]}`));
+  const list = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
+  const text = list ? `Captured ${list}` : "Nothing captured";
+  return lead > 0 ? `${text}; ${lead} ahead.` : `${text}.`;
+}

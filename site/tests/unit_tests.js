@@ -3,7 +3,7 @@
 import { Chess } from "../vendor/chess.js";
 import { assert, equal, run, test } from "./harness.js";
 import { RECIPES, Sounds, soundFor } from "../js/sounds.js";
-import { START, captured, countPieces, materialOf } from "../js/material.js";
+import { START, captured, countPieces, describeCaptures, materialOf } from "../js/material.js";
 
 // ------------------------------------------------------------------ sounds
 
@@ -82,6 +82,13 @@ test("a promoted pawn is not a captured one", () => {
   const twoQueens = "rnbqkbnr/pppppppp/8/8/8/8/2PPPPPP/RNBQKBNR w KQkq - 0 1".replace("RNBQKBNR w", "RNBQKQQR w");
   equal(captured(START, twoQueens), { w: [], b: ["n", "b"], diff: 10 },
         "two pawns became queens; the knight and bishop they replace were taken");
+});
+
+test("captures in words, for screen readers", () => {
+  equal(describeCaptures([]), "Nothing captured.");
+  equal(describeCaptures(["p"], 1), "Captured a pawn; 1 ahead.");
+  equal(describeCaptures(["p", "p", "n"], 5), "Captured 2 pawns and a knight; 5 ahead.");
+  equal(describeCaptures(["p", "b", "r", "q"]), "Captured a pawn, a bishop, a rook and a queen.");
 });
 
 run();

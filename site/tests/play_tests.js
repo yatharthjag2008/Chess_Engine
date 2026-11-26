@@ -198,6 +198,7 @@ test("each player's captures are shown next to their name", async () => {
   site.render();
   const mine = [...$("bottom-captured").querySelectorAll(".piece")].map((el) => el.dataset.piece);
   equal(mine, ["bp"], "you (White, at the bottom) took a black pawn");
+  equal($("bottom-captured").getAttribute("aria-label"), "Captured a pawn; 1 ahead.");
   equal($("bottom-captured").querySelector(".piece").getBoundingClientRect().width, 22, "small icons");
   site.ui.board.flip();
   site.render();

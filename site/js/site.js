@@ -4,7 +4,7 @@ import { Chess } from "../vendor/chess.js";
 import { Board, pieceEl } from "./board.js";
 import { loadModel, sampleMove } from "./engine.js";
 import { Sounds, soundFor } from "./sounds.js";
-import { START, captured } from "./material.js";
+import { START, captured, describeCaptures } from "./material.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -155,6 +155,7 @@ function renderCaptured(fen) {
       groups.push(score);
     }
     $(id).replaceChildren(...groups);
+    $(id).setAttribute("aria-label", describeCaptures(taken[side], lead));
   }
 }
 
