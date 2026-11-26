@@ -9,6 +9,7 @@ document.getElementById("page").replaceChildren(...doc.body.children);
 const site = await import("../js/site.js");
 await site.init("../model/");
 site.ui.delay = 0;
+site.ui.thinkScale = 0.01;                       // timed games: the bot thinks 1% of its human-like time
 const $ = (id) => document.getElementById(id);
 
 test("the model loads and checks itself against PyTorch", () => {
@@ -505,6 +506,16 @@ test("a flag falls: the side out of time loses, unless the other cannot checkmat
   site.ui.clock.remaining.b = 100;                // the bot runs out, but you only have a knight
   await until(() => site.ui.over, "the flag");
   equal(site.ui.overText, "Black ran out of time, but White cannot checkmate: a draw");
+});
+
+test("timed games: the bot takes a human-like time, and it comes off its clock", async () => {
+  site.ui.random = () => 0.5;
+  site.ui.thinkScale = 1;
+  await site.newGame({ rating: 1500, color: "white", time: "1" });
+  await site.play("e2e4");                       // ply 1: 60 s / 80 = 0.75 s
+  const used = 60000 - site.ui.clock.left("b");
+  assert(used >= 700 && used < 2000, `the bot used ${used} ms`);
+  site.ui.thinkScale = 0.01;
 });
 
 run();

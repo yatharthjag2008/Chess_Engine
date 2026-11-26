@@ -4,7 +4,7 @@ import { Chess } from "../vendor/chess.js";
 import { assert, equal, run, test } from "./harness.js";
 import { RECIPES, Sounds, soundFor } from "../js/sounds.js";
 import { stored } from "../js/storage.js";
-import { Clock, TIME_CONTROLS, baseSeconds, formatClock } from "../js/clock.js";
+import { Clock, TIME_CONTROLS, baseSeconds, formatClock, thinkTime } from "../js/clock.js";
 import { START, canMate, captured, countPieces, describeCaptures, materialOf } from "../js/material.js";
 
 // ------------------------------------------------------------------ sounds
@@ -199,6 +199,16 @@ test("clock faces: minutes and seconds, tenths under ten seconds", () => {
   equal(formatClock(9400), "9.4");
   equal(formatClock(50), "0.0");
   equal(formatClock(-5), "0.0");
+});
+
+test("the bot's thinking time: quick in the opening, a share of its time later, hurried when short", () => {
+  const mid = () => 0.5;                         // spread factor 1
+  equal(thinkTime(180000, 2, mid), 2250, "opening: 1/80 of three minutes");
+  equal(thinkTime(180000, 30, mid), 6000, "later: 1/30");
+  equal(thinkTime(600000, 40, () => 0.99), 30000, "never more than 30 seconds");
+  equal(thinkTime(2000, 40, mid), 150, "two seconds left: a quick move");
+  assert(thinkTime(5000, 40, mid) <= 1000, "at most a fifth of what is left");
+  assert(thinkTime(180000, 30, () => 0) < thinkTime(180000, 30, () => 0.99), "the spread");
 });
 
 run();

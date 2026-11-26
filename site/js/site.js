@@ -6,7 +6,7 @@ import { loadModel, sampleMove } from "./engine.js";
 import { Sounds, soundFor } from "./sounds.js";
 import { START, canMate, captured, describeCaptures } from "./material.js";
 import { stored } from "./storage.js";
-import { Clock, baseSeconds, formatClock } from "./clock.js";
+import { Clock, baseSeconds, formatClock, thinkTime } from "./clock.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -23,7 +23,8 @@ export const ui = {
   last: null,          // the bot's last move: { san, uci, candidates }
   over: false,
   random: Math.random, // replaceable in tests
-  delay: 350,          // ms before the bot moves (so its move is visible as a move)
+  delay: 350,          // ms before the bot moves in untimed games (so its move is visible as a move)
+  thinkScale: 1,       // timed games: the bot's human-like thinking time is multiplied by this (tests shorten it)
   sounds: new Sounds(),
 };
 
@@ -342,6 +343,13 @@ export function botMove() {
   return choice;
 }
 
+/** How long the bot takes: a fixed pause untimed, a human-like share of its clock in timed games. */
+function botDelay() {
+  if (!ui.clock) return ui.delay;
+  const color = ui.chess.turn();
+  return thinkTime(ui.clock.left(color), ui.chess.history().length, ui.random) * ui.thinkScale;
+}
+
 function botTurn() {
   ui.busy = true;
   render();
@@ -356,7 +364,7 @@ function botTurn() {
       ui.busy = false;
       render();
       resolve();
-    }, ui.delay);
+    }, botDelay());
   });
 }
 

@@ -80,3 +80,12 @@ export function formatClock(ms) {
   const seconds = Math.ceil(value / 1000);
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
+
+/** How long the bot "thinks" (ms) with `leftMs` on its clock, `ply` half-moves into the game: quick in the
+ *  opening, about a thirtieth of its time later on, hurried when short of time; `random` in [0, 1) spreads it. */
+export function thinkTime(leftMs, ply, random = Math.random) {
+  const share = ply < 10 ? 80 : 30;                        // opening moves are played from memory
+  const spread = 0.35 + 1.3 * random();
+  const wanted = (leftMs / share) * spread;
+  return Math.round(Math.max(150, Math.min(wanted, leftMs * 0.2, 30000)));
+}
