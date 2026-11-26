@@ -171,7 +171,7 @@ export function render() {
   $("first").disabled = $("prev").disabled = shownPly === 0;
   $("next").disabled = $("last").disabled = !viewing;
   renderCaptured(shown.fen);
-  renderOpening(history);
+  renderOpening(history, viewing ? ui.view : history.length);
   updateClocks();
   renderThinking(viewing ? ui.thoughts[ui.view] || null : ui.last);
   const humanMoves = history.filter((m) => m.color === ui.human).length;
@@ -246,10 +246,10 @@ export function tickClocks() {
   render();
 }
 
-/** The opening's name and ECO code above the move list (hidden until there is one). */
-function renderOpening(history) {
+/** The opening's name and ECO code above the move list, as of the position shown (hidden until there is one). */
+function renderOpening(history, shownPly) {
   const fens = [history.length ? history[0].before : ui.chess.fen(), ...history.map((m) => m.after)];
-  const opening = openingOf(ui.openings, fens);
+  const opening = openingOf(ui.openings, fens.slice(0, shownPly + 1));
   $("opening").hidden = !opening;
   if (!opening) return;
   $("opening-eco").textContent = opening.eco;

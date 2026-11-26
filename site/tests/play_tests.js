@@ -597,4 +597,19 @@ test("the opening's name is shown above the moves", async () => {
   equal($("opening-name").textContent, "Sicilian Defense: Modern Variations");
 });
 
+test("looking back, the opening is the one at that point of the game", async () => {
+  await until(() => site.ui.openings, "the name table");
+  await site.newGame({ rating: 1500, color: "white" });
+  for (const san of ["e4", "c5", "Nf3", "d6"]) site.ui.chess.move(san);
+  site.render();
+  site.showPly(2);
+  equal($("opening-name").textContent, "Sicilian Defense");
+  site.showPly(1);
+  equal($("opening-name").textContent, "King's Pawn Game");
+  site.showPly(0);
+  assert($("opening").hidden, "the start position");
+  site.showPly(null);
+  equal($("opening-name").textContent, "Sicilian Defense: Modern Variations");
+});
+
 run();
