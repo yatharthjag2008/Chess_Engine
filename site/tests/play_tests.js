@@ -689,4 +689,18 @@ test("from a position: what cannot be played says so, and no game starts", async
   standardForm();
 });
 
+test("from a position: pick a practice position", async () => {
+  site.ui.random = () => 0.5;
+  positionForm("");
+  const select = $("preset");
+  assert(select.options.length >= 9, "the presets are listed");
+  select.value = [...select.options].find((o) => o.text.startsWith("Lucena")).value;
+  select.dispatchEvent(new Event("change"));
+  equal($("position-text").value, "1K1k4/1P6/8/8/8/8/r7/2R5 w - - 0 1");
+  await site.startFromForm();
+  equal(site.ui.chess.fen(), "1K1k4/1P6/8/8/8/8/r7/2R5 w - - 0 1");
+  select.value = "";
+  standardForm();
+});
+
 run();

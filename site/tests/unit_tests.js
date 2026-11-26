@@ -5,7 +5,7 @@ import { assert, equal, run, test } from "./harness.js";
 import { RECIPES, Sounds, soundFor } from "../js/sounds.js";
 import { stored } from "../js/storage.js";
 import { loadOpenings, openingOf, positionKey } from "../js/openings.js";
-import { parsePosition } from "../js/position.js";
+import { PRESETS, parsePosition } from "../js/position.js";
 import { Clock, TIME_CONTROLS, baseSeconds, formatClock, thinkTime } from "../js/clock.js";
 import { START, canMate, captured, countPieces, describeCaptures, materialOf } from "../js/material.js";
 
@@ -264,6 +264,15 @@ test("a pasted PGN keeps its moves", () => {
   equal(chess.history(), ["e4", "e5", "Nf3", "Nc6", "Bb5"]);
   equal(chess.turn(), "b");
   equal(parsePosition("1. d4 d5 2. c4").chess.history().length, 3, "movetext without headers");
+});
+
+test("every practice position can be played from", () => {
+  assert(PRESETS.length >= 8);
+  for (const preset of PRESETS) {
+    const { chess, error } = parsePosition(preset.fen);
+    equal(error, undefined, preset.name);
+    equal(chess.fen(), preset.fen, preset.name);
+  }
 });
 
 test("what cannot be played from says why", () => {

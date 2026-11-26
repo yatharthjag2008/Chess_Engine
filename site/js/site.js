@@ -8,7 +8,7 @@ import { START, canMate, captured, describeCaptures } from "./material.js";
 import { stored } from "./storage.js";
 import { Clock, baseSeconds, formatClock, thinkTime } from "./clock.js";
 import { loadOpenings, openingOf } from "./openings.js";
-import { parsePosition } from "./position.js";
+import { PRESETS, parsePosition } from "./position.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -509,6 +509,11 @@ export async function init(modelBase = "model/", dataBase = modelBase.replace(/m
   };
   for (const radio of $("new-game").elements.mode) radio.addEventListener("change", showMode);
   showMode();
+  for (const preset of PRESETS) $("preset").append(new Option(preset.name, preset.fen));
+  $("preset").addEventListener("change", () => {             // a practice position fills the box
+    if ($("preset").value) $("position-text").value = $("preset").value;
+    $("position-error").hidden = true;
+  });
   $("new-game").addEventListener("submit", (event) => {
     event.preventDefault();
     const data = new FormData($("new-game"));
