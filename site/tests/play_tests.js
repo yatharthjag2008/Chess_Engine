@@ -560,4 +560,24 @@ test("timed games: clocks survive a reload (time passes meanwhile), and there is
   equal(site.ui.overText, "Black wins on time");
 });
 
+test("draw arrows during a game; your next move clears them", async () => {
+  site.ui.random = () => 0.5;
+  await site.newGame({ rating: 1500, color: "white" });
+  const at = (square) => {
+    const rect = site.ui.board.squareEl(square).getBoundingClientRect();
+    return { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 };
+  };
+  const press = (type, target, square, extra = {}) => target.dispatchEvent(
+    new PointerEvent(type, { bubbles: true, cancelable: true, button: 2, pointerId: 1, ...at(square), ...extra }));
+  press("pointerdown", site.ui.board.squareEl("e2"), "e2");
+  press("pointermove", window, "e4");
+  press("pointerup", window, "e4");
+  press("pointerdown", site.ui.board.squareEl("f7"), "f7", { shiftKey: true });
+  press("pointerup", window, "f7", { shiftKey: true });
+  equal(site.ui.board.shapes, [{ orig: "e2", dest: "e4" }, { orig: "f7", brush: "red" }]);
+  assert(site.ui.board.el.querySelector(".shapes line.green") && site.ui.board.el.querySelector(".shapes circle.red"));
+  await site.play("e2e4");
+  equal(site.ui.board.shapes, [], "a new position clears them");
+});
+
 run();
