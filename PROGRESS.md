@@ -1221,3 +1221,14 @@ published by `.github/workflows/pages.yml`) where anyone can play the bot withou
   playing Black and a checkmate. Screenshots at desktop and 390 px phone width.
 - **Decision**: a plain-JavaScript forward pass instead of an ONNX runtime: no extra download or dependency, and the
   network is small (about 30 million multiply-adds per move, a fraction of a second).
+
+## The website, round two (2026-11-25)
+
+Basic features players expect, each built in its own series of commits with browser tests.
+
+- **Look**: SVG pieces (the cburnett set, GPLv2+), a green board with dots and capture rings, moves that slide.
+- **Premoves**: queue a move while the bot thinks; played when your turn comes if still legal (both play pages).
+- **Sounds** (`site/js/sounds.js`): synthesized with Web Audio, so there are no audio files. A knock for a move, a
+  heavier one for a capture, tones for check, promotion, castling, the start and the end of a game (win, loss and
+  draw differ), a tick for a premove and a blip when one is dropped. On/off (key m) and volume are remembered.
+  Audio starts on the first click or key press, as browsers require.
