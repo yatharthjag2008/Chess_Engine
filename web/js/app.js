@@ -558,7 +558,7 @@ export function init() {
     if (typing || event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.key === "f") $("flip").click();
     if (event.key === "h" && !$("hint").hidden && !$("hint").disabled) askHint();
-    if (event.key === "Escape") ui.board.select(null);
+    if (event.key === "Escape") ui.board.cancelPremove();   // drops the selection and any premove
   });
   setInterval(updateClocks, 100);
   $("resign").addEventListener("click", resign);

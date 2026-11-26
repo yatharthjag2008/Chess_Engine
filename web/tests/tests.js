@@ -1,6 +1,6 @@
 // Unit tests of board.js (and review.js, in review_unit.js), run in a real browser (see harness.js and tests/test_web_js.py).
 
-import { Board, START_FEN, isLightSquare, parseFen, squareOrder } from "../js/board.js";
+import { Board, START_FEN, isLightSquare, parseFen, premoveTargets, squareOrder } from "../js/board.js";
 import { assert, equal, run, test } from "./harness.js";
 import "./review_unit.js";
 
@@ -224,6 +224,72 @@ test("a move slides its piece; a dropped piece or a step back does not", () => {
   pointer("pointerup", window, x1, y1);
   board.setPosition("rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2", { lastMove: "g1f3" });
   equal(sliding("f3"), 0, "a dragged piece is already there");
+});
+
+// ------------------------------------------------------------------ premoves
+
+const targetsOf = (fen, square) => premoveTargets(fen, square).map((m) => m.to_square).sort().join(" ");
+
+test("premove targets: every square the piece could reach on an empty board", () => {
+  equal(targetsOf(START_FEN, "e2"), "d3 e3 e4 f3", "pawn: pushes and both captures");
+  equal(targetsOf(START_FEN, "g1"), "e2 f3 h3", "knight");
+  equal(targetsOf(START_FEN, "e1"), "c1 d1 d2 e2 f1 f2 g1", "king, with both castlings");
+  equal(targetsOf(START_FEN, "a1").split(" ").length, 14, "rook: through its own pieces");
+  equal(targetsOf(START_FEN, "d8").split(" ").length, 21, "queen");
+  equal(targetsOf("8/8/8/8/8/8/8/4K3 w - - 0 1", "e1"), "d1 d2 e2 f1 f2", "no rooks: no castling");
+  const promote = premoveTargets("8/1P6/8/8/8/8/8/k6K w - - 0 1", "b7");
+  equal(promote.map((m) => m.uci).sort(), ["b7a8q", "b7b8q", "b7c8q"], "promotions are queens");
+  equal(targetsOf("8/8/8/8/8/8/p7/7K b - - 0 1", "a2"), "a1 b1", "a black pawn goes down");
+  equal(premoveTargets(START_FEN, "e4"), []);
+});
+
+/** A board where White waits for Black's reply. */
+function premoveBoard(played = []) {
+  const board = new Board(fixture(), { onMove: (uci) => played.push(uci) });
+  board.setPosition("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1", { lastMove: "e2e4" });
+  board.setLegalMoves([], null, { premover: "white" });
+  return board;
+}
+
+test("while the other side thinks, a click queues a premove", () => {
+  const played = [];
+  const board = premoveBoard(played);
+  assert(board.el.classList.contains("premoving"), "the board shows premove mode");
+  assert(!board.el.classList.contains("locked"), "your pieces can be picked up");
+  board.squareEl("e7").click();
+  equal(board.selected, null, "the opponent's pieces cannot");
+  board.squareEl("g1").click();
+  assert(board.squareEl("f3").classList.contains("target"), "targets shown");
+  board.squareEl("f3").click();
+  equal(board.premove.uci, "g1f3");
+  equal(played, [], "nothing is played yet");
+  assert(board.squareEl("g1").classList.contains("premove") && board.squareEl("f3").classList.contains("premove"),
+         "the queued premove is highlighted");
+  board.squareEl("a5").click();
+  equal(board.premove, null, "a click elsewhere cancels it");
+});
+
+test("a premove by dragging, cancelled by a right-click or cancelPremove()", async () => {
+  const board = premoveBoard();
+  const [x0, y0] = centre(board, "d2");
+  const [x1, y1] = centre(board, "d4");
+  pointer("pointerdown", board.squareEl("d2").querySelector(".piece"), x0, y0);
+  pointer("pointermove", window, x1, y1);
+  pointer("pointerup", window, x1, y1);
+  equal(board.premove.uci, "d2d4");
+  await new Promise((resolve) => setTimeout(resolve, 0));   // the click that follows a drag is ignored
+  board.el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+  equal(board.premove, null, "right-click cancels");
+  board.squareEl("b1").click();
+  board.squareEl("c3").click();
+  equal(board.premove.uci, "b1c3");
+  board.cancelPremove();
+  equal(board.premove, null);
+  board.squareEl("b1").click();
+  board.squareEl("c3").click();
+  board.setLegalMoves([], null);
+  equal(board.premove, null, "no premover (a new game, the game over): the premove is dropped");
+  assert(board.el.classList.contains("locked"));
 });
 
 test("marks stay on squares across renders and can be cleared", () => {

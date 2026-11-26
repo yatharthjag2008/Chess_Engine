@@ -240,7 +240,7 @@ export async function init(modelBase = "model/") {
     const typing = event.target instanceof Element && event.target.closest("input, select, textarea, button");
     if (typing || event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.key === "f") $("flip").click();
-    if (event.key === "Escape") ui.board.select(null);
+    if (event.key === "Escape") ui.board.cancelPremove();   // drops the selection and any premove
   });
   try {
     ui.model = await loadModel(modelBase);

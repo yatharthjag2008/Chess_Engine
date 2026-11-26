@@ -12,6 +12,11 @@
 // piece there (mouse, pen or touch). The board only offers legal moves (it is given the
 // list by the server, it does not know the rules itself). Promotions ask which piece to take.
 //
+// Premoves: while the other side is thinking, `setLegalMoves([], null, { premover: "white" })`
+// lets White queue a move the same way. Any square the piece could reach on an empty board is
+// offered (the position will change before it is played). Click elsewhere, right-click or
+// press Escape to cancel it.
+//
 // Pieces are SVG images (the cburnett set in web/pieces/, see its LICENSE.txt), drawn by style.css from
 // each piece's data-piece attribute ("wk", "bn", ...), so the board itself has no image paths.
 
@@ -53,6 +58,45 @@ export function parseFen(fen) {
   return { pieces, turn: turn === "b" ? "black" : "white" };
 }
 
+const KNIGHT = [[1, 2], [2, 1], [2, -1], [1, -2], [-1, -2], [-2, -1], [-2, 1], [-1, 2]];
+const KING = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+const RAYS = { b: [[1, 1], [1, -1], [-1, 1], [-1, -1]], r: [[1, 0], [-1, 0], [0, 1], [0, -1]] };
+RAYS.q = [...RAYS.b, ...RAYS.r];
+
+/** Where the piece on `square` could go on an empty board (premoves): its moves by shape, pawn
+ *  captures on both diagonals, castling from the king's home square, promotions to a queen. */
+export function premoveTargets(fen, square) {
+  const { pieces } = parseFen(fen);
+  const piece = pieces.get(square);
+  if (!piece) return [];
+  const file = FILES.indexOf(square[0]);
+  const rank = Number(square[1]);
+  const at = (f, r) => (f >= 0 && f < 8 && r >= 1 && r <= 8 ? FILES[f] + r : null);
+  const targets = [];
+  if (piece.type === "p") {
+    const dir = piece.color === "white" ? 1 : -1;
+    targets.push(at(file, rank + dir), at(file - 1, rank + dir), at(file + 1, rank + dir));
+    if (rank === (dir === 1 ? 2 : 7)) targets.push(at(file, rank + 2 * dir));
+  } else if (piece.type === "n" || piece.type === "k") {
+    for (const [df, dr] of piece.type === "n" ? KNIGHT : KING) targets.push(at(file + df, rank + dr));
+    const home = piece.color === "white" ? 1 : 8;
+    const rook = (f) => { const p = pieces.get(FILES[f] + home); return p && p.type === "r" && p.color === piece.color; };
+    if (piece.type === "k" && square === "e" + home) {
+      if (rook(7)) targets.push("g" + home);
+      if (rook(0)) targets.push("c" + home);
+    }
+  } else {
+    for (const [df, dr] of RAYS[piece.type]) {
+      for (let f = file + df, r = rank + dr; at(f, r); f += df, r += dr) targets.push(at(f, r));
+    }
+  }
+  const last = piece.color === "white" ? 8 : 1;
+  return [...new Set(targets.filter(Boolean))].map((to) => {
+    const promotion = piece.type === "p" && Number(to[1]) === last ? "q" : null;
+    return { uci: square + to + (promotion || ""), from_square: square, to_square: to, promotion };
+  });
+}
+
 /** Squares from the top-left corner as seen by `orientation`, row by row. */
 export function squareOrder(orientation) {
   const squares = [];
@@ -83,12 +127,19 @@ export class Board {
     this.check = false;
     this.legal = [];          // [{ uci, from_square, to_square, promotion }]
     this.mover = null;        // the colour allowed to move, or null
+    this.premover = null;     // the colour that may queue a premove while it is not its turn, or null
+    this.premove = null;      // the queued premove: { uci, from_square, to_square, promotion }
     this.selected = null;     // square of the selected piece
     this.drag = null;         // { from, startX, startY, ghost, moved }
     this.suppressClick = false;
     this.marks = {};          // { square: "class names" } kept across renders (hints, better moves)
     this.el.addEventListener("click", (event) => this.handleClick(event));
     this.el.addEventListener("pointerdown", (event) => this.dragStart(event));
+    this.el.addEventListener("contextmenu", (event) => {   // right-click cancels a premove
+      if (!this.premove && !(this.premover && this.selected)) return;
+      event.preventDefault();
+      this.cancelPremove();
+    });
     this.render();
   }
 
@@ -101,12 +152,17 @@ export class Board {
     return squareOrder(this.orientation)[row * 8 + col];
   }
 
+  /** Whose pieces can be picked up now: the side to move, or the side that may premove. */
+  get active() {
+    return this.mover || this.premover;
+  }
+
   dragStart(event) {
-    if (!this.mover || this.promotionOpen || event.button > 0) return;
+    if (!this.active || this.promotionOpen || event.button > 0) return;
     const cell = event.target.closest("[data-square]");
     if (!cell) return;
     const piece = parseFen(this.fen).pieces.get(cell.dataset.square);
-    if (!piece || piece.color !== this.mover || !this.targetsFrom(cell.dataset.square).length) return;
+    if (!piece || piece.color !== this.active || !this.targetsFrom(cell.dataset.square).length) return;
     event.preventDefault();
     this.drag = { from: cell.dataset.square, startX: event.clientX, startY: event.clientY, ghost: null, moved: false };
     const move = (e) => this.dragMove(e);
@@ -165,21 +221,32 @@ export class Board {
     }
   }
 
-  /** Moves the player may make now (from the API's legal_moves) and whose they are. */
-  setLegalMoves(moves, mover) {
+  /** Moves the player may make now (from the API's legal_moves) and whose they are; while nobody may
+   *  move, `premover` names the colour that may queue a premove (null: none, and a queued one is dropped). */
+  setLegalMoves(moves, mover, { premover = null } = {}) {
     this.legal = moves || [];
     this.mover = mover;
+    this.premover = mover ? null : premover;
+    if (!mover && !premover) this.premove = null;
     this.selected = null;
     this.render();
   }
 
   targetsFrom(square) {
+    if (!this.mover && this.premover) return premoveTargets(this.fen, square);
     return this.legal.filter((m) => m.from_square === square);
+  }
+
+  /** Forget the queued premove (and any piece picked up for one). */
+  cancelPremove() {
+    this.premove = null;
+    this.selected = null;
+    this.render();
   }
 
   handleClick(event) {
     const cell = event.target.closest("[data-square]");
-    if (!cell || !this.mover || this.promotionOpen || this.suppressClick) return;
+    if (!cell || !this.active || this.promotionOpen || this.suppressClick) return;
     const square = cell.dataset.square;
     if (this.selected) {
       const moves = this.targetsFrom(this.selected).filter((m) => m.to_square === square);
@@ -189,7 +256,8 @@ export class Board {
       }
     }
     const piece = parseFen(this.fen).pieces.get(square);
-    const ownPiece = piece && piece.color === this.mover && this.targetsFrom(square).length > 0;
+    const ownPiece = piece && piece.color === this.active && this.targetsFrom(square).length > 0;
+    if (!this.mover && this.premove && !ownPiece) this.premove = null;   // a click elsewhere cancels it
     this.select(ownPiece && this.selected !== square ? square : null);
   }
 
@@ -200,6 +268,13 @@ export class Board {
 
   /** Play one of `moves` (several only for a promotion: ask which piece). */
   async commit(moves) {
+    if (!this.mover && this.premover) {           // not our turn: queue it (promotions become queens)
+      this.premove = moves.find((m) => m.promotion === "q") || moves[0];
+      this.selected = null;
+      this.dragged = false;
+      this.render();
+      return;
+    }
     let move = moves[0];
     if (moves.length > 1) {
       const type = await this.choosePromotion(moves.map((m) => m.promotion));
@@ -313,6 +388,9 @@ export class Board {
       if (highlighted.includes(square)) cell.classList.add("last-move");
       if (this.check && piece && piece.type === "k" && piece.color === turn) cell.classList.add("in-check");
       if (square === this.selected) cell.classList.add("selected");
+      if (this.premove && (square === this.premove.from_square || square === this.premove.to_square)) {
+        cell.classList.add("premove");
+      }
       if (targets.has(square)) cell.classList.add("target");
       if (this.marks[square]) cell.classList.add(...this.marks[square].split(" "));
       if (index % 8 === 0) cell.append(coordinate("rank", square[1]));
@@ -324,7 +402,8 @@ export class Board {
       fragment.append(cell);
     });
     this.el.replaceChildren(fragment);
-    this.el.classList.toggle("locked", !this.mover);
+    this.el.classList.toggle("locked", !this.active);
+    this.el.classList.toggle("premoving", !this.mover && Boolean(this.premover));
   }
 }
 
